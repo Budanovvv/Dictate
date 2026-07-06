@@ -6,10 +6,12 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case system, en, ru, uk, es, pt, fr, de, zh, ja, ko, vi, tl
     var id: String { rawValue }
 
-    /// Label for the picker item (in its own language).
+    /// Label for the picker item (in its own language). "Follow system" is
+    /// shown in the *system's* language, not the current app language, so it
+    /// stays stable and reads naturally regardless of what's selected.
     var label: String {
         switch self {
-        case .system: return L("Follow system")
+        case .system: return Localization.shared.string("Follow system", in: Localization.systemLanguage)
         case .en: return "English"
         case .ru: return "Русский"
         case .uk: return "Українська"
@@ -42,9 +44,8 @@ final class Localization: ObservableObject {
         UserDefaults.standard.set(lang.rawValue, forKey: "uiLanguage")
     }
 
-    /// Effective language, taking "Follow system" into account.
-    var effective: AppLanguage {
-        if language != .system { return language }
+    /// The language the system resolves to (never .system).
+    static var systemLanguage: AppLanguage {
         let code = Locale.preferredLanguages.first?
             .split(separator: "-").first.map(String.init) ?? "en"
         switch code {
@@ -63,8 +64,17 @@ final class Localization: ObservableObject {
         }
     }
 
-    func translate(_ en: String) -> String {
-        switch effective {
+    /// Effective language, taking "Follow system" into account.
+    var effective: AppLanguage {
+        language == .system ? Self.systemLanguage : language
+    }
+
+    func translate(_ en: String) -> String { string(en, in: effective) }
+
+    /// Translate into a specific language — used for labels that must render
+    /// in a fixed language regardless of the current UI language.
+    func string(_ en: String, in lang: AppLanguage) -> String {
+        switch lang {
         case .ru: return Self.ru[en] ?? en
         case .uk: return Self.uk[en] ?? en
         case .es: return Self.es[en] ?? en
@@ -91,6 +101,15 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Shortcuts": "Клавиши",
+        "General": "Основные",
+        "Status": "Состояние",
+        "Ready": "Готово",
+        "Type a key…": "Нажмите клавишу…",
+        "Translation key": "Клавиша перевода",
+        "Hold to talk, release to insert what you said.": "Зажмите, чтобы говорить; отпустите — вставится сказанное.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Зажмите её вместо клавиши диктовки — речь впечатается на английском.",
+        "Not needed — you already dictate in English.": "Не нужно — вы уже диктуете на английском.",
         "Two keys, two results": "Две клавиши — два результата",
         "Hold a key and speak. The key you hold decides what gets typed.": "Зажмите клавишу и говорите. Какую клавишу держите — такой текст и получите.",
         "Types exactly what you say": "Печатает то, что вы сказали",
@@ -154,13 +173,6 @@ extension Localization {
         "Permissions": "Разрешения",
         "Granted": "Выдано",
         "No": "Нет",
-        "Key mode": "Режим клавиши",
-        "Hold to talk (push-to-talk)": "Удерживать (push-to-talk)",
-        "Tap to start, tap to stop": "Тап — старт, тап — стоп",
-        "Text insertion": "Вставка текста",
-        "Paste (Cmd+V)": "Вставка (Cmd+V)",
-        "Type character by character": "Печатать посимвольно",
-        "Paste is faster; typing works in fields that block paste.": "Вставка быстрее; посимвольный ввод работает там, где вставка запрещена.",
         "Vocabulary hint": "Словарь терминов",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Имена, термины, жаргон — через запятую. Помогает распознать их правильно.",
         "Model ready": "Модель готова",
@@ -180,15 +192,11 @@ extension Localization {
         "Dictation language": "Язык диктовки",
         "You'll dictate in:": "Вы диктуете на:",
         "Set to your system language — keep it or choose another.": "Установлен язык системы — оставьте или выберите другой.",
-        "Not needed — you already dictate in English.": "Не нужно — вы и так диктуете на английском.",
         "Model": "Модель",
         "Download model": "Скачать модель",
         "Automatic (detect)": "Автоопределение",
         "Download failed. Check your connection and retry.": "Загрузка не удалась. Проверьте соединение и повторите.",
-        "Translate to English (optional)": "Перевод в английский (опционально)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Думайте на родном — отправляйте на английском. Зажмите вторую клавишу, говорите на любом из 112 языков — впечатается английский текст. Перевод, как и всё остальное, идёт на вашем Mac. Основная клавиша по-прежнему печатает то, что вы сказали.",
         "Not set": "Не назначена",
-        "Set key": "Назначить",
         "Remove": "Убрать",
         "Translate key: %@": "Клавиша перевода: %@",
         "Download & continue": "Скачать и продолжить",
@@ -233,6 +241,15 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Shortcuts": "Клавіші",
+        "General": "Загальні",
+        "Status": "Стан",
+        "Ready": "Готово",
+        "Type a key…": "Натисніть клавішу…",
+        "Translation key": "Клавіша перекладу",
+        "Hold to talk, release to insert what you said.": "Затисніть, щоб говорити; відпустіть — вставиться сказане.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Затисніть її замість клавіші диктування — мовлення вдрукується англійською.",
+        "Not needed — you already dictate in English.": "Не потрібно — ви вже диктуєте англійською.",
         "Two keys, two results": "Дві клавіші — два результати",
         "Hold a key and speak. The key you hold decides what gets typed.": "Затисніть клавішу та говоріть. Яку клавішу тримаєте — такий текст і отримаєте.",
         "Types exactly what you say": "Друкує те, що ви сказали",
@@ -291,13 +308,6 @@ extension Localization {
         "Permissions": "Дозволи",
         "Granted": "Надано",
         "No": "Ні",
-        "Key mode": "Режим клавіші",
-        "Hold to talk (push-to-talk)": "Утримувати (push-to-talk)",
-        "Tap to start, tap to stop": "Тап — старт, тап — стоп",
-        "Text insertion": "Вставлення тексту",
-        "Paste (Cmd+V)": "Вставка (Cmd+V)",
-        "Type character by character": "Друкувати посимвольно",
-        "Paste is faster; typing works in fields that block paste.": "Вставка швидша; посимвольний ввід працює там, де вставку заблоковано.",
         "Vocabulary hint": "Словник термінів",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Імена, терміни, жаргон — через кому. Допомагає розпізнати їх правильно.",
         "Model ready": "Модель готова",
@@ -317,15 +327,11 @@ extension Localization {
         "Dictation language": "Мова диктування",
         "You'll dictate in:": "Ви диктуєте:",
         "Set to your system language — keep it or choose another.": "Встановлено мову системи — залиште або оберіть іншу.",
-        "Not needed — you already dictate in English.": "Не потрібно — ви й так диктуєте англійською.",
         "Model": "Модель",
         "Download model": "Завантажити модель",
         "Automatic (detect)": "Автовизначення",
         "Download failed. Check your connection and retry.": "Не вдалося завантажити. Перевірте з'єднання і повторіть.",
-        "Translate to English (optional)": "Переклад англійською (опційно)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Думайте рідною — надсилайте англійською. Затисніть другу клавішу, говоріть будь-якою зі 112 мов — вдрукується англійський текст. Переклад, як і все інше, йде на вашому Mac. Основна клавіша й далі друкує те, що ви сказали.",
         "Not set": "Не призначена",
-        "Set key": "Призначити",
         "Remove": "Прибрати",
         "Translate key: %@": "Клавіша перекладу: %@",
         "Download & continue": "Завантажити й продовжити",
@@ -366,6 +372,15 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Shortcuts": "Atajos",
+        "General": "General",
+        "Status": "Estado",
+        "Ready": "Listo",
+        "Type a key…": "Pulsa una tecla…",
+        "Translation key": "Tecla de traducción",
+        "Hold to talk, release to insert what you said.": "Mantén para hablar, suelta para insertar lo que dijiste.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Mantén esta en lugar de la tecla de dictado — tu voz sale en inglés.",
+        "Not needed — you already dictate in English.": "No hace falta — ya dictas en inglés.",
         "Two keys, two results": "Dos teclas, dos resultados",
         "Hold a key and speak. The key you hold decides what gets typed.": "Mantén una tecla y habla. La tecla que mantengas decide qué se escribe.",
         "Types exactly what you say": "Escribe exactamente lo que dices",
@@ -429,13 +444,6 @@ extension Localization {
         "Permissions": "Permisos",
         "Granted": "Concedido",
         "No": "No",
-        "Key mode": "Modo de la tecla",
-        "Hold to talk (push-to-talk)": "Mantener presionada (push-to-talk)",
-        "Tap to start, tap to stop": "Un toque para empezar, otro para detener",
-        "Text insertion": "Inserción de texto",
-        "Paste (Cmd+V)": "Pegar (Cmd+V)",
-        "Type character by character": "Escribir carácter por carácter",
-        "Paste is faster; typing works in fields that block paste.": "Pegar es más rápido; escribir funciona en los campos que bloquean el pegado.",
         "Vocabulary hint": "Glosario de términos",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Nombres, términos, jerga — separados por comas. Ayuda a que el reconocimiento los escriba bien.",
         "Model ready": "Modelo listo",
@@ -455,15 +463,11 @@ extension Localization {
         "Dictation language": "Idioma del dictado",
         "You'll dictate in:": "Dictarás en:",
         "Set to your system language — keep it or choose another.": "Configurado con el idioma de tu sistema — déjalo así o elige otro.",
-        "Not needed — you already dictate in English.": "No hace falta — ya dictas en inglés.",
         "Model": "Modelo",
         "Download model": "Descargar modelo",
         "Automatic (detect)": "Detección automática",
         "Download failed. Check your connection and retry.": "La descarga falló. Revisa tu conexión e inténtalo de nuevo.",
-        "Translate to English (optional)": "Traducir al inglés (opcional)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Piensa en tu idioma — envía en inglés. Mantén presionada esta segunda tecla, habla en cualquiera de los 112 idiomas y se escribe el texto en inglés. Traducido en tu Mac, como todo lo demás. La tecla principal sigue escribiendo lo que dijiste.",
         "Not set": "Sin asignar",
-        "Set key": "Asignar tecla",
         "Remove": "Quitar",
         "Translate key: %@": "Tecla de traducción: %@",
         "Download & continue": "Descargar y continuar",
@@ -508,6 +512,15 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Shortcuts": "Atalhos",
+        "General": "Geral",
+        "Status": "Status",
+        "Ready": "Pronto",
+        "Type a key…": "Pressione uma tecla…",
+        "Translation key": "Tecla de tradução",
+        "Hold to talk, release to insert what you said.": "Segure para falar, solte para inserir o que você disse.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Segure esta em vez da tecla de ditado — sua fala sai em inglês.",
+        "Not needed — you already dictate in English.": "Não é necessário — você já dita em inglês.",
         "Two keys, two results": "Duas teclas, dois resultados",
         "Hold a key and speak. The key you hold decides what gets typed.": "Segure uma tecla e fale. A tecla que você segura decide o que é digitado.",
         "Types exactly what you say": "Digita exatamente o que você diz",
@@ -571,13 +584,6 @@ extension Localization {
         "Permissions": "Permissões",
         "Granted": "Concedida",
         "No": "Não",
-        "Key mode": "Modo da tecla",
-        "Hold to talk (push-to-talk)": "Segurar para falar (push-to-talk)",
-        "Tap to start, tap to stop": "Um toque para começar, outro para parar",
-        "Text insertion": "Inserção de texto",
-        "Paste (Cmd+V)": "Colar (Cmd+V)",
-        "Type character by character": "Digitar caractere por caractere",
-        "Paste is faster; typing works in fields that block paste.": "Colar é mais rápido; digitar funciona em campos que bloqueiam a colagem.",
         "Vocabulary hint": "Glossário de termos",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Nomes, termos, jargões — separados por vírgula. Ajuda o reconhecimento a escrevê-los corretamente.",
         "Model ready": "Modelo pronto",
@@ -597,15 +603,11 @@ extension Localization {
         "Dictation language": "Idioma do ditado",
         "You'll dictate in:": "Você vai ditar em:",
         "Set to your system language — keep it or choose another.": "Definido com o idioma do seu sistema — mantenha ou escolha outro.",
-        "Not needed — you already dictate in English.": "Não é necessário — você já dita em inglês.",
         "Model": "Modelo",
         "Download model": "Baixar modelo",
         "Automatic (detect)": "Detecção automática",
         "Download failed. Check your connection and retry.": "Falha no download. Verifique sua conexão e tente novamente.",
-        "Translate to English (optional)": "Traduzir para o inglês (opcional)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Pense no seu idioma — envie em inglês. Mantenha esta segunda tecla pressionada, fale qualquer um dos 112 idiomas e o texto é digitado em inglês. Traduzido no seu Mac, como todo o resto. A tecla principal continua digitando o que você disse.",
         "Not set": "Não definida",
-        "Set key": "Definir tecla",
         "Remove": "Remover",
         "Translate key: %@": "Tecla de tradução: %@",
         "Download & continue": "Baixar e continuar",
@@ -650,6 +652,15 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Shortcuts": "Raccourcis",
+        "General": "Général",
+        "Status": "État",
+        "Ready": "Prêt",
+        "Type a key…": "Appuyez sur une touche…",
+        "Translation key": "Touche de traduction",
+        "Hold to talk, release to insert what you said.": "Maintenez pour parler, relâchez pour insérer ce que vous avez dit.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Maintenez celle-ci au lieu de la touche de dictée — votre voix ressort en anglais.",
+        "Not needed — you already dictate in English.": "Inutile — vous dictez déjà en anglais.",
         "Two keys, two results": "Deux touches, deux résultats",
         "Hold a key and speak. The key you hold decides what gets typed.": "Maintenez une touche et parlez. La touche choisie décide du texte saisi.",
         "Types exactly what you say": "Tape exactement ce que vous dites",
@@ -713,13 +724,6 @@ extension Localization {
         "Permissions": "Autorisations",
         "Granted": "Accordée",
         "No": "Non",
-        "Key mode": "Mode de la touche",
-        "Hold to talk (push-to-talk)": "Maintenir pour parler (push-to-talk)",
-        "Tap to start, tap to stop": "Un appui pour démarrer, un appui pour arrêter",
-        "Text insertion": "Insertion du texte",
-        "Paste (Cmd+V)": "Coller (Cmd+V)",
-        "Type character by character": "Saisir caractère par caractère",
-        "Paste is faster; typing works in fields that block paste.": "Coller est plus rapide ; la saisie fonctionne dans les champs qui bloquent le collage.",
         "Vocabulary hint": "Lexique de termes",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Noms, termes, jargon — séparés par des virgules. Aide la reconnaissance à les orthographier correctement.",
         "Model ready": "Modèle prêt",
@@ -739,15 +743,11 @@ extension Localization {
         "Dictation language": "Langue de dictée",
         "You'll dictate in:": "Vous dictez en :",
         "Set to your system language — keep it or choose another.": "Réglée sur la langue de votre système — gardez-la ou choisissez-en une autre.",
-        "Not needed — you already dictate in English.": "Inutile — vous dictez déjà en anglais.",
         "Model": "Modèle",
         "Download model": "Télécharger le modèle",
         "Automatic (detect)": "Détection automatique",
         "Download failed. Check your connection and retry.": "Échec du téléchargement. Vérifiez votre connexion et réessayez.",
-        "Translate to English (optional)": "Traduction en anglais (facultatif)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Pensez dans votre langue — envoyez en anglais. Maintenez cette seconde touche, parlez dans l’une des 112 langues, et le texte est saisi en anglais. Traduit sur votre Mac, comme tout le reste. La touche principale saisit toujours ce que vous avez dit.",
         "Not set": "Non définie",
-        "Set key": "Définir la touche",
         "Remove": "Supprimer",
         "Translate key: %@": "Touche de traduction : %@",
         "Download & continue": "Télécharger et continuer",
@@ -792,6 +792,15 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Shortcuts": "Tastenkürzel",
+        "General": "Allgemein",
+        "Status": "Status",
+        "Ready": "Bereit",
+        "Type a key…": "Taste drücken …",
+        "Translation key": "Übersetzungstaste",
+        "Hold to talk, release to insert what you said.": "Halten zum Sprechen, loslassen zum Einfügen des Gesagten.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Diese statt der Diktiertaste halten — Ihre Sprache erscheint auf Englisch.",
+        "Not needed — you already dictate in English.": "Nicht nötig — Sie diktieren bereits auf Englisch.",
         "Two keys, two results": "Zwei Tasten, zwei Ergebnisse",
         "Hold a key and speak. The key you hold decides what gets typed.": "Taste halten und sprechen. Die gehaltene Taste bestimmt den Text.",
         "Types exactly what you say": "Tippt genau, was Sie sagen",
@@ -855,13 +864,6 @@ extension Localization {
         "Permissions": "Berechtigungen",
         "Granted": "Erteilt",
         "No": "Nein",
-        "Key mode": "Tastenmodus",
-        "Hold to talk (push-to-talk)": "Gedrückt halten (Push-to-Talk)",
-        "Tap to start, tap to stop": "Tippen zum Starten, Tippen zum Stoppen",
-        "Text insertion": "Texteinfügung",
-        "Paste (Cmd+V)": "Einsetzen (Cmd+V)",
-        "Type character by character": "Zeichen für Zeichen tippen",
-        "Paste is faster; typing works in fields that block paste.": "Einsetzen ist schneller; Tippen funktioniert auch in Feldern, die das Einsetzen blockieren.",
         "Vocabulary hint": "Eigenes Vokabular",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Namen, Begriffe, Jargon — durch Kommas getrennt. Hilft der Erkennung, sie richtig zu schreiben.",
         "Model ready": "Modell bereit",
@@ -881,15 +883,11 @@ extension Localization {
         "Dictation language": "Diktiersprache",
         "You'll dictate in:": "Sie diktieren auf:",
         "Set to your system language — keep it or choose another.": "Auf Ihre Systemsprache eingestellt — behalten Sie sie oder wählen Sie eine andere.",
-        "Not needed — you already dictate in English.": "Nicht nötig — Sie diktieren bereits auf Englisch.",
         "Model": "Modell",
         "Download model": "Modell laden",
         "Automatic (detect)": "Automatisch (erkennen)",
         "Download failed. Check your connection and retry.": "Download fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
-        "Translate to English (optional)": "Ins Englische übersetzen (optional)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Denken Sie in Ihrer Sprache — senden Sie auf Englisch. Halten Sie diese zweite Taste gedrückt, sprechen Sie eine von 112 Sprachen, und der englische Text wird eingetippt. Übersetzt auf Ihrem Mac, wie alles andere. Die Haupttaste tippt weiterhin, was Sie gesagt haben.",
         "Not set": "Nicht festgelegt",
-        "Set key": "Taste festlegen",
         "Remove": "Entfernen",
         "Translate key: %@": "Übersetzungstaste: %@",
         "Download & continue": "Laden & fortfahren",
@@ -934,6 +932,15 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Shortcuts": "快捷键",
+        "General": "通用",
+        "Status": "状态",
+        "Ready": "就绪",
+        "Type a key…": "按下一个键…",
+        "Translation key": "翻译按键",
+        "Hold to talk, release to insert what you said.": "按住说话，松开即插入你说的内容。",
+        "Hold this instead of the dictation key — your speech comes out in English.": "按住这个键（而不是听写键）——你的话会以英文输出。",
+        "Not needed — you already dictate in English.": "无需设置——您已经在用英语听写。",
         "Two keys, two results": "两个按键，两种结果",
         "Hold a key and speak. The key you hold decides what gets typed.": "按住按键说话。按哪个键，就输出哪种文字。",
         "Types exactly what you say": "原样输出你说的话",
@@ -997,13 +1004,6 @@ extension Localization {
         "Permissions": "权限",
         "Granted": "已授予",
         "No": "否",
-        "Key mode": "按键模式",
-        "Hold to talk (push-to-talk)": "按住说话 (push-to-talk)",
-        "Tap to start, tap to stop": "按一下开始，再按一下停止",
-        "Text insertion": "文本插入",
-        "Paste (Cmd+V)": "粘贴 (Cmd+V)",
-        "Type character by character": "逐字输入",
-        "Paste is faster; typing works in fields that block paste.": "粘贴更快；逐字输入适用于禁止粘贴的输入框。",
         "Vocabulary hint": "专用词汇",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "人名、术语、行话——用逗号分隔。帮助识别时正确拼写。",
         "Model ready": "模型已就绪",
@@ -1023,15 +1023,11 @@ extension Localization {
         "Dictation language": "听写语言",
         "You'll dictate in:": "您的听写语言：",
         "Set to your system language — keep it or choose another.": "已设为您的系统语言——可保留或另选一种。",
-        "Not needed — you already dictate in English.": "无需设置——您已经在用英语听写。",
         "Model": "模型",
         "Download model": "下载模型",
         "Automatic (detect)": "自动检测",
         "Download failed. Check your connection and retry.": "下载失败。请检查网络连接后重试。",
-        "Translate to English (optional)": "翻译成英语（可选）",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "用母语思考——用英语发送。按住这个第二按键，说 112 种语言中的任意一种，输入的就是英文文本。翻译和其他一切一样，都在您的 Mac 上完成。主按键仍会输入您所说的原文。",
         "Not set": "未设置",
-        "Set key": "设置按键",
         "Remove": "移除",
         "Translate key: %@": "翻译按键：%@",
         "Download & continue": "下载并继续",
@@ -1076,6 +1072,15 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Shortcuts": "ショートカット",
+        "General": "一般",
+        "Status": "ステータス",
+        "Ready": "準備完了",
+        "Type a key…": "キーを押す…",
+        "Translation key": "翻訳キー",
+        "Hold to talk, release to insert what you said.": "押している間は話し、離すと話した内容が入力されます。",
+        "Hold this instead of the dictation key — your speech comes out in English.": "音声入力キーの代わりにこれを押すと、話した内容が英語で入力されます。",
+        "Not needed — you already dictate in English.": "設定不要です。すでに英語で音声入力しています。",
         "Two keys, two results": "2つのキー、2つの結果",
         "Hold a key and speak. The key you hold decides what gets typed.": "キーを押しながら話します。押すキーで出力される文字が決まります。",
         "Types exactly what you say": "話した内容をそのまま入力",
@@ -1139,13 +1144,6 @@ extension Localization {
         "Permissions": "許可",
         "Granted": "許可済み",
         "No": "いいえ",
-        "Key mode": "キーのモード",
-        "Hold to talk (push-to-talk)": "押している間だけ話す (push-to-talk)",
-        "Tap to start, tap to stop": "押して開始、もう一度押して停止",
-        "Text insertion": "テキストの挿入",
-        "Paste (Cmd+V)": "ペースト (Cmd+V)",
-        "Type character by character": "1 文字ずつ入力",
-        "Paste is faster; typing works in fields that block paste.": "ペーストの方が高速です。ペーストが禁止されている入力欄では 1 文字ずつの入力が有効です。",
         "Vocabulary hint": "用語リスト",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "名前、専門用語、業界用語などをカンマ区切りで。正しく認識される助けになります。",
         "Model ready": "モデルは準備完了",
@@ -1165,15 +1163,11 @@ extension Localization {
         "Dictation language": "音声入力の言語",
         "You'll dictate in:": "音声入力に使う言語:",
         "Set to your system language — keep it or choose another.": "システムの言語に設定されています。そのままでも、別の言語を選んでもかまいません。",
-        "Not needed — you already dictate in English.": "設定不要です。すでに英語で音声入力しています。",
         "Model": "モデル",
         "Download model": "モデルをダウンロード",
         "Automatic (detect)": "自動検出",
         "Download failed. Check your connection and retry.": "ダウンロードに失敗しました。接続を確認して再試行してください。",
-        "Translate to English (optional)": "英語への翻訳（オプション）",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "母語で考えて、英語で送る。この 2 つ目のキーを押しながら 112 言語のどれかで話すと、英語のテキストが入力されます。翻訳もほかの処理と同じく Mac 上で行われます。メインのキーでは、これまでどおり話した内容がそのまま入力されます。",
         "Not set": "未設定",
-        "Set key": "キーを設定",
         "Remove": "削除",
         "Translate key: %@": "翻訳キー: %@",
         "Download & continue": "ダウンロードして続ける",
@@ -1218,6 +1212,15 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Shortcuts": "단축키",
+        "General": "일반",
+        "Status": "상태",
+        "Ready": "준비됨",
+        "Type a key…": "키를 누르세요…",
+        "Translation key": "번역 키",
+        "Hold to talk, release to insert what you said.": "누르면 말하고, 떼면 말한 내용이 입력됩니다.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "받아쓰기 키 대신 이 키를 누르면 말한 내용이 영어로 나옵니다.",
+        "Not needed — you already dictate in English.": "필요 없습니다 — 이미 영어로 받아쓰기하고 있습니다.",
         "Two keys, two results": "두 개의 키, 두 가지 결과",
         "Hold a key and speak. The key you hold decides what gets typed.": "키를 누른 채 말하세요. 누른 키에 따라 입력되는 텍스트가 달라집니다.",
         "Types exactly what you say": "말한 그대로 입력합니다",
@@ -1281,13 +1284,6 @@ extension Localization {
         "Permissions": "권한",
         "Granted": "허용됨",
         "No": "없음",
-        "Key mode": "키 모드",
-        "Hold to talk (push-to-talk)": "누르고 말하기(push-to-talk)",
-        "Tap to start, tap to stop": "한 번 눌러 시작, 다시 눌러 정지",
-        "Text insertion": "텍스트 입력 방식",
-        "Paste (Cmd+V)": "붙여넣기(Cmd+V)",
-        "Type character by character": "한 글자씩 입력",
-        "Paste is faster; typing works in fields that block paste.": "붙여넣기가 더 빠릅니다. 붙여넣기가 막힌 입력란에서는 글자 입력이 작동합니다.",
         "Vocabulary hint": "용어 사전",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "이름, 용어, 전문어를 쉼표로 구분해 입력하세요. 올바른 표기로 인식하는 데 도움이 됩니다.",
         "Model ready": "모델 준비 완료",
@@ -1307,15 +1303,11 @@ extension Localization {
         "Dictation language": "받아쓰기 언어",
         "You'll dictate in:": "받아쓰기 언어:",
         "Set to your system language — keep it or choose another.": "시스템 언어로 설정되어 있습니다. 그대로 두거나 다른 언어를 선택하세요.",
-        "Not needed — you already dictate in English.": "필요 없습니다 — 이미 영어로 받아쓰기하고 있습니다.",
         "Model": "모델",
         "Download model": "모델 다운로드",
         "Automatic (detect)": "자동 감지",
         "Download failed. Check your connection and retry.": "다운로드에 실패했습니다. 연결을 확인하고 다시 시도하세요.",
-        "Translate to English (optional)": "영어로 번역(선택 사항)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "생각은 내 언어로 — 전송은 영어로. 이 두 번째 키를 누른 채 112개 언어 중 아무 언어로나 말하면 영어 텍스트가 입력됩니다. 번역도 다른 모든 것과 마찬가지로 Mac에서 이루어집니다. 기본 키는 여전히 말한 그대로 입력합니다.",
         "Not set": "지정 안 됨",
-        "Set key": "키 지정",
         "Remove": "제거",
         "Translate key: %@": "번역 키: %@",
         "Download & continue": "다운로드 후 계속",
@@ -1360,6 +1352,15 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Shortcuts": "Phím tắt",
+        "General": "Chung",
+        "Status": "Trạng thái",
+        "Ready": "Sẵn sàng",
+        "Type a key…": "Nhấn một phím…",
+        "Translation key": "Phím dịch",
+        "Hold to talk, release to insert what you said.": "Giữ để nói, thả để chèn nội dung bạn vừa nói.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "Giữ phím này thay cho phím đọc chính tả — lời nói của bạn ra tiếng Anh.",
+        "Not needed — you already dictate in English.": "Không cần — bạn vốn đã đọc chính tả bằng tiếng Anh.",
         "Two keys, two results": "Hai phím, hai kết quả",
         "Hold a key and speak. The key you hold decides what gets typed.": "Giữ phím và nói. Phím bạn giữ quyết định văn bản được gõ.",
         "Types exactly what you say": "Gõ đúng những gì bạn nói",
@@ -1423,13 +1424,6 @@ extension Localization {
         "Permissions": "Quyền",
         "Granted": "Đã cấp",
         "No": "Chưa",
-        "Key mode": "Chế độ phím",
-        "Hold to talk (push-to-talk)": "Giữ để nói (push-to-talk)",
-        "Tap to start, tap to stop": "Nhấn để bắt đầu, nhấn lại để dừng",
-        "Text insertion": "Chèn văn bản",
-        "Paste (Cmd+V)": "Dán (Cmd+V)",
-        "Type character by character": "Gõ từng ký tự",
-        "Paste is faster; typing works in fields that block paste.": "Dán nhanh hơn; gõ từng ký tự hoạt động ở những ô chặn thao tác dán.",
         "Vocabulary hint": "Từ điển thuật ngữ",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Tên riêng, thuật ngữ, tiếng lóng — cách nhau bằng dấu phẩy. Giúp nhận dạng viết đúng những từ này.",
         "Model ready": "Mô hình đã sẵn sàng",
@@ -1449,15 +1443,11 @@ extension Localization {
         "Dictation language": "Ngôn ngữ đọc chính tả",
         "You'll dictate in:": "Bạn sẽ đọc bằng:",
         "Set to your system language — keep it or choose another.": "Đã đặt theo ngôn ngữ hệ thống — giữ nguyên hoặc chọn ngôn ngữ khác.",
-        "Not needed — you already dictate in English.": "Không cần — bạn vốn đã đọc chính tả bằng tiếng Anh.",
         "Model": "Mô hình",
         "Download model": "Tải mô hình",
         "Automatic (detect)": "Tự động nhận diện",
         "Download failed. Check your connection and retry.": "Tải không thành công. Hãy kiểm tra kết nối và thử lại.",
-        "Translate to English (optional)": "Dịch sang tiếng Anh (tùy chọn)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Nghĩ bằng tiếng của bạn — gửi bằng tiếng Anh. Giữ phím thứ hai này, nói bất kỳ ngôn ngữ nào trong 112 ngôn ngữ, và văn bản tiếng Anh sẽ được nhập. Dịch ngay trên máy Mac của bạn, như mọi thứ khác. Phím chính vẫn nhập đúng những gì bạn nói.",
         "Not set": "Chưa gán",
-        "Set key": "Gán phím",
         "Remove": "Gỡ bỏ",
         "Translate key: %@": "Phím dịch: %@",
         "Download & continue": "Tải về và tiếp tục",
@@ -1502,6 +1492,15 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Shortcuts": "Mga shortcut",
+        "General": "Pangkalahatan",
+        "Status": "Status",
+        "Ready": "Handa na",
+        "Type a key…": "Pindutin ang isang key…",
+        "Translation key": "Translation key",
+        "Hold to talk, release to insert what you said.": "I-hold para magsalita, bitawan para ilagay ang sinabi mo.",
+        "Hold this instead of the dictation key — your speech comes out in English.": "I-hold ito sa halip na dictation key — magiging English ang sinabi mo.",
+        "Not needed — you already dictate in English.": "Hindi na kailangan — English na ang dictation mo.",
         "Two keys, two results": "Dalawang key, dalawang resulta",
         "Hold a key and speak. The key you hold decides what gets typed.": "I-hold ang key at magsalita. Ang key na hawak mo ang magpapasya ng output.",
         "Types exactly what you say": "Tina-type ang eksaktong sinabi mo",
@@ -1565,13 +1564,6 @@ extension Localization {
         "Permissions": "Mga permission",
         "Granted": "Naibigay",
         "No": "Hindi",
-        "Key mode": "Key mode",
-        "Hold to talk (push-to-talk)": "I-hold para magsalita (push-to-talk)",
-        "Tap to start, tap to stop": "Tap para magsimula, tap para huminto",
-        "Text insertion": "Paglalagay ng text",
-        "Paste (Cmd+V)": "Paste (Cmd+V)",
-        "Type character by character": "I-type nang paisa-isang character",
-        "Paste is faster; typing works in fields that block paste.": "Mas mabilis ang paste; gumagana ang pag-type sa mga field na hindi pumapayag ng paste.",
         "Vocabulary hint": "Diksyunaryo ng mga termino",
         "Names, terms, jargon — comma-separated. Helps recognition spell them right.": "Mga pangalan, termino, jargon — paghiwalayin ng kuwit. Nakakatulong ito para tama ang spelling sa recognition.",
         "Model ready": "Handa na ang model",
@@ -1591,15 +1583,11 @@ extension Localization {
         "Dictation language": "Wika ng dictation",
         "You'll dictate in:": "Magdi-dictate ka sa:",
         "Set to your system language — keep it or choose another.": "Nakatakda sa wika ng system mo — panatilihin ito o pumili ng iba.",
-        "Not needed — you already dictate in English.": "Hindi na kailangan — English na ang dictation mo.",
         "Model": "Model",
         "Download model": "I-download ang model",
         "Automatic (detect)": "Automatic (detect)",
         "Download failed. Check your connection and retry.": "Hindi natuloy ang download. I-check ang connection mo at subukan ulit.",
-        "Translate to English (optional)": "I-translate sa English (optional)",
-        "Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said.": "Mag-isip sa sarili mong wika — magpadala sa English. I-hold ang pangalawang key na ito, magsalita sa alinman sa 112 wika, at English text ang mata-type. Isinalin sa Mac mo, tulad ng lahat ng iba pa. Nagta-type pa rin ang pangunahing key ng eksaktong sinabi mo.",
         "Not set": "Hindi nakatakda",
-        "Set key": "Itakda ang key",
         "Remove": "Alisin",
         "Translate key: %@": "Translate key: %@",
         "Download & continue": "I-download at magpatuloy",

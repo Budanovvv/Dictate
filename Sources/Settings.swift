@@ -48,30 +48,8 @@ final class Settings {
         set { d.set(newValue, forKey: "prompt") }
     }
 
-    /// Hold to talk, or tap to start / tap to stop.
-    var hotkeyMode: HotkeyMode {
-        get { HotkeyMode(rawValue: d.string(forKey: "hotkeyMode") ?? "") ?? .pushToTalk }
-        set { d.set(newValue.rawValue, forKey: "hotkeyMode") }
-    }
-
-    /// Clipboard+Cmd+V (default, more reliable) or character-by-character typing.
-    var insertMethod: InsertMethod {
-        get { InsertMethod(rawValue: d.string(forKey: "insertMethod") ?? "") ?? .paste }
-        set { d.set(newValue.rawValue, forKey: "insertMethod") }
-    }
-
     /// Single model, no tier picker — see ModelTier.
     var modelTier: ModelTier { .ultra }
-}
-
-enum HotkeyMode: String, CaseIterable, Identifiable {
-    case pushToTalk, toggle
-    var id: String { rawValue }
-}
-
-enum InsertMethod: String, CaseIterable, Identifiable {
-    case paste, type
-    var id: String { rawValue }
 }
 
 /// Variant name in argmaxinc/whisperkit-coreml + approximate size.

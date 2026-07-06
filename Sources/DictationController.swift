@@ -117,19 +117,13 @@ final class DictationController {
         return false
     }
 
+    // Push-to-talk: press starts, release stops.
     private func handlePress(_ code: Int64) {
-        switch Settings.shared.hotkeyMode {
-        case .pushToTalk:
-            beginRecording(translate: isTranslateKey(code))
-        case .toggle:
-            if state == .recording { endRecording() }
-            else { beginRecording(translate: isTranslateKey(code)) }
-        }
+        beginRecording(translate: isTranslateKey(code))
     }
 
     private func handleRelease(_ code: Int64) {
-        guard Settings.shared.hotkeyMode == .pushToTalk else { return }
-        // Only count the release of the key that started the recording
+        // Only the key that started the recording ends it.
         guard isTranslateKey(code) == activeTranslate else { return }
         endRecording()
     }

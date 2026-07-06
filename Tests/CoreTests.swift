@@ -11,12 +11,9 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(ModelTier.ultra.sizeHint, "~950 MB")
     }
 
-    /// Shipping defaults: right Option, push-to-talk, Cmd+V paste (runner has clean UserDefaults).
+    /// Shipping default hotkey is the right Option key (runner has clean UserDefaults).
     func testDefaults() {
-        let fresh = Settings.shared
-        XCTAssertEqual(fresh.hotkeyKeyCode, 61)
-        XCTAssertEqual(fresh.hotkeyMode, .pushToTalk)
-        XCTAssertEqual(fresh.insertMethod, .paste)
+        XCTAssertEqual(Settings.shared.hotkeyKeyCode, 61)
     }
 }
 

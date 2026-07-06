@@ -381,56 +381,6 @@ struct KeyCap: View {
     }
 }
 
-/// Optional translate-to-English key; hidden when the spoken language is English.
-struct TranslateKeyPicker: View {
-    var onChanged: (() -> Void)? = nil
-    var spokenLanguage: String = Settings.shared.language
-    @StateObject private var capture = KeyCapture()
-    @State private var name = Settings.shared.translateKeyName
-    @State private var isSet = Settings.shared.translateKeyCode != nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(L("Translate to English (optional)"), systemImage: "character.bubble")
-                .font(.headline)
-                .foregroundStyle(spokenLanguage == "en" ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
-            if spokenLanguage == "en" {
-                Text(L("Not needed — you already dictate in English."))
-                    .font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text(L("Think in your language — send in English. Hold this second key, speak any of 112 languages, and English text is typed. Translated on your Mac, like everything else. The main key still types what you said."))
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
-                    KeyCap(name: isSet ? KeyNames.displayName(name) : L("Not set"), muted: !isSet)
-                    Spacer()
-                    Button(capture.capturing ? L("Press a key… (Esc to cancel)") : L("Set key")) {
-                        capture.begin()
-                    }
-                    .disabled(capture.capturing)
-                    if isSet {
-                        Button(L("Remove")) {
-                            Settings.shared.translateKeyCode = nil
-                            Settings.shared.translateKeyName = ""
-                            isSet = false
-                            onChanged?()
-                        }
-                    }
-                }
-                .onReceive(capture.$capturedKeyCode) { code in
-                    guard let code, let capturedName = capture.capturedName else { return }
-                    guard code != Settings.shared.hotkeyKeyCode else { return }
-                    Settings.shared.translateKeyCode = code
-                    Settings.shared.translateKeyName = capturedName
-                    name = capturedName
-                    isSet = true
-                    onChanged?()
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Step 4: permissions
 
 private struct PermissionsStep: View {

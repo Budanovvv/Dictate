@@ -3,7 +3,7 @@ import XCTest
 // Tests compile in the same module as the sources (see project.yml) — no @testable import needed.
 
 final class LocalizationTests: XCTestCase {
-    private static let allTables: [(String, [String: String])] = [
+    static let allTablesForEdgeTests: [(String, [String: String])] = [
         ("ru", Localization.ru), ("uk", Localization.uk),
         ("es", Localization.es), ("pt", Localization.pt),
         ("fr", Localization.fr), ("de", Localization.de),
@@ -11,6 +11,7 @@ final class LocalizationTests: XCTestCase {
         ("ko", Localization.ko), ("vi", Localization.vi),
         ("tl", Localization.tl),
     ]
+    private static var allTables: [(String, [String: String])] { allTablesForEdgeTests }
 
     /// Every table has the same key set — no language lags behind.
     func testAllTablesShareTheSameKeys() {
