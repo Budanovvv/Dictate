@@ -6,7 +6,7 @@ One key. Zero subscriptions. Zero dollars.
 
 ### [⬇︎ Download the latest release](https://github.com/Budanovvv/Dictate/releases/latest)
 
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-green) ![Apple Silicon & Intel](https://img.shields.io/badge/chip-Apple%20Silicon%20%7C%20Intel-lightgrey) [![Latest release](https://img.shields.io/github/v/release/Budanovvv/Dictate?label=release)](https://github.com/Budanovvv/Dictate/releases/latest)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-green) ![Apple Silicon](https://img.shields.io/badge/chip-Apple%20Silicon-lightgrey) [![Latest release](https://img.shields.io/github/v/release/Budanovvv/Dictate?label=release)](https://github.com/Budanovvv/Dictate/releases/latest)
 
 Dictate is push-to-talk dictation for macOS. Everything runs on your Mac: Whisper **large-v3** — the best open speech model there is — on your Neural Engine, via Core ML. No cloud, no account, no API keys. Don't take our word for it: **turn Wi-Fi off — Dictate keeps working.**
 
@@ -34,7 +34,7 @@ There are other good free, open dictation apps too — [Handy](https://github.co
 2. Open it and drag **Dictate** into **Applications**.
 3. Launch. Dictate walks you through the rest: a one-time model download, picking your key, and two macOS permissions.
 
-**Requirements:** macOS 14+, Apple Silicon or Intel, ~1 GB of free disk space for the speech model.
+**Requirements:** macOS 14+, **Apple Silicon** (Intel Macs run it too — it's a universal binary — but recognition is much slower without a Neural Engine), ~1 GB of free disk space for the speech model.
 
 ### About the two permissions
 
