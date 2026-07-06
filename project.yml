@@ -1,0 +1,84 @@
+name: Dictate
+options:
+  bundleIdPrefix: com.valentynbudanov
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit
+    from: "0.18.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
+
+targets:
+  Dictate:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: WhisperKit
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
+        PRODUCT_NAME: Dictate
+        MARKETING_VERSION: "2.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: Sources/Info.plist
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        # Automatic signing; the Team is picked once in Xcode (Signing & Capabilities).
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3BN45AZPR2
+        # Required for notarization:
+        ENABLE_HARDENED_RUNTIME: YES
+        # Hardened runtime requires an explicit microphone entitlement:
+        CODE_SIGN_ENTITLEMENTS: Sources/Dictate.entitlements
+        # Menu bar utility, no Dock presence. The Dock icon appears dynamically
+        # while a window is open (onboarding/settings) — see AppDelegate.
+        LSUIElement: YES
+
+  # Unit tests: compile the tested sources directly (no TEST_HOST,
+  # so the tests do not launch the GUI app and do not depend on TCC).
+  DictateTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Sources/Localization.swift
+      - path: Sources/KeyNames.swift
+      - path: Sources/Settings.swift
+      - path: Sources/LanguageList.swift
+      - path: Sources/AudioRecorder.swift
+      - path: Sources/WhisperEngine.swift
+    dependencies:
+      - package: WhisperKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.DictateTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3BN45AZPR2
+
+schemes:
+  Dictate:
+    build:
+      targets:
+        Dictate: all
+        DictateTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DictateTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

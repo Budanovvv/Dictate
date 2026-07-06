@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+DerivedData/
+release/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+# Generated from project.yml: xcodegen generate
+*.xcodeproj/
+# Local-only
+internal/
+.claude/
+.idea/
+sparkle-private-key.pem
+Dictate.zip

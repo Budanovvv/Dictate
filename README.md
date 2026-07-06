@@ -1,0 +1,52 @@
+# Dictate
+
+**Hold a key. Speak. Release — your words appear right where your cursor is, in any app.**
+
+One key. Zero subscriptions. Zero dollars.
+
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-green) ![Apple Silicon & Intel](https://img.shields.io/badge/chip-Apple%20Silicon%20%7C%20Intel-lightgrey)
+
+Dictate is push-to-talk dictation for macOS. Everything runs on your Mac: Whisper **large-v3** — the best open speech model there is — on your Neural Engine, via Core ML. No cloud, no account, no API keys. Don't take our word for it: **turn Wi-Fi off — Dictate keeps working.**
+
+## Features
+
+- **Works in any app** — Slack, Mail, your editor, your terminal: text is typed wherever your cursor is.
+- **Push-to-talk** — hold a key you never use (right ⌥ by default), speak, release. Or tap-to-toggle if you prefer.
+- **Full Whisper large-v3, on-device** — 112 languages, great with accents. Not a cut-down "free tier" model — the real thing.
+- **Speak your language, send English** — hold a second key and your speech is typed as English. Translated on your Mac, like everything else.
+- **Private by architecture** — the microphone listens only during a dictation you started; recognition never touches the network. The one-time model download (~950 MB) is the only time Dictate needs the internet.
+- **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.
+- **Honest utility** — no settings maze, no account, no subscription. Auto-updates via Sparkle, cryptographically signed.
+
+## Install
+
+1. Download the latest `Dictate-x.y.dmg` from [Releases](https://github.com/Budanovvv/Dictate/releases).
+2. Open it and drag **Dictate** into **Applications**.
+3. Launch. Dictate walks you through the rest: a one-time model download, picking your key, and two macOS permissions.
+
+**Requirements:** macOS 14+, Apple Silicon or Intel, ~1 GB of free disk space for the speech model.
+
+### About the two permissions
+
+- **Microphone** — records your voice only while a dictation you started is running. Never in the background.
+- **Accessibility** — used for exactly two things: hearing your dictation key and typing the recognized text for you. Nothing else. Dictate doesn't read your screen and doesn't log your typing — and since the code is open, you don't have to take that on faith.
+
+*(Why not the Mac App Store? Sandboxing forbids the system-wide key listening and text insertion Dictate is built on — the same reason apps like Raycast and Rectangle ship directly.)*
+
+## Build from source
+
+```bash
+brew install xcodegen
+git clone https://github.com/Budanovvv/Dictate.git && cd Dictate
+xcodegen generate
+./build.sh            # Release build (pick your signing Team in Xcode once)
+./test.sh             # unit tests + bundle checks
+```
+
+Stack: Swift / SwiftUI / AppKit, [WhisperKit](https://github.com/argmaxinc/WhisperKit) (Core ML), [Sparkle](https://sparkle-project.org) for updates. The Xcode project is generated from `project.yml`.
+
+## License
+
+[GPL-3.0](LICENSE) — free forever; forks stay open.
+
+Made by [Valentyn Budanov](https://github.com/Budanovvv).

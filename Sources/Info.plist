@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleName</key>
+    <string>Dictate</string>
+    <key>CFBundleDisplayName</key>
+    <string>Dictate</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <!-- Sparkle auto-updates; appcast is published in this repo's GitHub Releases. -->
+    <key>SUFeedURL</key>
+    <string>https://github.com/Budanovvv/Dictate/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>UhSe9t1eHl6devlZIFuLPLn6lPibnA6I4yWpDvyrui4=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Dictate records your voice while you hold the dictation key to transcribe it on-device.</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ru</string>
+        <string>uk</string>
+        <string>es</string>
+        <string>pt</string>
+        <string>fr</string>
+        <string>de</string>
+        <string>zh</string>
+        <string>ja</string>
+        <string>ko</string>
+        <string>vi</string>
+        <string>fil</string>
+    </array>
+</dict>
+</plist>
