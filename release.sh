@@ -26,8 +26,14 @@ echo "  ✅ build"
 ./test.sh --quick >/dev/null 2>&1 && echo "  ✅ quick tests" || { echo "  ❌ tests"; exit 1; }
 
 # 2. DMG with branded layout; background: assets/dmg-background.tiff (1x+2x).
-rm -rf "$OUT" && mkdir -p "$OUT/stage"
-ditto "$APP" "$OUT/stage/Dictate.app"
+# Staging lives OUTSIDE iCloud: ./release is on the Desktop, and the iCloud
+# daemon tags files there within seconds (com.apple.fileprovider.*, FinderInfo)
+# — the tags get packed into the DMG and break strict codesign of the app.
+STAGE="$DD/dmg-stage"
+rm -rf "$OUT" "$STAGE" && mkdir -p "$OUT" "$STAGE"
+ditto "$APP" "$STAGE/Dictate.app"
+codesign --verify --strict "$STAGE/Dictate.app" \
+    || { echo "  ❌ staged app fails strict codesign (xattr detritus?)"; exit 1; }
 if command -v create-dmg >/dev/null; then
     create-dmg \
         --volname "Dictate" \
@@ -39,13 +45,13 @@ if command -v create-dmg >/dev/null; then
         --app-drop-link 450 185 \
         --hide-extension "Dictate.app" \
         --no-internet-enable \
-        "$DMG" "$OUT/stage" >/dev/null
+        "$DMG" "$STAGE" >/dev/null
 else
     echo "  ⚠️  create-dmg not found (brew install create-dmg) — building a plain DMG"
-    ln -s /Applications "$OUT/stage/Applications"
-    hdiutil create -volname "Dictate" -srcfolder "$OUT/stage" -ov -format UDZO -quiet "$DMG"
+    ln -s /Applications "$STAGE/Applications"
+    hdiutil create -volname "Dictate" -srcfolder "$STAGE" -ov -format UDZO -quiet "$DMG"
 fi
-rm -rf "$OUT/stage"
+rm -rf "$STAGE"
 codesign --force --sign "Apple Development" "$DMG" 2>/dev/null || true
 echo "  ✅ DMG: $DMG ($(du -h "$DMG" | cut -f1 | xargs))"
 
