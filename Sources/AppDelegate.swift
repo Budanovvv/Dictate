@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.resultShown = false
                     self.hud.showRecording()
                 case .transcribing:
-                    self.hud.showTranscribing()
+                    self.hud.showTranscribing(audioSeconds: self.dictation.lastRecordingDuration)
                 case .idle:
                     // showResult hides the HUD itself; hide here only for cancel/short press
                     if !self.resultShown { self.hud.hide() }
@@ -53,8 +53,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         dictation.onWarmupDone = { [weak self] in
             DispatchQueue.main.async {
-                guard self?.dictation.state == .transcribing else { return }
-                self?.hud.showTranscribing()
+                guard let self, self.dictation.state == .transcribing else { return }
+                self.hud.showTranscribing(audioSeconds: self.dictation.lastRecordingDuration)
+            }
+        }
+        dictation.onTranscribeProgress = { [weak self] fraction, words in
+            self?.hud.setTranscribeProgress(fraction, words: words)
+        }
+        dictation.onCopiedInstead = { [weak self] in
+            DispatchQueue.main.async {
+                self?.resultShown = true   // idle must not hide the "copied" HUD
+                self?.hud.showCopied()
             }
         }
         dictation.onCancelled = { [weak self] in
@@ -65,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         dictation.onLevel = { [weak self] level in
             self?.hud.setLevel(level)
+            self?.statusController.setLevel(level)
         }
         dictation.onModelDownload = { [weak self] progress in
             DispatchQueue.main.async { self?.hud.showDownloading(progress) }

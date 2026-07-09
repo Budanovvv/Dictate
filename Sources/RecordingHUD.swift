@@ -4,7 +4,7 @@ import SwiftUI
 /// Floating status panel at the bottom of the screen. Never takes focus or mouse events.
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
-        case recording, transcribing, done, empty, downloading, warming, cancelled
+        case recording, transcribing, done, empty, downloading, warming, cancelled, copied
     }
 
     @Published var mode: Mode = .recording
@@ -13,6 +13,11 @@ final class HUDModel: ObservableObject {
     @Published var downloadProgress: Double = 0
     @Published var words: Int = 0
     @Published var seconds: Double = 0
+    /// Determinate transcription: fraction of audio processed (monotonic) + words so far.
+    @Published var transcribeFraction: Double = 0
+    @Published var transcribeWords: Int = 0
+    /// false — spinner, true — progress bar (long recording or slow recognition).
+    @Published var transcribeBar = false
 }
 
 final class RecordingHUD {
@@ -20,6 +25,7 @@ final class RecordingHUD {
     private var panel: NSPanel?
     private var elapsedTimer: Timer?
     private var hideWork: DispatchWorkItem?
+    private var barSwitchWork: DispatchWorkItem?
 
     func showRecording() {
         cancelHide()
@@ -30,11 +36,42 @@ final class RecordingHUD {
         show()
     }
 
-    func showTranscribing() {
+    /// audioSeconds — duration of the recording. Long recordings get a
+    /// determinate progress bar right away (NN/g: percent-done for 10 s+);
+    /// short ones keep the spinner, switching to the bar only if recognition
+    /// drags on (HIG: indeterminate → determinate once duration is knowable).
+    func showTranscribing(audioSeconds: Double = 0) {
         cancelHide()
         stopElapsed()
+        if model.mode != .transcribing {
+            model.transcribeFraction = 0
+            model.transcribeWords = 0
+            model.transcribeBar = audioSeconds > 25
+        }
         model.mode = .transcribing
+        scheduleBarSwitch()
         show()
+    }
+
+    /// Progress from the recognizer. The bar only moves forward: chunks finish
+    /// at uneven speed, and a bar that jumps back reads as a glitch. Capped at
+    /// 97% — the "Inserted" checkmark is the real 100%.
+    func setTranscribeProgress(_ fraction: Double, words: Int) {
+        guard model.mode == .transcribing else { return }
+        model.transcribeFraction = max(model.transcribeFraction, min(fraction, 0.97))
+        model.transcribeWords = words
+    }
+
+    private func scheduleBarSwitch() {
+        barSwitchWork?.cancel()
+        barSwitchWork = nil
+        guard !model.transcribeBar else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.model.mode == .transcribing else { return }
+            self.model.transcribeBar = true
+        }
+        barSwitchWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
     }
 
     func showDownloading(_ progress: Double) {
@@ -51,6 +88,15 @@ final class RecordingHUD {
         stopElapsed()
         model.mode = .warming
         show()
+    }
+
+    /// No text cursor: the result went to the clipboard, tell how to get it.
+    func showCopied() {
+        cancelHide()
+        stopElapsed()
+        model.mode = .copied
+        show()
+        scheduleHide(after: 2.5)
     }
 
     /// Esc pressed: brief flash, then hide.
@@ -81,6 +127,8 @@ final class RecordingHUD {
 
     func hide() {
         stopElapsed()
+        barSwitchWork?.cancel()
+        barSwitchWork = nil
         guard let panel else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
@@ -176,6 +224,7 @@ private struct HUDView: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         )
         .animation(.easeInOut(duration: 0.2), value: model.mode)
+        .animation(.easeInOut(duration: 0.2), value: model.transcribeBar)
     }
 
     @ViewBuilder
@@ -200,6 +249,9 @@ private struct HUDView: View {
         case .cancelled:
             Image(systemName: "xmark.circle")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
+        case .copied:
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 17)).foregroundStyle(.tint)
         }
     }
 
@@ -207,12 +259,36 @@ private struct HUDView: View {
     private var content: some View {
         switch model.mode {
         case .recording:
-            Equalizer(level: model.level)
-            Text(timeString(model.elapsed))
-                .font(.system(size: 12, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
+            // Same two-row skeleton as .transcribing: title + metric on top,
+            // a 150 pt brand-gradient visualization below — the equalizer
+            // morphs into the progress capsule when recognition starts.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(L("Recording…")).font(.system(size: 13, weight: .medium))
+                    Spacer(minLength: 8)
+                    Text(timeString(model.elapsed))
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Equalizer(level: model.level)
+            }
         case .transcribing:
-            Text(L("Recognizing…")).font(.system(size: 14, weight: .medium))
+            // The word counter is part of the layout from second zero — a
+            // counter popping in later reads as a layout glitch.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(L("Recognizing…")).font(.system(size: 13, weight: .medium))
+                    Spacer(minLength: 8)
+                    Text(Lf("Words: %d", model.transcribeWords))
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                if model.transcribeBar {
+                    BrandBar(fraction: model.transcribeFraction)
+                        .frame(height: 12)  // same zone as the equalizer row
+                        .animation(.easeOut(duration: 0.25), value: model.transcribeFraction)
+                }
+            }
         case .done:
             VStack(alignment: .leading, spacing: 1) {
                 Text(L("Inserted")).font(.system(size: 13, weight: .medium))
@@ -242,11 +318,32 @@ private struct HUDView: View {
         case .cancelled:
             Text(L("Cancelled")).font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
+        case .copied:
+            Text(L("No text cursor — copied, press ⌘V to paste"))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func timeString(_ s: Int) -> String {
         String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Thin brand-gradient progress capsule (same style as the equalizer bars).
+private struct BrandBar: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(Brand.gradientDiagonal)
+                    .frame(width: max(6, geo.size.width * fraction))
+            }
+        }
+        .frame(width: 150, height: 5)
     }
 }
 
@@ -264,25 +361,25 @@ private struct PulsingDot: View {
 
 private struct Equalizer: View {
     let level: Double
-    // Bell-curve weights: center bars are taller
-    private let weights: [Double] = [0.35, 0.55, 0.75, 0.95, 1.0, 0.95, 0.75, 0.55, 0.35]
+    // Bell-curve weights over 23 capsules (~150 pt, matching BrandBar): center is taller
+    private static let weights: [Double] = (0..<23).map { 0.35 + 0.65 * sin(.pi * Double($0) / 22) }
 
     var body: some View {
         HStack(spacing: 3) {
-            ForEach(weights.indices, id: \.self) { i in
+            ForEach(Self.weights.indices, id: \.self) { i in
                 Capsule()
                     .fill(Brand.gradient)
                     .frame(width: 3.5, height: barHeight(i))
             }
         }
-        .frame(height: 26)
+        .frame(width: 150, height: 12, alignment: .leading)
         .animation(.easeOut(duration: 0.1), value: level)
     }
 
     private func barHeight(_ i: Int) -> CGFloat {
-        let minH = 3.0
-        let maxH = 24.0
-        let h = minH + (maxH - minH) * level * weights[i]
+        let minH = 2.5
+        let maxH = 12.0
+        let h = minH + (maxH - minH) * level * Self.weights[i]
         return CGFloat(max(minH, h))
     }
 }

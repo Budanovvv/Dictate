@@ -71,10 +71,31 @@ actor WhisperEngine {
         }
     }
 
+    /// Live transcription progress: word counts per decoding window
+    /// (long recordings are VAD-chunked and windows may decode concurrently),
+    /// throttled — the token callback fires dozens of times per second.
+    private final class ProgressTally: @unchecked Sendable {
+        private var wordsPerWindow: [Int: Int] = [:]
+        private var lastEmit: CFAbsoluteTime = 0
+        private let lock = NSLock()
+
+        /// Total word count, or nil when this update should be skipped.
+        func update(windowId: Int, text: String) -> Int? {
+            lock.lock(); defer { lock.unlock() }
+            wordsPerWindow[windowId] = text.split(whereSeparator: \.isWhitespace).count
+            let now = CFAbsoluteTimeGetCurrent()
+            guard now - lastEmit >= 0.15 else { return nil }
+            lastEmit = now
+            return wordsPerWindow.values.reduce(0, +)
+        }
+    }
+
     /// Transcribes audio (16 kHz float). language "" → auto-detect.
     /// prompt — terms dictionary. translate=true → translate to English.
+    /// onProgress: overall fraction of audio processed (0…1) + words so far.
     func transcribe(floats: [Float], language: String, prompt: String,
-                    translate: Bool = false) async throws -> String {
+                    translate: Bool = false,
+                    onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws -> String {
         guard let pipe else {
             throw NSError(domain: "Dictate", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Whisper model not loaded"])
@@ -99,7 +120,25 @@ actor WhisperEngine {
             promptTokens: promptTokens,
             chunkingStrategy: .vad  // split long recordings at pauses — more reliable
         )
-        let results = try await pipe.transcribe(audioArray: floats, decodeOptions: options)
+        var callback: TranscriptionCallback = nil
+        if let onProgress {
+            let tally = ProgressTally()
+            let durationSec = Double(floats.count) / Double(WhisperKit.sampleRate)
+            callback = { [weak pipe] update in
+                if let words = tally.update(windowId: update.windowId, text: update.text) {
+                    // pipe.progress only ticks at chunk boundaries — a 1–2 chunk
+                    // recording would sit at 0% and jump at the end. Blend in a
+                    // continuous estimate from decoded words: at a conservative
+                    // 3 words/sec of speech it undershoots, so real chunk
+                    // completions only ever pull the bar forward, never back.
+                    let chunked = pipe?.progress.fractionCompleted ?? 0
+                    let estimated = min(Double(words) / 3.0 / max(durationSec, 1), 0.95)
+                    onProgress(max(chunked, estimated), words)
+                }
+                return nil  // nil = keep decoding
+            }
+        }
+        let results = try await pipe.transcribe(audioArray: floats, decodeOptions: options, callback: callback)
         return results.map { $0.text }.joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }

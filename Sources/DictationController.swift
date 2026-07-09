@@ -19,6 +19,10 @@ final class DictationController {
     var onError: ((String) -> Void)?
     /// Voice level 0…1 while recording.
     var onLevel: ((Double) -> Void)?
+    /// Transcription progress: fraction of audio processed (0…1) + words so far.
+    var onTranscribeProgress: ((Double, Int) -> Void)?
+    /// Duration of the recording being transcribed (for the HUD's bar-vs-spinner choice).
+    private(set) var lastRecordingDuration: Double = 0
     /// Result ready: success, word count, transcription seconds.
     var onResult: ((Bool, Int, Double) -> Void)?
     /// Transcribed text (for the onboarding "try it" box).
@@ -30,7 +34,11 @@ final class DictationController {
     var onWarmupDone: (() -> Void)?
     /// Recording cancelled via Esc.
     var onCancelled: (() -> Void)?
+    /// No text cursor — the result went to the clipboard instead of being pasted.
+    var onCopiedInstead: (() -> Void)?
     private(set) var lastResult: String?
+    /// Recent results, newest first (in memory only — never written to disk).
+    private(set) var history: [String] = []
     private(set) var lastStats: (words: Int, seconds: Double)?
     /// Whether the last result came from the translate key (onboarding checklist).
     private(set) var lastWasTranslate = false
@@ -162,6 +170,7 @@ final class DictationController {
             return  // accidental short press
         }
 
+        lastRecordingDuration = duration
         state = .transcribing
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt
@@ -190,7 +199,10 @@ final class DictationController {
             }
             let started = Date()
             let text = try await WhisperEngine.shared.transcribe(
-                floats: floats, language: language, prompt: prompt, translate: translate
+                floats: floats, language: language, prompt: prompt, translate: translate,
+                onProgress: { [weak self] fraction, words in
+                    DispatchQueue.main.async { self?.onTranscribeProgress?(fraction, words) }
+                }
             )
             await finish(text: text, seconds: Date().timeIntervalSince(started), translate: translate)
         } catch {
@@ -207,10 +219,21 @@ final class DictationController {
         lastWasTranslate = translate
         let words = text.split(whereSeparator: \.isWhitespace).count
         lastStats = text.isEmpty ? nil : (words, seconds)
-        onResult?(!text.isEmpty, words, seconds)
+        if !text.isEmpty {
+            history.insert(text, at: 0)
+            if history.count > 10 { history.removeLast() }
+        }
+        var copied = false
+        if !text.isEmpty, !suppressInsertion {
+            copied = Paster.insert(text) == .keptInClipboard
+        }
+        if copied {
+            onCopiedInstead?()
+        } else {
+            onResult?(!text.isEmpty, words, seconds)
+        }
         onResultText?(text)
         state = .idle
-        if !text.isEmpty, !suppressInsertion { Paster.insert(text) }
     }
 
     /// Skip insertion, deliver text via onResultText only (onboarding "try it" box).

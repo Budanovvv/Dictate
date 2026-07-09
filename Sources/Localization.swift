@@ -101,6 +101,9 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Recording…": "Записываю…",
+        "No text cursor — copied, press ⌘V to paste": "Курсор не в поле ввода — текст скопирован, нажмите ⌘V",
+        "Recent dictations": "Последние диктовки",
         "Shortcuts": "Клавиши",
         "General": "Основные",
         "Status": "Состояние",
@@ -120,6 +123,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Подготовка модели под Neural Engine… Несколько минут, один раз.",
         "Warming up the model…": "Разогреваю модель…",
         "Words: %d · %.1f s": "Слов: %d · %.1f с",
+        "Words: %d": "Слов: %d",
         "Cancelled": "Отменено",
         "Changed your mind? Esc cancels the recording.": "Передумали? Esc отменяет запись.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Сеть: разовая загрузка модели — и больше ничего. Не верьте на слово: выключите Wi-Fi и продиктуйте.",
@@ -241,6 +245,9 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Recording…": "Записую…",
+        "No text cursor — copied, press ⌘V to paste": "Курсор не в полі вводу — текст скопійовано, натисніть ⌘V",
+        "Recent dictations": "Останні диктовки",
         "Shortcuts": "Клавіші",
         "General": "Загальні",
         "Status": "Стан",
@@ -260,6 +267,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Підготовка моделі під Neural Engine… Кілька хвилин, один раз.",
         "Warming up the model…": "Розігріваю модель…",
         "Words: %d · %.1f s": "Слів: %d · %.1f с",
+        "Words: %d": "Слів: %d",
         "Cancelled": "Скасовано",
         "Changed your mind? Esc cancels the recording.": "Передумали? Esc скасовує запис.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Мережа: разове завантаження моделі — і більше нічого. Не вірте на слово: вимкніть Wi-Fi і продиктуйте.",
@@ -372,6 +380,9 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Recording…": "Grabando…",
+        "No text cursor — copied, press ⌘V to paste": "No hay cursor de texto — copiado, pulsa ⌘V para pegar",
+        "Recent dictations": "Dictados recientes",
         "Shortcuts": "Atajos",
         "General": "General",
         "Status": "Estado",
@@ -391,6 +402,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Preparando el modelo para el Neural Engine… Unos minutos, una sola vez.",
         "Warming up the model…": "Calentando el modelo…",
         "Words: %d · %.1f s": "Palabras: %d · %.1f s",
+        "Words: %d": "Palabras: %d",
         "Cancelled": "Cancelado",
         "Changed your mind? Esc cancels the recording.": "¿Cambiaste de idea? Esc cancela la grabación.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Acceso a la red: una descarga única del modelo — nada más. No te fíes de nuestra palabra: apaga el Wi-Fi y dicta.",
@@ -512,6 +524,9 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Recording…": "Gravando…",
+        "No text cursor — copied, press ⌘V to paste": "Sem cursor de texto — copiado, pressione ⌘V para colar",
+        "Recent dictations": "Ditados recentes",
         "Shortcuts": "Atalhos",
         "General": "Geral",
         "Status": "Status",
@@ -531,6 +546,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Preparando o modelo para o Neural Engine… Alguns minutos, uma única vez.",
         "Warming up the model…": "Aquecendo o modelo…",
         "Words: %d · %.1f s": "Palavras: %d · %.1f s",
+        "Words: %d": "Palavras: %d",
         "Cancelled": "Cancelado",
         "Changed your mind? Esc cancels the recording.": "Mudou de ideia? Esc cancela a gravação.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Acesso à rede: um download único do modelo — e nada mais. Não acredite só na nossa palavra: desligue o Wi-Fi e dite.",
@@ -652,6 +668,9 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Recording…": "Enregistrement…",
+        "No text cursor — copied, press ⌘V to paste": "Pas de curseur de texte — copié, appuyez sur ⌘V pour coller",
+        "Recent dictations": "Dictées récentes",
         "Shortcuts": "Raccourcis",
         "General": "Général",
         "Status": "État",
@@ -671,6 +690,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Préparation du modèle pour le Neural Engine… Quelques minutes, une seule fois.",
         "Warming up the model…": "Préchauffage du modèle…",
         "Words: %d · %.1f s": "Mots : %d · %.1f s",
+        "Words: %d": "Mots : %d",
         "Cancelled": "Annulé",
         "Changed your mind? Esc cancels the recording.": "Vous changez d’avis ? Esc annule l’enregistrement.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Accès réseau : un téléchargement unique du modèle — rien d’autre. Ne nous croyez pas sur parole : coupez le Wi-Fi et dictez.",
@@ -792,6 +812,9 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Recording…": "Aufnahme…",
+        "No text cursor — copied, press ⌘V to paste": "Kein Textcursor — kopiert, ⌘V zum Einfügen drücken",
+        "Recent dictations": "Letzte Diktate",
         "Shortcuts": "Tastenkürzel",
         "General": "Allgemein",
         "Status": "Status",
@@ -811,6 +834,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Das Modell wird für die Neural Engine vorbereitet… Ein paar Minuten, einmalig.",
         "Warming up the model…": "Modell wird aufgewärmt…",
         "Words: %d · %.1f s": "Wörter: %d · %.1f s",
+        "Words: %d": "Wörter: %d",
         "Cancelled": "Abgebrochen",
         "Changed your mind? Esc cancels the recording.": "Umentschieden? Esc bricht die Aufnahme ab.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Netzwerkzugriff: ein einmaliger Modell-Download — sonst nichts. Glauben Sie uns nicht einfach: Schalten Sie Wi-Fi aus und diktieren Sie.",
@@ -932,6 +956,9 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Recording…": "录音中…",
+        "No text cursor — copied, press ⌘V to paste": "光标不在输入框中 — 已复制，按 ⌘V 粘贴",
+        "Recent dictations": "最近的听写",
         "Shortcuts": "快捷键",
         "General": "通用",
         "Status": "状态",
@@ -951,6 +978,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "正在为 Neural Engine 准备模型…几分钟，仅此一次。",
         "Warming up the model…": "正在预热模型…",
         "Words: %d · %.1f s": "词数：%d · %.1f 秒",
+        "Words: %d": "词数：%d",
         "Cancelled": "已取消",
         "Changed your mind? Esc cancels the recording.": "改变主意了？按 Esc 取消录音。",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "网络访问：仅用于一次性下载模型——再无其他。别只听我们说：关掉 Wi-Fi，照样听写。",
@@ -1072,6 +1100,9 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Recording…": "録音中…",
+        "No text cursor — copied, press ⌘V to paste": "テキストカーソルがありません — コピー済み、⌘V で貼り付け",
+        "Recent dictations": "最近の音声入力",
         "Shortcuts": "ショートカット",
         "General": "一般",
         "Status": "ステータス",
@@ -1091,6 +1122,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Neural Engine 用にモデルを準備しています… 数分かかりますが、一度だけです。",
         "Warming up the model…": "モデルをウォームアップ中…",
         "Words: %d · %.1f s": "単語数: %d · %.1f 秒",
+        "Words: %d": "単語数: %d",
         "Cancelled": "キャンセルしました",
         "Changed your mind? Esc cancels the recording.": "気が変わったら Esc で録音をキャンセルできます。",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "ネットワークアクセスはモデルの 1 回きりのダウンロードのみ。それ以外にはありません。言葉だけでは信じずに、Wi-Fi を切って音声入力してみてください。",
@@ -1212,6 +1244,9 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Recording…": "녹음 중…",
+        "No text cursor — copied, press ⌘V to paste": "텍스트 커서가 없습니다 — 복사됨, ⌘V로 붙여넣기",
+        "Recent dictations": "최근 받아쓰기",
         "Shortcuts": "단축키",
         "General": "일반",
         "Status": "상태",
@@ -1231,6 +1266,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Neural Engine용으로 모델을 준비하는 중… 몇 분 걸리며, 한 번만 하면 됩니다.",
         "Warming up the model…": "모델 예열 중…",
         "Words: %d · %.1f s": "단어: %d · %.1f초",
+        "Words: %d": "단어: %d",
         "Cancelled": "취소됨",
         "Changed your mind? Esc cancels the recording.": "마음이 바뀌었나요? Esc로 녹음을 취소할 수 있습니다.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "네트워크 접근: 모델을 한 번 다운로드할 때뿐 — 그 외에는 없습니다. 말만 믿지 마세요: Wi-Fi를 끄고 받아쓰기해 보세요.",
@@ -1352,6 +1388,9 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Recording…": "Đang ghi âm…",
+        "No text cursor — copied, press ⌘V to paste": "Không có con trỏ văn bản — đã sao chép, nhấn ⌘V để dán",
+        "Recent dictations": "Các lần đọc gần đây",
         "Shortcuts": "Phím tắt",
         "General": "Chung",
         "Status": "Trạng thái",
@@ -1371,6 +1410,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Đang chuẩn bị mô hình cho Neural Engine… Vài phút, chỉ một lần.",
         "Warming up the model…": "Đang khởi động mô hình…",
         "Words: %d · %.1f s": "Số từ: %d · %.1f giây",
+        "Words: %d": "Số từ: %d",
         "Cancelled": "Đã hủy",
         "Changed your mind? Esc cancels the recording.": "Đổi ý? Esc sẽ hủy bản ghi âm.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Truy cập mạng: một lần tải mô hình — ngoài ra không gì khác. Đừng chỉ tin lời chúng tôi: hãy tắt Wi-Fi rồi đọc thử.",
@@ -1492,6 +1532,9 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Recording…": "Nagre-record…",
+        "No text cursor — copied, press ⌘V to paste": "Walang text cursor — nakopya, pindutin ang ⌘V para i-paste",
+        "Recent dictations": "Mga kamakailang dikta",
         "Shortcuts": "Mga shortcut",
         "General": "Pangkalahatan",
         "Status": "Status",
@@ -1511,6 +1554,7 @@ extension Localization {
         "Preparing the model for the Neural Engine… A few minutes, one time.": "Inihahanda ang model para sa Neural Engine… Ilang minuto, isang beses lang.",
         "Warming up the model…": "Nagwa-warm up ang model…",
         "Words: %d · %.1f s": "Mga salita: %d · %.1f s",
+        "Words: %d": "Mga salita: %d",
         "Cancelled": "Kinansela",
         "Changed your mind? Esc cancels the recording.": "Nagbago ang isip mo? Kinakansela ng Esc ang recording.",
         "Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate.": "Network access: isang beses na pag-download ng model — wala nang iba. Huwag basta maniwala sa amin: i-off ang Wi-Fi at mag-dictate.",
