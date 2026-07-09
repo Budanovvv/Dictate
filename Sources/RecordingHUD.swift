@@ -4,15 +4,13 @@ import SwiftUI
 /// Floating status panel at the bottom of the screen. Never takes focus or mouse events.
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
-        case recording, transcribing, done, empty, downloading, warming, cancelled, copied
+        case recording, transcribing, empty, downloading, warming, cancelled, copied
     }
 
     @Published var mode: Mode = .recording
     @Published var level: Double = 0
     @Published var elapsed: Int = 0
     @Published var downloadProgress: Double = 0
-    @Published var words: Int = 0
-    @Published var seconds: Double = 0
     /// Determinate transcription: fraction of audio processed (monotonic) + words so far.
     @Published var transcribeFraction: Double = 0
     @Published var transcribeWords: Int = 0
@@ -89,15 +87,22 @@ final class RecordingHUD {
         scheduleHide(after: 0.8)
     }
 
-    /// success=false shows the "empty" state.
+    /// Success has no frame of its own: the text appearing at the cursor IS
+    /// the confirmation — the strip just tops up and the pill slips away.
+    /// success=false shows the "empty" state (there reality shows nothing,
+    /// so the pill is the only messenger).
     func showResult(success: Bool, words: Int = 0, seconds: Double = 0) {
         cancelHide()
         stopElapsed()
-        model.words = words
-        model.seconds = seconds
-        model.mode = success ? .done : .empty
-        show()
-        scheduleHide(after: success ? 1.4 : 1.6)
+        if success {
+            guard model.mode == .transcribing else { hide(); return }
+            model.transcribeFraction = 1
+            scheduleHide(after: 0.55)
+        } else {
+            model.mode = .empty
+            show()
+            scheduleHide(after: 1.6)
+        }
     }
 
     private func scheduleHide(after delay: Double) {
@@ -219,10 +224,6 @@ private struct HUDView: View {
             PulsingDot(fill: model.mode == .recording
                        ? AnyShapeStyle(Color.red)
                        : AnyShapeStyle(Brand.gradientDiagonal))
-        case .done:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 20)).foregroundStyle(Brand.gradientDiagonal)
-                .symbolEffect(.bounce, options: .nonRepeating, value: model.mode)
         case .empty:
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
@@ -263,7 +264,6 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return L("Recording…")
         case .transcribing: return L("Recognizing…")
-        case .done: return L("Inserted")
         case .empty: return L("Didn't catch that — hold the key while you speak")
         case .downloading:
             return model.downloadProgress < 0.999
@@ -294,7 +294,6 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return timeString(model.elapsed)
         case .transcribing: return Lf("Words: %d", model.transcribeWords)
-        case .done: return model.words > 0 ? Lf("Words: %d · %.1f s", model.words, model.seconds) : nil
         default: return nil
         }
     }
@@ -304,7 +303,6 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return .voice
         case .transcribing, .downloading, .warming: return .progress
-        case .done: return .full
         case .empty, .cancelled, .copied: return nil
         }
     }
@@ -322,12 +320,12 @@ private struct HUDView: View {
     }
 }
 
-/// One permanent row of 23 brand capsules: the equalizer, the progress bar
-/// and the final full state are the same objects changing height and color —
-/// dancing while recording, settling into a segmented bar that fills capsule
-/// by capsule while recognizing, topping up on "Inserted".
+/// One permanent row of 23 brand capsules: the equalizer and the progress bar
+/// are the same objects changing height and color — dancing while recording,
+/// settling into a segmented bar that fills capsule by capsule while
+/// recognizing, topping up right before the pill slips away.
 private struct WaveStrip: View {
-    enum Phase { case voice, progress, full }
+    enum Phase { case voice, progress }
     let phase: Phase
     let level: Double
     /// Bumps with every level update — gives each capsule its own motion.
@@ -354,7 +352,7 @@ private struct WaveStrip: View {
     /// How many capsules are lit with the gradient.
     private var litCount: Int {
         switch phase {
-        case .voice, .full: return Self.weights.count
+        case .voice: return Self.weights.count
         case .progress: return Int((fraction * Double(Self.weights.count)).rounded())
         }
     }
