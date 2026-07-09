@@ -6,7 +6,7 @@ final class AudioRecorder {
     static let sampleRate = 16000
     static let maxDurationSec = 300
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var samples = Data()
     private let lock = NSLock()
@@ -21,29 +21,43 @@ final class AudioRecorder {
     )!
 
     var onTruncated: (() -> Void)?
-    /// Device switch could not be recovered — the recording has to be cancelled.
-    var onDeviceChanged: (() -> Void)?
+    /// The input chain could not be (re)built — the recording has to be
+    /// cancelled. The flag is true when no audio was captured at all
+    /// (failed start) as opposed to a device change mid-recording.
+    var onRecoveryFailed: ((_ nothingRecorded: Bool) -> Void)?
     /// Voice level 0…1, delivered on the main thread.
     var onLevel: ((Double) -> Void)?
     private var configObserver: NSObjectProtocol?
     private var isRecording = false
     private var rebuilding = false
 
-    func start() throws {
+    /// Starts recording. Never throws: if the input device isn't ready
+    /// (typical right after wake from sleep), the retry loop keeps trying and
+    /// reports via onRecoveryFailed only when recovery is impossible.
+    func start() {
         lock.lock()
         samples.removeAll()
         truncated = false
         lock.unlock()
 
-        try attachInput()
         isRecording = true
         rebuilding = false
+        rebuildInputChain()
+    }
 
+    /// Replaces the engine with a fresh instance. A long-lived engine keeps a
+    /// stale HAL connection across sleep and then reports garbage input
+    /// formats (sampleRate 0, or a dead format that makes installTap throw).
+    private func swapEngine() {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        engine = AVAudioEngine()
         configObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine, queue: .main
         ) { [weak self] _ in
-            self?.handleConfigChange()
+            self?.rebuildInputChain()
         }
     }
 
@@ -51,27 +65,38 @@ final class AudioRecorder {
     private func attachInput() throws {
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0 else {
+        guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
             throw NSError(domain: "Dictate", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: L("Microphone unavailable (no input audio format)")
             ])
         }
         let conv = AVAudioConverter(from: inFormat, to: targetFormat)
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { [weak self] buffer, _ in
-            self?.append(buffer)
+        // installTap and engine.start raise NSException on a stale/invalid
+        // format (Swift try can't catch those) — route them through the ObjC
+        // catcher so they become recoverable errors for the retry loop.
+        try catchingObjCException {
+            input.installTap(onBus: 0, bufferSize: 4096, format: inFormat) { [weak self] buffer, _ in
+                self?.append(buffer)
+            }
+            engine.prepare()
         }
-        engine.prepare()
-        try engine.start()
+        var startError: Error?
+        try catchingObjCException {
+            do { try engine.start() } catch { startError = error }
+        }
+        if let startError { throw startError }
         setConverter(conv)
     }
 
-    /// The engine stops itself when the input device changes (AirPods connect,
-    /// headphones unplug…). Rebuild the input chain for the new device and keep
-    /// appending to the same buffer — the user shouldn't lose the recording.
-    /// The new device may take a moment to report a valid format, so retry
-    /// briefly; cancel via onDeviceChanged only if recovery fails.
-    private func handleConfigChange(attempt: Int = 0) {
+    /// Builds the input chain on a fresh engine, retrying briefly: used both
+    /// for the initial start and when the engine stops itself on a device
+    /// change (AirPods connect, headphones unplug…). The recorded buffer is
+    /// kept — the user shouldn't lose the recording. The device may take a
+    /// moment to report a valid format (first moments after connect or after
+    /// wake from sleep), so retry; cancel via onRecoveryFailed only if
+    /// recovery fails.
+    private func rebuildInputChain(attempt: Int = 0) {
         guard isRecording else { return }
         if attempt == 0 {
             guard !rebuilding else { return }   // coalesce repeated notifications
@@ -79,9 +104,7 @@ final class AudioRecorder {
         }
 
         setConverter(nil)
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        engine.reset()
+        swapEngine()
 
         if (try? attachInput()) != nil {
             rebuilding = false
@@ -91,12 +114,22 @@ final class AudioRecorder {
         guard attempt < 10 else {
             rebuilding = false
             isRecording = false
-            onDeviceChanged?()
+            lock.lock()
+            let nothingRecorded = samples.isEmpty
+            lock.unlock()
+            onRecoveryFailed?(nothingRecorded)
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            self?.handleConfigChange(attempt: attempt + 1)
+            self?.rebuildInputChain(attempt: attempt + 1)
         }
+    }
+
+    /// Runs body, converting a raised NSException into a thrown Swift error.
+    private func catchingObjCException(_ body: () -> Void) throws {
+        var nsError: NSError?
+        DictateCatchObjCException(body, &nsError)
+        if let nsError { throw nsError }
     }
 
     private func setConverter(_ c: AVAudioConverter?) {

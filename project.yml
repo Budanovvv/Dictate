@@ -26,10 +26,14 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
         PRODUCT_NAME: Dictate
-        MARKETING_VERSION: "2.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "2.0.1"
+        # Sparkle compares CFBundleVersion (= this) — bump on every release.
+        CURRENT_PROJECT_VERSION: "2"
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.0"
+        # ObjC shim: converts NSException from AVFoundation into NSError
+        # (Swift can't catch ObjC exceptions) — see ObjCExceptionCatcher.
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Dictate-Bridging-Header.h
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         # Automatic signing; the Team is picked once in Xcode (Signing & Capabilities).
         CODE_SIGN_STYLE: Automatic
@@ -55,12 +59,15 @@ targets:
       - path: Sources/LanguageList.swift
       - path: Sources/AudioRecorder.swift
       - path: Sources/WhisperEngine.swift
+      - path: Sources/ObjCExceptionCatcher.h
+      - path: Sources/ObjCExceptionCatcher.m
     dependencies:
       - package: WhisperKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.DictateTests
         GENERATE_INFOPLIST_FILE: YES
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Dictate-Bridging-Header.h
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 3BN45AZPR2
 

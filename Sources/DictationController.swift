@@ -57,11 +57,13 @@ final class DictationController {
         recorder.onLevel = { [weak self] level in
             self?.onLevel?(level)
         }
-        recorder.onDeviceChanged = { [weak self] in
+        recorder.onRecoveryFailed = { [weak self] nothingRecorded in
             guard let self, self.state == .recording else { return }
             _ = self.recorder.stop()
             self.state = .idle
-            self.onError?(L("Audio device changed during recording — recording cancelled, please try again."))
+            self.onError?(nothingRecorded
+                ? Lf("Couldn't start recording: %@", L("Microphone unavailable (no input audio format)"))
+                : L("Audio device changed during recording — recording cancelled, please try again."))
         }
         let ok = monitor.start()
         if ok {
@@ -131,16 +133,15 @@ final class DictationController {
     private func beginRecording(translate: Bool) {
         guard !paused, state == .idle else { return }
         activeTranslate = translate
-        do {
-            try recorder.start()
-            state = .recording
-            Self.soundStart?.play()
-            // Load the model while the user is speaking, so it's warm by the
-            // time they release — hides the one-time warm-up behind the speech.
-            preloadModel()
-        } catch {
-            onError?(Lf("Couldn't start recording: %@", error.localizedDescription))
-        }
+        // start() never fails synchronously: the recorder retries a not-yet-ready
+        // input device itself and reports via onRecoveryFailed. Enter .recording
+        // right away so the HUD always responds to the key press.
+        recorder.start()
+        state = .recording
+        Self.soundStart?.play()
+        // Load the model while the user is speaking, so it's warm by the
+        // time they release — hides the one-time warm-up behind the speech.
+        preloadModel()
     }
 
     /// Esc while recording: discard the audio, transcribe nothing.
