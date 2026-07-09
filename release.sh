@@ -73,17 +73,56 @@ osascript -e 'use framework "AppKit"' \
     -e "current application's NSWorkspace's sharedWorkspace()'s setIcon:i forFile:\"$PWD/$DMG\" options:0" >/dev/null \
     && echo "  ✅ icon on the .dmg file"
 
-# 4. Update signing (EdDSA from Keychain) + appcast
+# 4. Release notes — taken from the body of the released commit. GitHub's
+# --generate-notes builds text from pull requests, and we push to main
+# directly, so it produces an empty page. The same notes are converted to
+# HTML next to the DMG: generate_appcast embeds them into the appcast, and
+# Sparkle shows the changelog right in the update window.
+NOTES_MD="$OUT/notes.md"
+PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+[ "$PREV_TAG" = "v$VERSION" ] && PREV_TAG=$(git describe --tags --abbrev=0 "v$VERSION^" 2>/dev/null || true)
+{
+    git log -1 --format=%b
+    [ -n "$PREV_TAG" ] && printf '\n**Full Changelog**: https://github.com/%s/compare/%s...v%s\n' "$REPO" "$PREV_TAG" "$VERSION"
+} > "$NOTES_MD"
+python3 - "$NOTES_MD" > "$OUT/Dictate-$VERSION.html" <<'PYEOF'
+# Minimal markdown → HTML for Sparkle: paragraphs, "- " lists, **bold**, links.
+import html, re, sys
+text = open(sys.argv[1]).read()
+def inline(s):
+    s = html.escape(s)
+    s = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', s)
+    s = re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', s)
+    return s
+out = []
+for block in re.split(r'\n\s*\n', text):
+    block = block.strip('\n')
+    if not block.strip():
+        continue
+    if block.lstrip().startswith('## '):
+        out.append('<h2>%s</h2>' % inline(block.lstrip()[3:].strip()))
+    elif block.lstrip().startswith('- '):
+        items = re.split(r'\n(?=- )', block.lstrip())
+        lis = ''.join('<li>%s</li>' % inline(' '.join(l.strip() for l in i[2:].splitlines())) for i in items)
+        out.append('<ul>%s</ul>' % lis)
+    else:
+        out.append('<p>%s</p>' % inline(' '.join(l.strip() for l in block.splitlines())))
+print('\n'.join(out))
+PYEOF
+echo "  ✅ release notes from the commit body"
+
+# 5. Update signing (EdDSA from Keychain) + appcast
 "$TOOLS/generate_appcast" \
     --download-url-prefix "https://github.com/$REPO/releases/download/v$VERSION/" \
+    --embed-release-notes \
     -o "$OUT/appcast.xml" "$OUT"
 echo "  ✅ appcast.xml (EdDSA signature from Keychain)"
 
-# 5. Publishing
+# 6. Publishing
 if [ "${1:-}" = "--publish" ]; then
     git tag -f "v$VERSION" && git push -f origin "v$VERSION"
     gh release create "v$VERSION" "$DMG" "$OUT/appcast.xml" \
-        --repo "$REPO" --title "Dictate $VERSION" --generate-notes 2>/dev/null \
+        --repo "$REPO" --title "Dictate $VERSION" --notes-file "$NOTES_MD" 2>/dev/null \
       || gh release upload "v$VERSION" "$DMG" "$OUT/appcast.xml" --repo "$REPO" --clobber
     echo "  ✅ published: https://github.com/$REPO/releases/tag/v$VERSION"
     echo "  ⚠️  Sparkle will only see the update once the releases repository is public"
