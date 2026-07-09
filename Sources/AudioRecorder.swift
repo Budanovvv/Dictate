@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 
 /// Microphone recording: any input format → 16 kHz mono Int16.
@@ -32,8 +33,9 @@ final class AudioRecorder {
     private var rebuilding = false
 
     /// Starts recording. Never throws: if the input device isn't ready
-    /// (typical right after wake from sleep), the retry loop keeps trying and
-    /// reports via onRecoveryFailed only when recovery is impossible.
+    /// (typical right after wake from sleep, or while Bluetooth negotiates),
+    /// the retry loop keeps trying and reports via onRecoveryFailed only when
+    /// recovery is impossible.
     func start() {
         lock.lock()
         samples.removeAll()
@@ -42,12 +44,19 @@ final class AudioRecorder {
 
         isRecording = true
         rebuilding = false
+        // Fresh engine per recording — sleep between recordings leaves a
+        // stale HAL connection. But ONLY here: recreating the engine during
+        // a recording closes and reopens the Bluetooth input, restarting the
+        // HFP negotiation, which fires another config change — the device
+        // never settles (AirPods regression of 2026-07-09).
+        swapEngine()
         rebuildInputChain()
     }
 
-    /// Replaces the engine with a fresh instance. A long-lived engine keeps a
-    /// stale HAL connection across sleep and then reports garbage input
-    /// formats (sampleRate 0, or a dead format that makes installTap throw).
+    /// Replaces the engine with a fresh instance (recording start only — see
+    /// start()). A long-lived engine keeps a stale HAL connection across
+    /// sleep and then reports garbage input formats (sampleRate 0, or a dead
+    /// format that makes installTap throw).
     private func swapEngine() {
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         engine.inputNode.removeTap(onBus: 0)
@@ -64,7 +73,18 @@ final class AudioRecorder {
     /// Installs the tap and starts the engine for the current input device.
     private func attachInput() throws {
         let input = engine.inputNode
+        // Pin the input per the mic setting (default: built-in). Bluetooth
+        // mics take seconds of HFP negotiation and record phone-call quality;
+        // with the built-in mic pinned the headphones stay in music mode.
+        if var deviceID = AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID),
+           let unit = input.audioUnit {
+            let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                              kAudioUnitScope_Global, 0, &deviceID,
+                                              UInt32(MemoryLayout<AudioDeviceID>.size))
+            Log.d("audio: pin device id=\(deviceID) status=\(status)")
+        }
         let inFormat = input.outputFormat(forBus: 0)
+        Log.d("audio: input format \(Int(inFormat.sampleRate))Hz/\(inFormat.channelCount)ch")
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
             throw NSError(domain: "Dictate", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: L("Microphone unavailable (no input audio format)")
@@ -89,12 +109,15 @@ final class AudioRecorder {
         setConverter(conv)
     }
 
-    /// Builds the input chain on a fresh engine, retrying briefly: used both
-    /// for the initial start and when the engine stops itself on a device
-    /// change (AirPods connect, headphones unplug…). The recorded buffer is
-    /// kept — the user shouldn't lose the recording. The device may take a
-    /// moment to report a valid format (first moments after connect or after
-    /// wake from sleep), so retry; cancel via onRecoveryFailed only if
+    /// (Re)builds the input chain on the CURRENT engine, retrying briefly:
+    /// used for the initial start and when the engine stops itself on a
+    /// device change (AirPods connect, headphones unplug…). The recorded
+    /// buffer is kept — the user shouldn't lose the recording. The engine is
+    /// reset, never recreated: mid-recording recreation restarts Bluetooth
+    /// HFP negotiation and the device never settles (this exact reset-based
+    /// rewiring was live-tested with AirPods on 2026-07-06). The device may
+    /// need seconds to report a valid format (Bluetooth negotiation, wake
+    /// from sleep) — retry ~4.5 s; cancel via onRecoveryFailed only if
     /// recovery fails.
     private func rebuildInputChain(attempt: Int = 0) {
         guard isRecording else { return }
@@ -104,23 +127,30 @@ final class AudioRecorder {
         }
 
         setConverter(nil)
-        swapEngine()
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        engine.reset()
 
-        if (try? attachInput()) != nil {
+        do {
+            try attachInput()
             rebuilding = false
+            Log.d("audio: input attached (attempt \(attempt))")
             return
+        } catch {
+            Log.d("audio: attach failed (attempt \(attempt)): \(error.localizedDescription)")
         }
 
-        guard attempt < 10 else {
+        guard attempt < 15 else {
             rebuilding = false
             isRecording = false
             lock.lock()
             let nothingRecorded = samples.isEmpty
             lock.unlock()
+            Log.d("audio: recovery FAILED, cancelling (nothingRecorded=\(nothingRecorded))")
             onRecoveryFailed?(nothingRecorded)
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.rebuildInputChain(attempt: attempt + 1)
         }
     }

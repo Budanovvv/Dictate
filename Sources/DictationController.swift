@@ -127,27 +127,34 @@ final class DictationController {
 
     // Push-to-talk: press starts, release stops.
     private func handlePress(_ code: Int64) {
+        Log.d("press code=\(code) state=\(state) paused=\(paused)")
         beginRecording(translate: isTranslateKey(code))
     }
 
     private func handleRelease(_ code: Int64) {
         // Only the key that started the recording ends it.
         guard isTranslateKey(code) == activeTranslate else { return }
+        Log.d("release code=\(code) state=\(state)")
         endRecording()
     }
 
     private func beginRecording(translate: Bool) {
         guard !paused, state == .idle else { return }
         activeTranslate = translate
-        // start() never fails synchronously: the recorder retries a not-yet-ready
-        // input device itself and reports via onRecoveryFailed. Enter .recording
-        // right away so the HUD always responds to the key press.
-        recorder.start()
+        // HUD first: bringing the input up can block the main thread for
+        // seconds on a cold or Bluetooth mic (hardware wake + SCO
+        // negotiation). The small delay lets the pill render before that;
+        // start() itself never fails synchronously — the recorder retries a
+        // not-yet-ready device and reports via onRecoveryFailed.
         state = .recording
         Self.soundStart?.play()
         // Load the model while the user is speaking, so it's warm by the
         // time they release — hides the one-time warm-up behind the speech.
         preloadModel()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, self.state == .recording else { return }
+            self.recorder.start()
+        }
     }
 
     /// Esc while recording: discard the audio, transcribe nothing.
@@ -168,12 +175,39 @@ final class DictationController {
             return  // accidental short press
         }
 
+        let translate = activeTranslate
+        let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+
+        // Silence gate: Whisper hallucinates confident phrases on speech-free
+        // audio ("Thank you for watching…"), especially when translating.
+        // Compare the LOUDEST 100 ms windows, not the average: speech is
+        // spiky (syllables peak several times above its mean) while room
+        // noise is stationary — measured on this mic: silence rms ≈ 0.006
+        // flat, speech rms ≈ 0.015 with peaks well above 0.02.
+        let window = AudioRecorder.sampleRate / 10
+        var windowRMS: [Double] = []
+        var i = 0
+        while i < floats.count {
+            let end = min(i + window, floats.count)
+            var e: Double = 0
+            for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
+            windowRMS.append((e / Double(end - i)).squareRoot())
+            i = end
+        }
+        windowRMS.sort()
+        let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
+        let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
+        Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90))")
+        guard p90 > 0.012 else {
+            Log.d("silence gate -> empty result")
+            Task { @MainActor in self.finish(text: "", seconds: 0, translate: translate) }
+            return
+        }
+
         state = .transcribing
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt
         let tier = Settings.shared.modelTier
-        let translate = activeTranslate
-        let floats = AudioRecorder.floatSamples(fromPCM: pcm)
         Task { await self.transcribeLocal(floats: floats, language: language,
                                           prompt: prompt, tier: tier, translate: translate) }
     }
@@ -224,6 +258,7 @@ final class DictationController {
         if !text.isEmpty, !suppressInsertion {
             copied = Paster.insert(text) == .keptInClipboard
         }
+        Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
         if copied {
             onCopiedInstead?()
         } else {

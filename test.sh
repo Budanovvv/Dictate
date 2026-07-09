@@ -23,6 +23,15 @@ check() {  # check "name" command...
 
 MODE="${1:-full}"
 
+# Graceful quit: an instant pkill can land mid model-download/verify and
+# corrupt the model state (see internal/GRABLI.md).
+quit_dictate() {
+    pgrep -x Dictate >/dev/null || return 0
+    osascript -e 'tell application id "com.valentynbudanov.Dictate" to quit' >/dev/null 2>&1 || true
+    for _ in $(seq 8); do pgrep -x Dictate >/dev/null || return 0; sleep 0.25; done
+    pkill -x Dictate 2>/dev/null || true
+}
+
 # ── 1. Project generation and unit tests ───────────────────────────────────
 if [ "$MODE" != "--quick" ]; then
     echo "==> xcodegen"
@@ -105,7 +114,7 @@ else echo "  ❌ gaps in the localization tables"; FAIL=$((FAIL+1)); fi
 # ── 4. Launch: liveness and single instance ────────────────────────────────
 echo "==> Launch"
 WAS_RUNNING=$(pgrep -x Dictate | head -1 || true)
-pkill -x Dictate 2>/dev/null; sleep 1
+quit_dictate; sleep 1
 open "$APP"; sleep 4
 check "process alive after 4 seconds" pgrep -qx Dictate
 check "exactly one instance" bash -c "[ \$(pgrep -x Dictate | wc -l) -eq 1 ]"
@@ -118,7 +127,7 @@ else
     echo "  ❌ second-instance protection"; FAIL=$((FAIL+1)); kill $SECOND 2>/dev/null
 fi
 # Stop the app if it was not running before the test.
-[ -z "$WAS_RUNNING" ] && pkill -x Dictate 2>/dev/null
+[ -z "$WAS_RUNNING" ] && quit_dictate
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo

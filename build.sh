@@ -28,7 +28,13 @@ APP="$DD/Build/Products/Release/Dictate.app"
 echo "==> Done: $APP"
 
 if [ "${1:-}" = "--install" ]; then
-    pkill -x Dictate 2>/dev/null || true
+    # Graceful quit first: an instant pkill can land mid model-download/verify
+    # and corrupt the model state (see internal/GRABLI.md).
+    if pgrep -x Dictate >/dev/null; then
+        osascript -e 'tell application id "com.valentynbudanov.Dictate" to quit' >/dev/null 2>&1 || true
+        for _ in $(seq 8); do pgrep -x Dictate >/dev/null || break; sleep 0.25; done
+        pkill -x Dictate 2>/dev/null || true
+    fi
     rm -rf /Applications/Dictate.app
     ditto "$APP" /Applications/Dictate.app
     echo "==> Installed: /Applications/Dictate.app"

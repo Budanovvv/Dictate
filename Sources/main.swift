@@ -4,17 +4,31 @@ import AppKit
 // build of Dictate.app), activate it and exit.
 let myPID = ProcessInfo.processInfo.processIdentifier
 let myBundleID = Bundle.main.bundleIdentifier
+let info = Bundle.main.infoDictionary
+Log.d("launch v\(info?["CFBundleShortVersionString"] ?? "?")(\(info?["CFBundleVersion"] ?? "?")) pid=\(myPID) path=\(Bundle.main.bundleURL.path)")
 let already = NSWorkspace.shared.runningApplications.filter {
     $0.processIdentifier != myPID
         && ((myBundleID != nil && $0.bundleIdentifier == myBundleID)
             || $0.bundleURL?.lastPathComponent == "Dictate.app")
 }
 if let other = already.first {
-    NSLog("Dictate: exiting, another instance found: pid=%d bundle=%@ name=%@ path=%@",
-          other.processIdentifier, other.bundleIdentifier ?? "nil",
-          other.localizedName ?? "nil", other.bundleURL?.path ?? "nil")
-    other.activate(options: [])
-    exit(0)
+    // The installed copy is canonical: when it launches while a dev/test copy
+    // (build cache, DMG…) is running, the impostor is asked to quit and THIS
+    // instance keeps going. Otherwise a stale test instance silently swallows
+    // the launch — "the app doesn't react" with no crash and exit 0.
+    let iAmCanonical = Bundle.main.bundleURL.path.hasPrefix("/Applications/")
+    let otherIsCanonical = other.bundleURL?.path.hasPrefix("/Applications/") ?? false
+    if iAmCanonical && !otherIsCanonical {
+        NSLog("Dictate: taking over from non-canonical instance pid=%d path=%@",
+              other.processIdentifier, other.bundleURL?.path ?? "nil")
+        other.terminate()
+    } else {
+        NSLog("Dictate: exiting, another instance found: pid=%d bundle=%@ name=%@ path=%@",
+              other.processIdentifier, other.bundleIdentifier ?? "nil",
+              other.localizedName ?? "nil", other.bundleURL?.path ?? "nil")
+        other.activate(options: [])
+        exit(0)
+    }
 }
 
 let app = NSApplication.shared

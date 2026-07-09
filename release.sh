@@ -20,6 +20,26 @@ REPO="Budanovvv/Dictate"
 
 echo "==> Release v$VERSION"
 
+# Phantom watch: something on this machine has repeatedly replaced
+# /Applications/Dictate.app during release builds (internal/GRABLI.md).
+# Record evidence while we work; the check at the end reports real changes.
+PHANTOM_LOG="${TMPDIR:-/tmp}/dictate-phantom-watch.log"
+PHANTOM_PID=""
+if [ -f internal/claude-tooling/phantom-watch.py ]; then
+    rm -f "$PHANTOM_LOG"
+    python3 internal/claude-tooling/phantom-watch.py "$PHANTOM_LOG" >/dev/null 2>&1 &
+    PHANTOM_PID=$!
+fi
+finish_phantom_watch() {
+    [ -n "$PHANTOM_PID" ] || return 0
+    kill "$PHANTOM_PID" 2>/dev/null || true
+    # "CHANGE None ->" is the watcher's own baseline; anything else is real
+    if grep "CHANGE (" "$PHANTOM_LOG" >/dev/null 2>&1; then
+        echo "  ⚠️  /Applications/Dictate.app CHANGED during the release — see $PHANTOM_LOG"
+    fi
+}
+trap finish_phantom_watch EXIT
+
 # 1. Clean build + tests
 ./build.sh >/dev/null
 echo "  ✅ build"

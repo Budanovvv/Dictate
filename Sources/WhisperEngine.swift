@@ -24,8 +24,28 @@ actor WhisperEngine {
             .appendingPathComponent(variant, isDirectory: true)
     }
 
+    /// True when every model component is fully on disk — not just "the folder
+    /// exists", which is true even mid-download. Only a complete model counts:
+    /// then loading skips the Hugging Face sync entirely (offline-first), and
+    /// a killed or racing downloader can't invalidate a working model.
     nonisolated func isModelDownloaded(tier: ModelTier) -> Bool {
-        FileManager.default.fileExists(atPath: Self.variantDir(tier.variant).path)
+        Self.isModelComplete(tier.variant)
+    }
+
+    private nonisolated static func isModelComplete(_ variant: String) -> Bool {
+        let dir = variantDir(variant)
+        let fm = FileManager.default
+        for required in ["AudioEncoder.mlmodelc/weights/weight.bin",
+                         "TextDecoder.mlmodelc/weights/weight.bin",
+                         "MelSpectrogram.mlmodelc/coremldata.bin",
+                         "config.json"] {
+            guard fm.fileExists(atPath: dir.appendingPathComponent(required).path) else { return false }
+        }
+        // Leftover *.incomplete markers mean an interrupted download
+        if let files = fm.enumerator(atPath: dir.path) {
+            for case let f as String in files where f.hasSuffix(".incomplete") { return false }
+        }
+        return true
     }
 
     /// Model for this tier is loaded into memory.
@@ -38,11 +58,23 @@ actor WhisperEngine {
         if pipe != nil, loadedVariant == tier.variant { return }
         let variant = tier.variant
 
-        let modelFolder = try await WhisperKit.download(
-            variant: variant,
-            downloadBase: Self.modelsBase,
-            progressCallback: { p in progress(p.fractionCompleted) }
-        )
+        // Offline-first: a complete model on disk loads as-is, without asking
+        // Hugging Face anything. The network sync runs only for a missing or
+        // partial model — it re-verifies every file and, if interrupted (app
+        // killed mid-preload) or raced by a second instance, can invalidate
+        // a previously working model and trigger a full ~950 MB re-download.
+        let modelFolder: URL
+        if Self.isModelComplete(variant) {
+            Log.d("model: complete on disk — offline load")
+            modelFolder = Self.variantDir(variant)
+        } else {
+            Log.d("model: missing/partial — syncing with Hugging Face")
+            modelFolder = try await WhisperKit.download(
+                variant: variant,
+                downloadBase: Self.modelsBase,
+                progressCallback: { p in progress(p.fractionCompleted) }
+            )
+        }
 
         let config = WhisperKitConfig(
             model: variant,

@@ -29,6 +29,7 @@ enum Paster {
         let pb = NSPasteboard.general
 
         guard focusLooksEditable() else {
+            Log.d("paste: no text focus -> kept in clipboard")
             restoreWork?.cancel()
             restoreWork = nil
             pendingRestore = nil

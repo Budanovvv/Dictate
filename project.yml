@@ -26,9 +26,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
         PRODUCT_NAME: Dictate
-        MARKETING_VERSION: "2.0.3"
+        MARKETING_VERSION: "2.0.4"
         # Sparkle compares CFBundleVersion (= this) — bump on every release.
-        CURRENT_PROJECT_VERSION: "4"
+        CURRENT_PROJECT_VERSION: "5"
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.0"
         # ObjC shim: converts NSException from AVFoundation into NSError
@@ -58,6 +58,8 @@ targets:
       - path: Sources/Settings.swift
       - path: Sources/LanguageList.swift
       - path: Sources/AudioRecorder.swift
+      - path: Sources/AudioDevices.swift
+      - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift
       - path: Sources/ObjCExceptionCatcher.h
       - path: Sources/ObjCExceptionCatcher.m

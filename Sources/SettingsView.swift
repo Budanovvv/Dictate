@@ -20,6 +20,8 @@ struct SettingsView: View {
     @State private var modelReady = WhisperEngine.shared.isModelDownloaded(tier: Settings.shared.modelTier)
     @State private var downloadingModel = false
     @State private var modelProgress = 0.0
+    @State private var micUID = Settings.shared.micUID
+    @State private var micDevices = AudioInputDevices.all()
 
     private var languageOptions: [(code: String, name: String)] { LanguageList.options }
 
@@ -34,7 +36,21 @@ struct SettingsView: View {
                     }
                 }
                 .onChange(of: language) { Settings.shared.language = $0 }
-            } header: { Text(L("Dictation")) }
+
+                Picker(L("Microphone"), selection: $micUID) {
+                    Text(L("Built-in (recommended)")).tag("")
+                    Text(L("System default")).tag("system")
+                    ForEach(micDevices.filter { !$0.isBuiltIn }, id: \.uid) { dev in
+                        Text(dev.isBluetooth ? "⚠️ " + dev.name : dev.name).tag(dev.uid)
+                    }
+                }
+                .onChange(of: micUID) { Settings.shared.micUID = $0 }
+            } header: { Text(L("Dictation")) } footer: {
+                if micUID != "" {
+                    Text(L("Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
 
             // — Shortcuts —
             Section {

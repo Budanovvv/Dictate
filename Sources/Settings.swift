@@ -42,6 +42,14 @@ final class Settings {
         set { d.set(newValue, forKey: "translateKeyName") }
     }
 
+    /// Recording microphone: "" — built-in (recommended: no Bluetooth
+    /// negotiation delays, no HFP quality drop), "system" — follow the
+    /// system default input, otherwise a specific device UID.
+    var micUID: String {
+        get { d.string(forKey: "micUID") ?? "" }
+        set { d.set(newValue, forKey: "micUID") }
+    }
+
     /// Transcription hint: names, terms, jargon.
     var prompt: String {
         get { d.string(forKey: "prompt") ?? "" }

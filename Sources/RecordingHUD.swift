@@ -118,7 +118,15 @@ final class RecordingHUD {
             ctx.duration = 0.18
             panel.animator().alphaValue = 0
         } completionHandler: { [weak panel] in
-            panel?.orderOut(nil)
+            // A show() may have started while this fade was in flight (rapid
+            // back-to-back dictations) — its completion must not yank the
+            // freshly shown pill off screen. Only order out if still hidden.
+            if let panel, panel.alphaValue == 0 {
+                panel.orderOut(nil)
+                Log.d("hud: hidden (ordered out)")
+            } else {
+                Log.d("hud: hide skipped — a new show is in flight")
+            }
         }
     }
 
@@ -151,6 +159,7 @@ final class RecordingHUD {
         position(panel)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        Log.d("hud: show \(model.mode) visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) origin=\(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y))")
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.2
             panel.animator().alphaValue = 1

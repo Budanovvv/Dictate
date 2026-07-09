@@ -101,6 +101,9 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Built-in (recommended)": "Встроенный (рекомендуется)",
+        "System default": "Системный по умолчанию",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Bluetooth-микрофоны стартуют по несколько секунд и пишут звук телефонного качества — встроенный микрофон быстрее и точнее.",
         "Recording…": "Записываю…",
         "No text cursor — copied, press ⌘V to paste": "Курсор не в поле ввода — текст скопирован, нажмите ⌘V",
         "Recent dictations": "Последние диктовки",
@@ -245,6 +248,9 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Built-in (recommended)": "Вбудований (рекомендовано)",
+        "System default": "Системний за замовчуванням",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Bluetooth-мікрофони стартують по кілька секунд і пишуть звук телефонної якості — вбудований мікрофон швидший і точніший.",
         "Recording…": "Записую…",
         "No text cursor — copied, press ⌘V to paste": "Курсор не в полі вводу — текст скопійовано, натисніть ⌘V",
         "Recent dictations": "Останні диктовки",
@@ -380,6 +386,9 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Built-in (recommended)": "Integrado (recomendado)",
+        "System default": "Predeterminado del sistema",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Los micrófonos Bluetooth tardan segundos en arrancar y graban con calidad telefónica — el micrófono integrado es más rápido y preciso.",
         "Recording…": "Grabando…",
         "No text cursor — copied, press ⌘V to paste": "No hay cursor de texto — copiado, pulsa ⌘V para pegar",
         "Recent dictations": "Dictados recientes",
@@ -524,6 +533,9 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Built-in (recommended)": "Integrado (recomendado)",
+        "System default": "Padrão do sistema",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Microfones Bluetooth levam segundos para iniciar e gravam com qualidade telefônica — o microfone integrado é mais rápido e preciso.",
         "Recording…": "Gravando…",
         "No text cursor — copied, press ⌘V to paste": "Sem cursor de texto — copiado, pressione ⌘V para colar",
         "Recent dictations": "Ditados recentes",
@@ -668,6 +680,9 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Built-in (recommended)": "Intégré (recommandé)",
+        "System default": "Par défaut du système",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Les micros Bluetooth mettent quelques secondes à démarrer et enregistrent en qualité téléphonique — le micro intégré est plus rapide et plus précis.",
         "Recording…": "Enregistrement…",
         "No text cursor — copied, press ⌘V to paste": "Pas de curseur de texte — copié, appuyez sur ⌘V pour coller",
         "Recent dictations": "Dictées récentes",
@@ -812,6 +827,9 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Built-in (recommended)": "Integriert (empfohlen)",
+        "System default": "Systemstandard",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Bluetooth-Mikrofone starten erst nach Sekunden und nehmen in Telefonqualität auf — das integrierte Mikrofon ist schneller und genauer.",
         "Recording…": "Aufnahme…",
         "No text cursor — copied, press ⌘V to paste": "Kein Textcursor — kopiert, ⌘V zum Einfügen drücken",
         "Recent dictations": "Letzte Diktate",
@@ -956,6 +974,9 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Built-in (recommended)": "内置（推荐）",
+        "System default": "系统默认",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "蓝牙麦克风需要几秒钟才能启动，且录音质量为电话级别 — 内置麦克风更快、更准确。",
         "Recording…": "录音中…",
         "No text cursor — copied, press ⌘V to paste": "光标不在输入框中 — 已复制，按 ⌘V 粘贴",
         "Recent dictations": "最近的听写",
@@ -1100,6 +1121,9 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Built-in (recommended)": "内蔵（推奨）",
+        "System default": "システムのデフォルト",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Bluetooth マイクは起動に数秒かかり、電話品質で録音されます — 内蔵マイクの方が速く正確です。",
         "Recording…": "録音中…",
         "No text cursor — copied, press ⌘V to paste": "テキストカーソルがありません — コピー済み、⌘V で貼り付け",
         "Recent dictations": "最近の音声入力",
@@ -1244,6 +1268,9 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Built-in (recommended)": "내장 (권장)",
+        "System default": "시스템 기본값",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "블루투스 마이크는 시작에 몇 초가 걸리고 전화 품질로 녹음됩니다 — 내장 마이크가 더 빠르고 정확합니다.",
         "Recording…": "녹음 중…",
         "No text cursor — copied, press ⌘V to paste": "텍스트 커서가 없습니다 — 복사됨, ⌘V로 붙여넣기",
         "Recent dictations": "최근 받아쓰기",
@@ -1388,6 +1415,9 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Built-in (recommended)": "Tích hợp (khuyến nghị)",
+        "System default": "Mặc định hệ thống",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Micro Bluetooth mất vài giây để khởi động và ghi âm ở chất lượng cuộc gọi — micro tích hợp nhanh và chính xác hơn.",
         "Recording…": "Đang ghi âm…",
         "No text cursor — copied, press ⌘V to paste": "Không có con trỏ văn bản — đã sao chép, nhấn ⌘V để dán",
         "Recent dictations": "Các lần đọc gần đây",
@@ -1532,6 +1562,9 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Built-in (recommended)": "Built-in (inirerekomenda)",
+        "System default": "Default ng system",
+        "Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate.": "Ang mga Bluetooth mic ay nangangailangan ng ilang segundo para magsimula at nagrerekord sa kalidad ng tawag — mas mabilis at mas tumpak ang built-in na mic.",
         "Recording…": "Nagre-record…",
         "No text cursor — copied, press ⌘V to paste": "Walang text cursor — nakopya, pindutin ang ⌘V para i-paste",
         "Recent dictations": "Mga kamakailang dikta",
