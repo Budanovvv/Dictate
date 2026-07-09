@@ -21,8 +21,6 @@ final class DictationController {
     var onLevel: ((Double) -> Void)?
     /// Transcription progress: fraction of audio processed (0…1) + words so far.
     var onTranscribeProgress: ((Double, Int) -> Void)?
-    /// Duration of the recording being transcribed (for the HUD's bar-vs-spinner choice).
-    private(set) var lastRecordingDuration: Double = 0
     /// Result ready: success, word count, transcription seconds.
     var onResult: ((Bool, Int, Double) -> Void)?
     /// Transcribed text (for the onboarding "try it" box).
@@ -170,7 +168,6 @@ final class DictationController {
             return  // accidental short press
         }
 
-        lastRecordingDuration = duration
         state = .transcribing
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt

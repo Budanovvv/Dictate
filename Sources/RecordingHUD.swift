@@ -16,8 +16,8 @@ final class HUDModel: ObservableObject {
     /// Determinate transcription: fraction of audio processed (monotonic) + words so far.
     @Published var transcribeFraction: Double = 0
     @Published var transcribeWords: Int = 0
-    /// false — spinner, true — progress bar (long recording or slow recognition).
-    @Published var transcribeBar = false
+    /// Bumped on every level update — drives the equalizer ripple.
+    @Published var levelTick = 0
 }
 
 final class RecordingHUD {
@@ -25,7 +25,6 @@ final class RecordingHUD {
     private var panel: NSPanel?
     private var elapsedTimer: Timer?
     private var hideWork: DispatchWorkItem?
-    private var barSwitchWork: DispatchWorkItem?
 
     func showRecording() {
         cancelHide()
@@ -36,42 +35,24 @@ final class RecordingHUD {
         show()
     }
 
-    /// audioSeconds — duration of the recording. Long recordings get a
-    /// determinate progress bar right away (NN/g: percent-done for 10 s+);
-    /// short ones keep the spinner, switching to the bar only if recognition
-    /// drags on (HIG: indeterminate → determinate once duration is knowable).
-    func showTranscribing(audioSeconds: Double = 0) {
+    func showTranscribing() {
         cancelHide()
         stopElapsed()
         if model.mode != .transcribing {
             model.transcribeFraction = 0
             model.transcribeWords = 0
-            model.transcribeBar = audioSeconds > 25
         }
         model.mode = .transcribing
-        scheduleBarSwitch()
         show()
     }
 
     /// Progress from the recognizer. The bar only moves forward: chunks finish
     /// at uneven speed, and a bar that jumps back reads as a glitch. Capped at
-    /// 97% — the "Inserted" checkmark is the real 100%.
+    /// 97% — the "Inserted" state tops the strip up for real.
     func setTranscribeProgress(_ fraction: Double, words: Int) {
         guard model.mode == .transcribing else { return }
         model.transcribeFraction = max(model.transcribeFraction, min(fraction, 0.97))
         model.transcribeWords = words
-    }
-
-    private func scheduleBarSwitch() {
-        barSwitchWork?.cancel()
-        barSwitchWork = nil
-        guard !model.transcribeBar else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.model.mode == .transcribing else { return }
-            self.model.transcribeBar = true
-        }
-        barSwitchWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
     }
 
     func showDownloading(_ progress: Double) {
@@ -127,8 +108,6 @@ final class RecordingHUD {
 
     func hide() {
         stopElapsed()
-        barSwitchWork?.cancel()
-        barSwitchWork = nil
         guard let panel else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
@@ -140,6 +119,7 @@ final class RecordingHUD {
 
     func setLevel(_ level: Double) {
         model.level = model.level * 0.5 + level * 0.5
+        model.levelTick &+= 1
     }
 
     // MARK: - private
@@ -224,105 +204,116 @@ private struct HUDView: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         )
         .animation(.easeInOut(duration: 0.2), value: model.mode)
-        .animation(.easeInOut(duration: 0.2), value: model.transcribeBar)
     }
 
+    // One accent (the brand gradient) plus a single earned semantic color —
+    // the red REC dot. Neutral states stay gray; no system blue, no green.
+    // The pill is one permanent skeleton (icon slot · title · metric · strip):
+    // state changes mutate parameters of the SAME views, so transitions read
+    // as one object changing shape, not as screens replacing each other.
     @ViewBuilder
     private var icon: some View {
         switch model.mode {
-        case .recording:
-            PulsingDot()
-        case .transcribing:
-            ProgressView().controlSize(.small)
+        case .recording, .transcribing, .warming:
+            // one structural branch → stable identity: the dot recolors in place
+            PulsingDot(fill: model.mode == .recording
+                       ? AnyShapeStyle(Color.red)
+                       : AnyShapeStyle(Brand.gradientDiagonal))
         case .done:
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 20)).foregroundStyle(.green)
+                .font(.system(size: 20)).foregroundStyle(Brand.gradientDiagonal)
                 .symbolEffect(.bounce, options: .nonRepeating, value: model.mode)
         case .empty:
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
         case .downloading:
             Image(systemName: "arrow.down.circle")
-                .font(.system(size: 18)).foregroundStyle(.tint)
-        case .warming:
-            ProgressView().controlSize(.small)
+                .font(.system(size: 18)).foregroundStyle(Brand.gradientDiagonal)
         case .cancelled:
             Image(systemName: "xmark.circle")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
         case .copied:
             Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 17)).foregroundStyle(.tint)
+                .font(.system(size: 17)).foregroundStyle(.secondary)
         }
     }
 
-    @ViewBuilder
     private var content: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(titleFont)
+                    .foregroundStyle(titleIsSecondary ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let metric {
+                    Spacer(minLength: 8)
+                    Text(metric)
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let phase = stripPhase {
+                WaveStrip(phase: phase, level: model.level,
+                          tick: model.levelTick, fraction: stripFraction)
+            }
+        }
+    }
+
+    private var title: String {
         switch model.mode {
-        case .recording:
-            // Same two-row skeleton as .transcribing: title + metric on top,
-            // a 150 pt brand-gradient visualization below — the equalizer
-            // morphs into the progress capsule when recognition starts.
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(L("Recording…")).font(.system(size: 13, weight: .medium))
-                    Spacer(minLength: 8)
-                    Text(timeString(model.elapsed))
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Equalizer(level: model.level)
-            }
-        case .transcribing:
-            // The word counter is part of the layout from second zero — a
-            // counter popping in later reads as a layout glitch.
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(L("Recognizing…")).font(.system(size: 13, weight: .medium))
-                    Spacer(minLength: 8)
-                    Text(Lf("Words: %d", model.transcribeWords))
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                if model.transcribeBar {
-                    BrandBar(fraction: model.transcribeFraction)
-                        .frame(height: 12)  // same zone as the equalizer row
-                        .animation(.easeOut(duration: 0.25), value: model.transcribeFraction)
-                }
-            }
-        case .done:
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L("Inserted")).font(.system(size: 13, weight: .medium))
-                if model.words > 0 {
-                    Text(Lf("Words: %d · %.1f s", model.words, model.seconds))
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-        case .empty:
-            Text(L("Didn't catch that — hold the key while you speak"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        case .recording: return L("Recording…")
+        case .transcribing: return L("Recognizing…")
+        case .done: return L("Inserted")
+        case .empty: return L("Didn't catch that — hold the key while you speak")
         case .downloading:
-            VStack(alignment: .leading, spacing: 4) {
-                if model.downloadProgress < 0.999 {
-                    Text(Lf("Downloaded %d of %d MB", Int(model.downloadProgress * 950), 950))
-                        .font(.system(size: 12, weight: .medium).monospacedDigit())
-                    ProgressView(value: model.downloadProgress).frame(width: 150)
-                } else {
-                    Text(L("Warming up the model…")).font(.system(size: 12, weight: .medium))
-                }
-            }
-        case .warming:
-            Text(L("Warming up the model…")).font(.system(size: 13, weight: .medium))
-        case .cancelled:
-            Text(L("Cancelled")).font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
-        case .copied:
-            Text(L("No text cursor — copied, press ⌘V to paste"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            return model.downloadProgress < 0.999
+                ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * 950), 950)
+                : L("Warming up the model…")
+        case .warming: return L("Warming up the model…")
+        case .cancelled: return L("Cancelled")
+        case .copied: return L("No text cursor — copied, press ⌘V to paste")
+        }
+    }
+
+    private var titleFont: Font {
+        switch model.mode {
+        case .empty, .copied: return .system(size: 11, weight: .medium)
+        case .downloading: return .system(size: 12, weight: .medium).monospacedDigit()
+        default: return .system(size: 13, weight: .medium)
+        }
+    }
+
+    private var titleIsSecondary: Bool {
+        switch model.mode {
+        case .empty, .cancelled, .copied: return true
+        default: return false
+        }
+    }
+
+    private var metric: String? {
+        switch model.mode {
+        case .recording: return timeString(model.elapsed)
+        case .transcribing: return Lf("Words: %d", model.transcribeWords)
+        case .done: return model.words > 0 ? Lf("Words: %d · %.1f s", model.words, model.seconds) : nil
+        default: return nil
+        }
+    }
+
+    /// nil hides the strip (terminal informational flashes).
+    private var stripPhase: WaveStrip.Phase? {
+        switch model.mode {
+        case .recording: return .voice
+        case .transcribing, .downloading, .warming: return .progress
+        case .done: return .full
+        case .empty, .cancelled, .copied: return nil
+        }
+    }
+
+    private var stripFraction: Double {
+        switch model.mode {
+        case .transcribing: return model.transcribeFraction
+        case .downloading: return model.downloadProgress
+        default: return 0
         }
     }
 
@@ -331,27 +322,60 @@ private struct HUDView: View {
     }
 }
 
-/// Thin brand-gradient progress capsule (same style as the equalizer bars).
-private struct BrandBar: View {
+/// One permanent row of 23 brand capsules: the equalizer, the progress bar
+/// and the final full state are the same objects changing height and color —
+/// dancing while recording, settling into a segmented bar that fills capsule
+/// by capsule while recognizing, topping up on "Inserted".
+private struct WaveStrip: View {
+    enum Phase { case voice, progress, full }
+    let phase: Phase
+    let level: Double
+    /// Bumps with every level update — gives each capsule its own motion.
+    let tick: Int
     let fraction: Double
 
+    // Bell-curve weights: center capsules are taller when dancing
+    private static let weights: [Double] = (0..<23).map { 0.35 + 0.65 * sin(.pi * Double($0) / 22) }
+
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule().fill(Brand.gradientDiagonal)
-                    .frame(width: max(6, geo.size.width * fraction))
+        HStack(spacing: 3) {
+            ForEach(Self.weights.indices, id: \.self) { i in
+                Capsule()
+                    .fill(i < litCount ? AnyShapeStyle(Brand.gradient) : AnyShapeStyle(.quaternary))
+                    .frame(width: 3.5, height: barHeight(i))
             }
         }
-        .frame(width: 150, height: 5)
+        .frame(width: 150, height: 12, alignment: .leading)
+        .animation(.easeOut(duration: 0.12), value: tick)
+        .animation(.spring(duration: 0.45), value: phase)
+        .animation(.easeOut(duration: 0.25), value: litCount)
+    }
+
+    /// How many capsules are lit with the gradient.
+    private var litCount: Int {
+        switch phase {
+        case .voice, .full: return Self.weights.count
+        case .progress: return Int((fraction * Double(Self.weights.count)).rounded())
+        }
+    }
+
+    private func barHeight(_ i: Int) -> CGFloat {
+        guard case .voice = phase else { return 5 }
+        // ×3 boost: the 12 pt strip needs full swing at normal speech volume.
+        // The ripple gives capsules individual motion instead of one breath.
+        let boosted = min(1.0, level * 3)
+        let ripple = 0.55 + 0.45 * sin(Double(tick) * 0.6 + Double(i) * 1.7)
+        let h = 2.5 + 9.5 * boosted * Self.weights[i] * ripple
+        return CGFloat(max(2.5, h))
     }
 }
 
-private struct PulsingDot: View {
+private struct PulsingDot<S: ShapeStyle>: View {
+    let fill: S
     @State private var on = false
     var body: some View {
         Circle()
-            .fill(.red)
+            .fill(fill)
             .frame(width: 11, height: 11)
             .opacity(on ? 1 : 0.35)
             .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
@@ -359,27 +383,3 @@ private struct PulsingDot: View {
     }
 }
 
-private struct Equalizer: View {
-    let level: Double
-    // Bell-curve weights over 23 capsules (~150 pt, matching BrandBar): center is taller
-    private static let weights: [Double] = (0..<23).map { 0.35 + 0.65 * sin(.pi * Double($0) / 22) }
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(Self.weights.indices, id: \.self) { i in
-                Capsule()
-                    .fill(Brand.gradient)
-                    .frame(width: 3.5, height: barHeight(i))
-            }
-        }
-        .frame(width: 150, height: 12, alignment: .leading)
-        .animation(.easeOut(duration: 0.1), value: level)
-    }
-
-    private func barHeight(_ i: Int) -> CGFloat {
-        let minH = 2.5
-        let maxH = 12.0
-        let h = minH + (maxH - minH) * level * Self.weights[i]
-        return CGFloat(max(minH, h))
-    }
-}
