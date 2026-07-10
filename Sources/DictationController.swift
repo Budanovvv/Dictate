@@ -44,6 +44,11 @@ final class DictationController {
     private var tapFailureReported = false
     /// Current recording was started by the translate key.
     private var activeTranslate = false
+    /// App that was frontmost when the key was RELEASED — the intended paste
+    /// target. Captured at release, not press, so "hold key, click into the
+    /// target field, speak" stays legal; the guard covers only the recognition
+    /// window, where an app switch would send ⌘V to the wrong place.
+    private var targetAppPID: pid_t?
 
     private static let soundStart = NSSound(contentsOfFile: "/System/Library/Sounds/Pop.aiff", byReference: true)
     private static let soundStop = NSSound(contentsOfFile: "/System/Library/Sounds/Purr.aiff", byReference: true)
@@ -169,6 +174,7 @@ final class DictationController {
         guard state == .recording else { return }
         let (pcm, duration) = recorder.stop()
         Self.soundStop?.play()
+        targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         guard duration >= 0.3 else {
             state = .idle
@@ -256,7 +262,7 @@ final class DictationController {
         }
         var copied = false
         if !text.isEmpty, !suppressInsertion {
-            copied = Paster.insert(text) == .keptInClipboard
+            copied = Paster.insert(text, expectedTargetPID: targetAppPID) == .keptInClipboard
         }
         Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
         if copied {

@@ -19,23 +19,28 @@ enum Paster {
     private static var restoreWork: DispatchWorkItem?
 
     @discardableResult
-    static func insert(_ text: String) -> Outcome {
-        paste(text)
+    static func insert(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
+        paste(text, expectedTargetPID: expectedTargetPID)
     }
 
     @discardableResult
-    static func paste(_ text: String) -> Outcome {
+    static func paste(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
         guard !text.isEmpty else { return .pasted }
         let pb = NSPasteboard.general
 
+        // The synthetic ⌘V lands wherever the focus is NOW. If the user
+        // switched apps while recognition was running, a blind paste would
+        // drop the text into the wrong window — keep it in the clipboard.
+        if let expectedTargetPID,
+           let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != expectedTargetPID {
+            Log.d("paste: frontmost app changed -> kept in clipboard (now \(front.bundleIdentifier ?? "?"))")
+            return keepInClipboard(text, pb)
+        }
+
         guard focusLooksEditable() else {
             Log.d("paste: no text focus -> kept in clipboard")
-            restoreWork?.cancel()
-            restoreWork = nil
-            pendingRestore = nil
-            pb.clearContents()
-            pb.setString(text, forType: .string)
-            return .keptInClipboard
+            return keepInClipboard(text, pb)
         }
 
         // If a restore from the previous paste is still pending, the original
@@ -60,6 +65,15 @@ enum Paster {
         return .pasted
     }
 
+    private static func keepInClipboard(_ text: String, _ pb: NSPasteboard) -> Outcome {
+        restoreWork?.cancel()
+        restoreWork = nil
+        pendingRestore = nil
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        return .keptInClipboard
+    }
+
     /// Best-effort probe of the system-wide focused element. Only a confident
     /// "not a text target" blocks the paste: AX info is often missing or wrong
     /// (Chromium builds its tree lazily), so unknown roles and errors paste
@@ -77,6 +91,7 @@ enum Paster {
               let role = roleRef as? String else { return true }
 
         if [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) { return true }
+        Log.d("paste: focused role=\(role)")
 
         let definitelyNotText: Set<String> = [
             kAXButtonRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole,

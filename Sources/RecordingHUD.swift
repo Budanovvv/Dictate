@@ -182,7 +182,12 @@ final class RecordingHUD {
         panel.hasShadow = true
         panel.level = .statusBar
         panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        // .moveToActiveSpace, not .canJoinAllSpaces: the pill must appear on
+        // whatever Space is active at show() time, INCLUDING another app's
+        // full-screen Space. canJoinAllSpaces+stationary left the panel on
+        // desktop Spaces only — invisible while dictating into a full-screen
+        // app (log signature: "hud: show … activeSpace=false").
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         self.panel = panel
         return panel
@@ -280,7 +285,7 @@ private struct HUDView: View {
                 : L("Warming up the model…")
         case .warming: return L("Warming up the model…")
         case .cancelled: return L("Cancelled")
-        case .copied: return L("No text cursor — copied, press ⌘V to paste")
+        case .copied: return L("Not inserted — text copied, press ⌘V to paste")
         }
     }
 
