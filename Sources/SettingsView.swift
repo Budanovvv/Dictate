@@ -22,12 +22,39 @@ struct SettingsView: View {
     @State private var modelProgress = 0.0
     @State private var micUID = Settings.shared.micUID
     @State private var micDevices = AudioInputDevices.all()
+    @State private var replacements = Settings.shared.replacements
+    @State private var removeFillers = Settings.shared.removeFillers
 
     private var languageOptions: [(code: String, name: String)] { LanguageList.options }
 
+    /// Language whose command phrases the showcase lists: the spoken language
+    /// when set and supported; auto-detect → interface language; else English.
+    private var commandsLanguageCode: String {
+        if !language.isEmpty {
+            return Replacements.commandsByLanguage[language] != nil ? language : "en"
+        }
+        let ui = loc.effective.rawValue
+        return Replacements.commandsByLanguage[ui] != nil ? ui : "en"
+    }
+
+    private var commandsLanguageName: String {
+        languageOptions.first(where: { $0.code == commandsLanguageCode })?.name ?? "English"
+    }
+
+    private func replacementBinding(_ i: Int, _ j: Int) -> Binding<String> {
+        Binding(
+            get: { i < replacements.count ? replacements[i][j] : "" },
+            set: {
+                guard i < replacements.count else { return }
+                replacements[i][j] = $0
+                Settings.shared.replacements = replacements
+            }
+        )
+    }
+
     var body: some View {
         Form {
-            // — Dictation config —
+            // — Languages: spoken and interface, side by side —
             Section {
                 Picker(L("Spoken language"), selection: $language) {
                     Text(L("Automatic (detect any language)")).tag("")
@@ -37,6 +64,15 @@ struct SettingsView: View {
                 }
                 .onChange(of: language) { Settings.shared.language = $0 }
 
+                Picker(L("Interface language"), selection: Binding(
+                    get: { loc.language }, set: { loc.setLanguage($0) }
+                )) {
+                    ForEach(AppLanguage.allCases) { lang in Text(lang.label).tag(lang) }
+                }
+            } header: { Text(L("Language")) }
+
+            // — Dictation config —
+            Section {
                 Picker(L("Microphone"), selection: $micUID) {
                     Text(L("Built-in (recommended)")).tag("")
                     Text(L("System default")).tag("system")
@@ -45,6 +81,9 @@ struct SettingsView: View {
                     }
                 }
                 .onChange(of: micUID) { Settings.shared.micUID = $0 }
+
+                Toggle(L("Remove filler words"), isOn: $removeFillers)
+                    .onChange(of: removeFillers) { Settings.shared.removeFillers = $0 }
             } header: { Text(L("Dictation")) } footer: {
                 if micUID != "" {
                     Text(L("Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate."))
@@ -111,13 +150,56 @@ struct SettingsView: View {
                 Text(L("Names, terms, jargon — comma-separated. Helps recognition spell them right."))
             }
 
+            // — Replacements —
+            Section {
+                ForEach(replacements.indices, id: \.self) { i in
+                    HStack(spacing: 8) {
+                        TextField(L("Heard"), text: replacementBinding(i, 0))
+                        Image(systemName: "arrow.right")
+                            .font(.caption).foregroundStyle(.secondary)
+                        TextField(L("Insert"), text: replacementBinding(i, 1))
+                        Button {
+                            replacements.remove(at: i)
+                            Settings.shared.replacements = replacements
+                        } label: {
+                            Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Button {
+                    replacements.append(["", ""])
+                    Settings.shared.replacements = replacements
+                } label: {
+                    Label(L("Add replacement"), systemImage: "plus")
+                }
+                .buttonStyle(.plain)
+            } header: { Text(L("Replacements")) } footer: {
+                Text(L("Exact fixes applied to the recognized text: names, brands, acronyms."))
+            }
+
+            // — Voice commands (read-only showcase). You SPEAK the commands,
+            // so they follow the spoken language; auto-detect falls back to
+            // the interface language, unsupported languages to English.
+            Section {
+                ForEach(Replacements.commands(for: commandsLanguageCode), id: \.phrase) { cmd in
+                    LabeledContent {
+                        Text(cmd.output.replacingOccurrences(of: "\n", with: "⏎"))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        Text("«\(cmd.phrase)»")
+                    }
+                }
+            } header: {
+                Text(L("Voice commands"))
+            } footer: {
+                Text(Lf("Commands for: %@. ", commandsLanguageName)
+                     + L("Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it."))
+            }
+
             // — General —
             Section {
-                Picker(L("Interface language"), selection: Binding(
-                    get: { loc.language }, set: { loc.setLanguage($0) }
-                )) {
-                    ForEach(AppLanguage.allCases) { lang in Text(lang.label).tag(lang) }
-                }
                 Toggle(L("Launch at login"), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { enable in
                         do {

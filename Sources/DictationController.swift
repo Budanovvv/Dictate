@@ -239,13 +239,21 @@ final class DictationController {
                 }
             }
             let started = Date()
-            let text = try await WhisperEngine.shared.transcribe(
+            let (text, detected) = try await WhisperEngine.shared.transcribe(
                 floats: floats, language: language, prompt: prompt, translate: translate,
                 onProgress: { [weak self] fraction, words in
                     DispatchQueue.main.async { self?.onTranscribeProgress?(fraction, words) }
                 }
             )
-            await finish(text: text, seconds: Date().timeIntervalSince(started), translate: translate)
+            // Fillers are cleaned strictly in THIS dictation's language:
+            // the chosen one, or whatever Whisper detected in auto mode;
+            // translate output is always English.
+            let fillerLanguage: String? = Settings.shared.removeFillers
+                ? (translate ? "en" : (language.isEmpty ? detected : language))
+                : nil
+            let processed = Replacements.process(text, rules: Settings.shared.replacements,
+                                                 fillerLanguage: fillerLanguage)
+            await finish(text: processed, seconds: Date().timeIntervalSince(started), translate: translate)
         } catch {
             await MainActor.run {
                 self.state = .idle

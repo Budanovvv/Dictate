@@ -50,8 +50,12 @@ enum Paster {
         }
         restoreWork?.cancel()
 
+        // Trailing space so back-to-back dictations don't glue into one word.
+        // Only on the auto-paste path: history, the onboarding box and text
+        // kept in the clipboard for a manual ⌘V stay verbatim.
+        let insertion = text.last?.isWhitespace == true ? text : text + " "
         pb.clearContents()
-        pb.setString(text, forType: .string)
+        pb.setString(insertion, forType: .string)
 
         // Short pause so the pasteboard server applies the change
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {

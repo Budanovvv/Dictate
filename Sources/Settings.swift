@@ -56,6 +56,21 @@ final class Settings {
         set { d.set(newValue, forKey: "prompt") }
     }
 
+    /// Remove filler words ("э-э", "um") from the result. Off by default —
+    /// cleanup is opt-in, the raw text is the honest default.
+    var removeFillers: Bool {
+        get { d.bool(forKey: "removeFillers") }
+        set { d.set(newValue, forKey: "removeFillers") }
+    }
+
+    /// User dictionary: [heard phrase, exact output] pairs applied to the
+    /// recognized text. Spoken punctuation/line-break commands are built in
+    /// (Replacements.commands), not stored here.
+    var replacements: [[String]] {
+        get { d.array(forKey: "replacements") as? [[String]] ?? [] }
+        set { d.set(newValue, forKey: "replacements") }
+    }
+
     /// Single model, no tier picker — see ModelTier.
     var modelTier: ModelTier { .ultra }
 }

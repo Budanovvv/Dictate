@@ -21,7 +21,7 @@ final class TranscribeE2ETests: XCTestCase {
         try await WhisperEngine.shared.prepare(tier: .ultra) { _ in }
         let text = try await WhisperEngine.shared.transcribe(
             floats: floats, language: "en", prompt: ""
-        ).lowercased()
+        ).text.lowercased()
 
         XCTAssertTrue(text.contains("quick brown fox"),
                       "recognized: \"\(text)\"")
@@ -41,7 +41,7 @@ final class TranscribeE2ETests: XCTestCase {
         try await WhisperEngine.shared.prepare(tier: .ultra) { _ in }
         let text = try await WhisperEngine.shared.transcribe(
             floats: floats, language: "ru", prompt: "", translate: true
-        ).lowercased()
+        ).text.lowercased()
 
         // English output: no Cyrillic, key content words present.
         XCTAssertNil(text.range(of: "[а-яё]", options: .regularExpression),

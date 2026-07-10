@@ -101,6 +101,17 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Remove filler words": "Убирать слова-паразиты",
+        "Commands for: %@. ": "Команды для языка: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Точечные правки распознанного текста: имена, бренды, аббревиатуры.",
+        "Voice commands": "Голосовые команды",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Встроены и всегда активны — просто произнесите фразу во время диктовки. Замена выше с той же фразой имеет приоритет.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Точечные правки распознанного текста: имена, бренды, аббревиатуры. Голосовая пунктуация встроена — говорите «запятая», «вопросительный знак» или «с новой строки».",
+        "Replacements": "Замены",
+        "Heard": "Услышано",
+        "Insert": "Вставить",
+        "Add replacement": "Добавить замену",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Точечные правки распознанного текста: имена, бренды, аббревиатуры. «\\n» в замене вставляет перенос строки — так работают команды форматирования выше.",
         "Sorry, I didn't catch that — could you say it again?": "Извини, пожалуйста, я тебя не расслышал — мог бы ты повторить?",
         "Not inserted — text copied, press ⌘V to paste": "Не вставлено — текст скопирован, нажмите ⌘V",
         "Built-in (recommended)": "Встроенный (рекомендуется)",
@@ -250,6 +261,17 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Remove filler words": "Прибирати слова-паразити",
+        "Commands for: %@. ": "Команди для мови: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Точкові правки розпізнаного тексту: імена, бренди, абревіатури.",
+        "Voice commands": "Голосові команди",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Вбудовані та завжди активні — просто промовте фразу під час диктування. Заміна вище з тією ж фразою має пріоритет.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Точкові правки розпізнаного тексту: імена, бренди, абревіатури. Голосова пунктуація вбудована — кажіть «кома», «знак питання» або «з нового рядка».",
+        "Replacements": "Заміни",
+        "Heard": "Почуто",
+        "Insert": "Вставити",
+        "Add replacement": "Додати заміну",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Точкові правки розпізнаного тексту: імена, бренди, абревіатури. «\\n» у заміні вставляє перенос рядка — так працюють команди форматування вище.",
         "Sorry, I didn't catch that — could you say it again?": "Вибач, будь ласка, я тебе не розчув — міг би ти повторити?",
         "Not inserted — text copied, press ⌘V to paste": "Не вставлено — текст скопійовано, натисніть ⌘V",
         "Built-in (recommended)": "Вбудований (рекомендовано)",
@@ -390,6 +412,17 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Remove filler words": "Eliminar muletillas",
+        "Commands for: %@. ": "Comandos para: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Correcciones exactas del texto reconocido: nombres, marcas, siglas.",
+        "Voice commands": "Comandos de voz",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Integrados y siempre activos — simplemente di la frase mientras dictas. Una sustitución arriba con la misma frase tiene prioridad.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Correcciones exactas del texto reconocido: nombres, marcas, siglas. La puntuación hablada está integrada — di «comma», «question mark» o «new line».",
+        "Replacements": "Sustituciones",
+        "Heard": "Oído",
+        "Insert": "Insertar",
+        "Add replacement": "Añadir sustitución",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Correcciones exactas del texto reconocido: nombres, marcas, siglas. «\\n» en la salida inserta un salto de línea — así funcionan los comandos de formato.",
         "Sorry, I didn't catch that — could you say it again?": "Perdona, no te he oído bien — ¿podrías repetirlo?",
         "Not inserted — text copied, press ⌘V to paste": "No insertado — texto copiado, pulsa ⌘V para pegar",
         "Built-in (recommended)": "Integrado (recomendado)",
@@ -539,6 +572,17 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Remove filler words": "Remover vícios de linguagem",
+        "Commands for: %@. ": "Comandos para: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Correções exatas do texto reconhecido: nomes, marcas, siglas.",
+        "Voice commands": "Comandos de voz",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Integrados e sempre ativos — basta dizer a frase enquanto dita. Uma substituição acima com a mesma frase tem prioridade.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Correções exatas do texto reconhecido: nomes, marcas, siglas. A pontuação falada é integrada — diga «comma», «question mark» ou «new line».",
+        "Replacements": "Substituições",
+        "Heard": "Ouvido",
+        "Insert": "Inserir",
+        "Add replacement": "Adicionar substituição",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Correções exatas do texto reconhecido: nomes, marcas, siglas. «\\n» na saída insere uma quebra de linha — os comandos de formatação funcionam assim.",
         "Sorry, I didn't catch that — could you say it again?": "Desculpe, não consegui ouvir — pode repetir?",
         "Not inserted — text copied, press ⌘V to paste": "Não inserido — texto copiado, pressione ⌘V para colar",
         "Built-in (recommended)": "Integrado (recomendado)",
@@ -688,6 +732,17 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Remove filler words": "Supprimer les tics de langage",
+        "Commands for: %@. ": "Commandes pour : %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Corrections exactes du texte reconnu : noms, marques, sigles.",
+        "Voice commands": "Commandes vocales",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Intégrées et toujours actives — dites simplement la phrase en dictant. Un remplacement ci-dessus avec la même phrase est prioritaire.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Corrections exactes du texte reconnu : noms, marques, sigles. La ponctuation dictée est intégrée — dites «comma», «question mark» ou «new line».",
+        "Replacements": "Remplacements",
+        "Heard": "Entendu",
+        "Insert": "Insérer",
+        "Add replacement": "Ajouter un remplacement",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Corrections exactes du texte reconnu : noms, marques, sigles. «\\n» dans la sortie insère un saut de ligne — les commandes de mise en forme fonctionnent ainsi.",
         "Sorry, I didn't catch that — could you say it again?": "Désolé, je ne t'ai pas bien entendu — peux-tu répéter ?",
         "Not inserted — text copied, press ⌘V to paste": "Non inséré — texte copié, appuyez sur ⌘V pour coller",
         "Built-in (recommended)": "Intégré (recommandé)",
@@ -837,6 +892,17 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Remove filler words": "Füllwörter entfernen",
+        "Commands for: %@. ": "Befehle für: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Punktgenaue Korrekturen des erkannten Texts: Namen, Marken, Abkürzungen.",
+        "Voice commands": "Sprachbefehle",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Eingebaut und immer aktiv — sagen Sie einfach die Phrase beim Diktieren. Eine Ersetzung oben mit derselben Phrase hat Vorrang.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Punktgenaue Korrekturen des erkannten Texts: Namen, Marken, Abkürzungen. Gesprochene Interpunktion ist eingebaut — sagen Sie «comma», «question mark» oder «new line».",
+        "Replacements": "Ersetzungen",
+        "Heard": "Gehört",
+        "Insert": "Einfügen",
+        "Add replacement": "Ersetzung hinzufügen",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Punktgenaue Korrekturen des erkannten Texts: Namen, Marken, Abkürzungen. «\\n» in der Ausgabe fügt einen Zeilenumbruch ein — so funktionieren die Formatierungsbefehle.",
         "Sorry, I didn't catch that — could you say it again?": "Entschuldige, ich habe dich nicht verstanden — kannst du das wiederholen?",
         "Not inserted — text copied, press ⌘V to paste": "Nicht eingefügt — Text kopiert, ⌘V zum Einfügen",
         "Built-in (recommended)": "Integriert (empfohlen)",
@@ -986,6 +1052,17 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Remove filler words": "移除口头语",
+        "Commands for: %@. ": "命令语言：%@。",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "对识别文本的精确修正：名称、品牌、缩写。",
+        "Voice commands": "语音命令",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "内置且始终启用 — 听写时说出该短语即可。上方相同短语的替换优先。",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "对识别文本的精确修正：名称、品牌、缩写。语音标点为内置功能 — 说 «comma»、«question mark» 或 «new line»。",
+        "Replacements": "替换",
+        "Heard": "听到",
+        "Insert": "插入",
+        "Add replacement": "添加替换",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "对识别文本的精确修正：名称、品牌、缩写。输出中的«\\n»插入换行符 — 格式命令即以此方式工作。",
         "Sorry, I didn't catch that — could you say it again?": "抱歉，我没有听清 — 能再说一遍吗？",
         "Not inserted — text copied, press ⌘V to paste": "未插入 — 文本已复制，按 ⌘V 粘贴",
         "Built-in (recommended)": "内置（推荐）",
@@ -1135,6 +1212,17 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Remove filler words": "つなぎ言葉を除去",
+        "Commands for: %@. ": "コマンドの言語：%@。",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "認識テキストへの正確な修正：名前、ブランド、略語。",
+        "Voice commands": "音声コマンド",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "内蔵で常に有効 — 音声入力中にフレーズを話すだけです。上の同じフレーズの置換が優先されます。",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "認識テキストへの正確な修正：名前、ブランド、略語。音声句読点は内蔵です — «comma»、«question mark»、«new line» と話してください。",
+        "Replacements": "置換",
+        "Heard": "聞き取り",
+        "Insert": "挿入",
+        "Add replacement": "置換を追加",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "認識テキストへの正確な修正：名前、ブランド、略語。出力の«\\n»は改行を挿入します — 書式コマンドはこの仕組みで動きます。",
         "Sorry, I didn't catch that — could you say it again?": "すみません、聞き取れませんでした — もう一度お願いします",
         "Not inserted — text copied, press ⌘V to paste": "挿入されませんでした — テキストをコピー済み、⌘V で貼り付け",
         "Built-in (recommended)": "内蔵（推奨）",
@@ -1284,6 +1372,17 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Remove filler words": "군말 제거",
+        "Commands for: %@. ": "명령 언어: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "인식된 텍스트의 정확한 교정: 이름, 브랜드, 약어.",
+        "Voice commands": "음성 명령",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "내장되어 항상 활성화 — 받아쓰기 중에 해당 문구를 말하면 됩니다. 위의 같은 문구의 치환이 우선합니다.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "인식된 텍스트의 정확한 교정: 이름, 브랜드, 약어. 음성 문장부호가 내장되어 있습니다 — «comma», «question mark», «new line»이라고 말하세요.",
+        "Replacements": "치환",
+        "Heard": "들린 말",
+        "Insert": "삽입",
+        "Add replacement": "치환 추가",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "인식된 텍스트의 정확한 교정: 이름, 브랜드, 약어. 출력의 «\\n»는 줄바꿈을 삽입합니다 — 서식 명령이 이렇게 작동합니다.",
         "Sorry, I didn't catch that — could you say it again?": "죄송해요, 잘 못 들었어요 — 다시 한 번 말씀해 주세요",
         "Not inserted — text copied, press ⌘V to paste": "삽입되지 않음 — 텍스트 복사됨, ⌘V로 붙여넣기",
         "Built-in (recommended)": "내장 (권장)",
@@ -1433,6 +1532,17 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Remove filler words": "Loại bỏ từ đệm",
+        "Commands for: %@. ": "Lệnh cho: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Sửa chính xác văn bản đã nhận dạng: tên, thương hiệu, từ viết tắt.",
+        "Voice commands": "Lệnh thoại",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Tích hợp sẵn và luôn bật — chỉ cần nói cụm từ khi đọc. Thay thế ở trên với cùng cụm từ sẽ được ưu tiên.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Sửa chính xác văn bản đã nhận dạng: tên, thương hiệu, từ viết tắt. Dấu câu bằng giọng nói được tích hợp sẵn — hãy nói «comma», «question mark» hoặc «new line».",
+        "Replacements": "Thay thế",
+        "Heard": "Nghe thấy",
+        "Insert": "Chèn",
+        "Add replacement": "Thêm thay thế",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Sửa chính xác văn bản đã nhận dạng: tên, thương hiệu, từ viết tắt. «\\n» trong kết quả chèn ngắt dòng — các lệnh định dạng hoạt động như vậy.",
         "Sorry, I didn't catch that — could you say it again?": "Xin lỗi, tôi chưa nghe rõ — bạn nói lại được không?",
         "Not inserted — text copied, press ⌘V to paste": "Chưa chèn — văn bản đã sao chép, nhấn ⌘V để dán",
         "Built-in (recommended)": "Tích hợp (khuyến nghị)",
@@ -1582,6 +1692,17 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Remove filler words": "Alisin ang mga filler word",
+        "Commands for: %@. ": "Mga command para sa: %@. ",
+        "Exact fixes applied to the recognized text: names, brands, acronyms.": "Eksaktong pagwawasto ng nakilalang teksto: pangalan, brand, acronym.",
+        "Voice commands": "Mga voice command",
+        "Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it.": "Built-in at laging aktibo — sabihin lang ang parirala habang nagdidikta. Mas mataas ang priyoridad ng pagpapalit sa itaas na may parehong parirala.",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. Spoken punctuation is built in — say «comma», «question mark» or «new line» in your language.": "Eksaktong pagwawasto ng nakilalang teksto: pangalan, brand, acronym. Built-in ang sinasalitang bantas — sabihin ang «comma», «question mark» o «new line».",
+        "Replacements": "Mga pagpapalit",
+        "Heard": "Narinig",
+        "Insert": "Ilagay",
+        "Add replacement": "Magdagdag ng pagpapalit",
+        "Exact fixes applied to the recognized text: names, brands, acronyms. «\\n» in the output inserts a line break — the formatting commands above work this way.": "Eksaktong pagwawasto ng nakilalang teksto: pangalan, brand, acronym. Ang «\\n» sa output ay naglalagay ng bagong linya — ganito gumagana ang mga format command.",
         "Sorry, I didn't catch that — could you say it again?": "Pasensya na, hindi kita narinig — puwede mo bang ulitin?",
         "Not inserted — text copied, press ⌘V to paste": "Hindi na-insert — nakopya ang teksto, pindutin ang ⌘V para i-paste",
         "Built-in (recommended)": "Built-in (inirerekomenda)",

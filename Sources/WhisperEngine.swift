@@ -125,9 +125,12 @@ actor WhisperEngine {
     /// Transcribes audio (16 kHz float). language "" → auto-detect.
     /// prompt — terms dictionary. translate=true → translate to English.
     /// onProgress: overall fraction of audio processed (0…1) + words so far.
+    /// Returns the text and the language Whisper detected (drives the
+    /// language-scoped filler-word cleanup even in auto-detect mode).
     func transcribe(floats: [Float], language: String, prompt: String,
                     translate: Bool = false,
-                    onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws -> String {
+                    onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
+        -> (text: String, detectedLanguage: String) {
         guard let pipe else {
             throw NSError(domain: "Dictate", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Whisper model not loaded"])
@@ -171,7 +174,8 @@ actor WhisperEngine {
             }
         }
         let results = try await pipe.transcribe(audioArray: floats, decodeOptions: options, callback: callback)
-        return results.map { $0.text }.joined(separator: " ")
+        let text = results.map { $0.text }.joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text, results.first?.language ?? language)
     }
 }
