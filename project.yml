@@ -12,6 +12,11 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.6.0"
+  # Silero VAD on CoreML (speech gate in front of Whisper). Apache-2.0;
+  # the model itself is bundled from Resources/ — no runtime downloads.
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    from: "0.15.5"
 
 targets:
   Dictate:
@@ -19,16 +24,20 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+      - path: Resources/silero-vad-unified-256ms-v6.2.1.mlmodelc
+        buildPhase: resources
+        type: folder
     dependencies:
       - package: WhisperKit
       - package: Sparkle
+      - package: FluidAudio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
         PRODUCT_NAME: Dictate
-        MARKETING_VERSION: "2.0.5"
+        MARKETING_VERSION: "2.0.6"
         # Sparkle compares CFBundleVersion (= this) — bump on every release.
-        CURRENT_PROJECT_VERSION: "6"
+        CURRENT_PROJECT_VERSION: "7"
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.0"
         # ObjC shim: converts NSException from AVFoundation into NSError

@@ -101,6 +101,7 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Извини, пожалуйста, я тебя не расслышал — мог бы ты повторить?",
         "Not inserted — text copied, press ⌘V to paste": "Не вставлено — текст скопирован, нажмите ⌘V",
         "Built-in (recommended)": "Встроенный (рекомендуется)",
         "System default": "Системный по умолчанию",
@@ -249,6 +250,7 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Вибач, будь ласка, я тебе не розчув — міг би ти повторити?",
         "Not inserted — text copied, press ⌘V to paste": "Не вставлено — текст скопійовано, натисніть ⌘V",
         "Built-in (recommended)": "Вбудований (рекомендовано)",
         "System default": "Системний за замовчуванням",
@@ -388,6 +390,7 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Perdona, no te he oído bien — ¿podrías repetirlo?",
         "Not inserted — text copied, press ⌘V to paste": "No insertado — texto copiado, pulsa ⌘V para pegar",
         "Built-in (recommended)": "Integrado (recomendado)",
         "System default": "Predeterminado del sistema",
@@ -536,6 +539,7 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Desculpe, não consegui ouvir — pode repetir?",
         "Not inserted — text copied, press ⌘V to paste": "Não inserido — texto copiado, pressione ⌘V para colar",
         "Built-in (recommended)": "Integrado (recomendado)",
         "System default": "Padrão do sistema",
@@ -684,6 +688,7 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Désolé, je ne t'ai pas bien entendu — peux-tu répéter ?",
         "Not inserted — text copied, press ⌘V to paste": "Non inséré — texte copié, appuyez sur ⌘V pour coller",
         "Built-in (recommended)": "Intégré (recommandé)",
         "System default": "Par défaut du système",
@@ -832,6 +837,7 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Entschuldige, ich habe dich nicht verstanden — kannst du das wiederholen?",
         "Not inserted — text copied, press ⌘V to paste": "Nicht eingefügt — Text kopiert, ⌘V zum Einfügen",
         "Built-in (recommended)": "Integriert (empfohlen)",
         "System default": "Systemstandard",
@@ -980,6 +986,7 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "抱歉，我没有听清 — 能再说一遍吗？",
         "Not inserted — text copied, press ⌘V to paste": "未插入 — 文本已复制，按 ⌘V 粘贴",
         "Built-in (recommended)": "内置（推荐）",
         "System default": "系统默认",
@@ -1128,6 +1135,7 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "すみません、聞き取れませんでした — もう一度お願いします",
         "Not inserted — text copied, press ⌘V to paste": "挿入されませんでした — テキストをコピー済み、⌘V で貼り付け",
         "Built-in (recommended)": "内蔵（推奨）",
         "System default": "システムのデフォルト",
@@ -1276,6 +1284,7 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "죄송해요, 잘 못 들었어요 — 다시 한 번 말씀해 주세요",
         "Not inserted — text copied, press ⌘V to paste": "삽입되지 않음 — 텍스트 복사됨, ⌘V로 붙여넣기",
         "Built-in (recommended)": "내장 (권장)",
         "System default": "시스템 기본값",
@@ -1424,6 +1433,7 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Xin lỗi, tôi chưa nghe rõ — bạn nói lại được không?",
         "Not inserted — text copied, press ⌘V to paste": "Chưa chèn — văn bản đã sao chép, nhấn ⌘V để dán",
         "Built-in (recommended)": "Tích hợp (khuyến nghị)",
         "System default": "Mặc định hệ thống",
@@ -1572,6 +1582,7 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Sorry, I didn't catch that — could you say it again?": "Pasensya na, hindi kita narinig — puwede mo bang ulitin?",
         "Not inserted — text copied, press ⌘V to paste": "Hindi na-insert — nakopya ang teksto, pindutin ang ⌘V para i-paste",
         "Built-in (recommended)": "Built-in (inirerekomenda)",
         "System default": "Default ng system",

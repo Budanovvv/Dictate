@@ -107,6 +107,7 @@ final class DictationController {
     /// Loads an already-downloaded model at startup so the first dictation doesn't wait.
     /// If it isn't downloaded, does nothing — transcribeLocal downloads lazily with progress.
     func preloadModel() {
+        Task { await SpeechGate.shared.prewarm() }
         let tier = Settings.shared.modelTier
         guard WhisperEngine.shared.isModelDownloaded(tier: tier) else { return }
         Task { try? await WhisperEngine.shared.prepare(tier: tier) { _ in } }
@@ -184,12 +185,8 @@ final class DictationController {
         let translate = activeTranslate
         let floats = AudioRecorder.floatSamples(fromPCM: pcm)
 
-        // Silence gate: Whisper hallucinates confident phrases on speech-free
-        // audio ("Thank you for watching…"), especially when translating.
-        // Compare the LOUDEST 100 ms windows, not the average: speech is
-        // spiky (syllables peak several times above its mean) while room
-        // noise is stationary — measured on this mic: silence rms ≈ 0.006
-        // flat, speech rms ≈ 0.015 with peaks well above 0.02.
+        // Energy numbers: logged for calibration, and used as the fallback
+        // gate if the VAD model is unavailable.
         let window = AudioRecorder.sampleRate / 10
         var windowRMS: [Double] = []
         var i = 0
@@ -204,18 +201,25 @@ final class DictationController {
         let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
         let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
         Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90))")
-        guard p90 > 0.012 else {
-            Log.d("silence gate -> empty result")
-            Task { @MainActor in self.finish(text: "", seconds: 0, translate: translate) }
-            return
-        }
 
         state = .transcribing
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt
         let tier = Settings.shared.modelTier
-        Task { await self.transcribeLocal(floats: floats, language: language,
-                                          prompt: prompt, tier: tier, translate: translate) }
+        Task {
+            // Speech gate: Silero VAD decides whether anyone actually spoke —
+            // it detects speech-ness, not loudness, so quiet voices pass while
+            // speech-free audio never reaches Whisper (which hallucinates
+            // confident phrases on it). Energy heuristic is the fallback only.
+            let speech = await SpeechGate.shared.hasSpeech(floats) ?? (p90 > 0.012)
+            guard speech else {
+                Log.d("silence gate -> empty result")
+                await MainActor.run { self.finish(text: "", seconds: 0, translate: translate) }
+                return
+            }
+            await self.transcribeLocal(floats: floats, language: language,
+                                       prompt: prompt, tier: tier, translate: translate)
+        }
     }
 
     private func transcribeLocal(floats: [Float], language: String,

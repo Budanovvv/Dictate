@@ -278,7 +278,7 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return L("Recording…")
         case .transcribing: return L("Recognizing…")
-        case .empty: return L("Didn't catch that — hold the key while you speak")
+        case .empty: return L("Sorry, I didn't catch that — could you say it again?")
         case .downloading:
             return model.downloadProgress < 0.999
                 ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * 950), 950)
