@@ -143,6 +143,7 @@ actor WhisperEngine {
                 .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
             if !tokens.isEmpty { promptTokens = tokens }
         }
+        Log.d("prompt: \(prompt.count) chars -> \(promptTokens?.count ?? 0) tokens applied")
 
         let options = DecodingOptions(
             task: translate ? .translate : .transcribe,
