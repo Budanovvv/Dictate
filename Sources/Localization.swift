@@ -238,6 +238,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — голосовая диктовка",
         // HUD
         "Recognizing…": "Распознаю…",
+        "Esc to cancel": "Esc — отмена",
         "Inserted": "Вставлено",
         "Didn't catch that — hold the key while you speak": "Не расслышал — держите клавишу, пока говорите",
         // Errors
@@ -392,6 +393,7 @@ extension Localization {
         "Quit Dictate": "Завершити Dictate",
         "Dictate — voice dictation": "Dictate — голосове диктування",
         "Recognizing…": "Розпізнаю…",
+        "Esc to cancel": "Esc — скасувати",
         "Inserted": "Вставлено",
         "Didn't catch that — hold the key while you speak": "Не розчув — тримайте клавішу, поки говорите",
         "Couldn't start recording: %@": "Не вдалося почати запис: %@",
@@ -551,6 +553,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — dictado por voz",
         // HUD
         "Recognizing…": "Reconociendo…",
+        "Esc to cancel": "Esc para cancelar",
         "Inserted": "Insertado",
         "Didn't catch that — hold the key while you speak": "No escuché bien — mantén presionada la tecla mientras hablas",
         // Errors
@@ -712,6 +715,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — ditado por voz",
         // HUD
         "Recognizing…": "Reconhecendo…",
+        "Esc to cancel": "Esc para cancelar",
         "Inserted": "Inserido",
         "Didn't catch that — hold the key while you speak": "Não entendi — segure a tecla enquanto fala",
         // Errors
@@ -873,6 +877,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — dictée vocale",
         // HUD
         "Recognizing…": "Reconnaissance…",
+        "Esc to cancel": "Échap pour annuler",
         "Inserted": "Inséré",
         "Didn't catch that — hold the key while you speak": "Je n’ai pas bien entendu — maintenez la touche pendant que vous parlez",
         // Errors
@@ -1034,6 +1039,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — Sprachdiktat",
         // HUD
         "Recognizing…": "Wird erkannt …",
+        "Esc to cancel": "Esc zum Abbrechen",
         "Inserted": "Eingefügt",
         "Didn't catch that — hold the key while you speak": "Nichts verstanden — halten Sie die Taste gedrückt, während Sie sprechen",
         // Errors
@@ -1195,6 +1201,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — 语音听写",
         // HUD
         "Recognizing…": "正在识别…",
+        "Esc to cancel": "按 Esc 取消",
         "Inserted": "已插入",
         "Didn't catch that — hold the key while you speak": "没有听清——说话时请按住按键",
         // Errors
@@ -1356,6 +1363,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — 音声入力",
         // HUD
         "Recognizing…": "認識中…",
+        "Esc to cancel": "Escでキャンセル",
         "Inserted": "挿入しました",
         "Didn't catch that — hold the key while you speak": "聞き取れませんでした。話している間はキーを押し続けてください",
         // Errors
@@ -1517,6 +1525,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — 음성 받아쓰기",
         // HUD
         "Recognizing…": "인식 중…",
+        "Esc to cancel": "Esc로 취소",
         "Inserted": "입력됨",
         "Didn't catch that — hold the key while you speak": "알아듣지 못했습니다 — 말하는 동안 키를 누르고 계세요",
         // Errors
@@ -1678,6 +1687,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — đọc chính tả bằng giọng nói",
         // HUD
         "Recognizing…": "Đang nhận dạng…",
+        "Esc to cancel": "Esc để hủy",
         "Inserted": "Đã chèn",
         "Didn't catch that — hold the key while you speak": "Không nghe rõ — hãy giữ phím trong lúc nói",
         // Errors
@@ -1839,6 +1849,7 @@ extension Localization {
         "Dictate — voice dictation": "Dictate — voice dictation",
         // HUD
         "Recognizing…": "Nire-recognize…",
+        "Esc to cancel": "Esc para kanselahin",
         "Inserted": "Nailagay na",
         "Didn't catch that — hold the key while you speak": "Walang narinig — i-hold ang key habang nagsasalita ka",
         // Errors

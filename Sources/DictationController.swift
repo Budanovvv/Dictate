@@ -1,5 +1,15 @@
 import AppKit
 
+/// A one-shot cancellation flag, safe to read from any thread. One per
+/// dictation: the WhisperKit decode callback polls `isCancelled` off the main
+/// actor, so it can't be a plain main-thread Bool.
+final class CancelToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+    func cancel() { lock.lock(); flag = true; lock.unlock() }
+}
+
 /// Core logic: hotkey → record → transcribe → insert.
 final class DictationController {
     enum State {
@@ -59,6 +69,14 @@ final class DictationController {
     /// target field, speak" stays legal; the guard covers only the recognition
     /// window, where an app switch would send ⌘V to the wrong place.
     private var targetAppPID: pid_t?
+    /// Cancels the in-flight recognition. Held so Esc (or a superseding
+    /// dictation) can flip it: the WhisperKit decode callback reads it from a
+    /// background thread to stop early, and finish() reads it to discard a
+    /// partial result. Thread-safe because both sides touch it off the main
+    /// actor.
+    private var activeCancel: CancelToken?
+    /// The recognition Task, so cancel() can tear it down.
+    private var transcribeTask: Task<Void, Never>?
 
     private static let soundStart = NSSound(contentsOfFile: "/System/Library/Sounds/Pop.aiff", byReference: true)
     private static let soundStop = NSSound(contentsOfFile: "/System/Library/Sounds/Purr.aiff", byReference: true)
@@ -71,7 +89,7 @@ final class DictationController {
         monitor.keyCodes = codes
         monitor.onPress = { [weak self] code in self?.handlePress(code) }
         monitor.onRelease = { [weak self] code in self?.handleRelease(code) }
-        monitor.onEsc = { [weak self] in self?.cancelRecording() }
+        monitor.onEsc = { [weak self] in self?.cancel() }
         recorder.onTruncated = { [weak self] in
             self?.onError?(Lf("Recording truncated at %d seconds (limit)", AudioRecorder.maxDurationSec))
         }
@@ -178,12 +196,25 @@ final class DictationController {
         recorder.start()
     }
 
-    /// Esc while recording: discard the audio, transcribe nothing.
-    private func cancelRecording() {
-        guard state == .recording else { return }
-        _ = recorder.stop()
-        state = .idle
-        onCancelled?()
+    /// Esc: abandon the current dictation, whatever stage it's in. While
+    /// recording, drop the audio before it's ever transcribed. While
+    /// recognizing, flip the cancel token — WhisperKit stops decoding early and
+    /// finish() throws the partial result away (no insert, no history). Idle is
+    /// a no-op.
+    private func cancel() {
+        switch state {
+        case .recording:
+            _ = recorder.stop()
+            state = .idle
+            onCancelled?()
+        case .transcribing:
+            activeCancel?.cancel()
+            transcribeTask?.cancel()
+            state = .idle
+            onCancelled?()   // before nothing else can hide it
+        case .idle:
+            break
+        }
     }
 
     private func endRecording() {
@@ -238,7 +269,9 @@ final class DictationController {
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt
         let tier = Settings.shared.modelTier
-        Task {
+        let token = CancelToken()
+        activeCancel = token
+        transcribeTask = Task {
             // Speech gate: Silero VAD decides whether anyone actually spoke —
             // it detects speech-ness, not loudness, so quiet voices pass while
             // speech-free audio never reaches Whisper (which hallucinates
@@ -246,16 +279,17 @@ final class DictationController {
             let speech = await SpeechGate.shared.hasSpeech(floats) ?? (p90 > 0.012)
             guard speech else {
                 Log.d("silence gate -> empty result")
-                await MainActor.run { self.finish(text: "", seconds: 0, translate: translate) }
+                await MainActor.run { self.finish(text: "", seconds: 0, translate: translate, token: token) }
                 return
             }
             await self.transcribeLocal(floats: floats, language: language,
-                                       prompt: prompt, tier: tier, translate: translate)
+                                       prompt: prompt, tier: tier, translate: translate, token: token)
         }
     }
 
     private func transcribeLocal(floats: [Float], language: String,
-                                 prompt: String, tier: ModelTier, translate: Bool) async {
+                                 prompt: String, tier: ModelTier, translate: Bool,
+                                 token: CancelToken) async {
         do {
             let ready = await WhisperEngine.shared.isReady(for: tier)
             if !ready {
@@ -273,6 +307,7 @@ final class DictationController {
             let started = Date()
             let (text, detected) = try await WhisperEngine.shared.transcribe(
                 floats: floats, language: language, prompt: prompt, translate: translate,
+                isCancelled: { token.isCancelled },
                 onProgress: { [weak self] fraction, words in
                     DispatchQueue.main.async { self?.onTranscribeProgress?(fraction, words) }
                 }
@@ -285,9 +320,14 @@ final class DictationController {
                 : nil
             let processed = Replacements.process(text, rules: Settings.shared.replacements,
                                                  fillerLanguage: fillerLanguage)
-            await finish(text: processed, seconds: Date().timeIntervalSince(started), translate: translate)
+            await finish(text: processed, seconds: Date().timeIntervalSince(started),
+                         translate: translate, token: token)
         } catch {
             await MainActor.run {
+                // A user-cancelled recognition may surface as a thrown error;
+                // cancel() already moved us to idle and showed "Cancelled", so
+                // stay silent instead of flashing a scary error message.
+                guard !token.isCancelled else { return }
                 self.state = .idle
                 self.onError?(error.localizedDescription)
             }
@@ -295,7 +335,14 @@ final class DictationController {
     }
 
     @MainActor
-    private func finish(text: String, seconds: Double, translate: Bool) {
+    private func finish(text: String, seconds: Double, translate: Bool, token: CancelToken) {
+        // Esc arrived while this recognition was finishing: throw the (partial)
+        // result away — no insertion, no history. cancel() already set idle and
+        // showed "Cancelled".
+        guard !token.isCancelled else {
+            Log.d("finish: discarded — cancelled by Esc")
+            return
+        }
         lastResult = text
         lastWasTranslate = translate
         let words = text.split(whereSeparator: \.isWhitespace).count

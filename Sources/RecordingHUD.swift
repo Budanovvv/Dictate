@@ -202,7 +202,7 @@ final class RecordingHUD {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let hosting = NSHostingView(rootView: HUDView(model: model))
-        hosting.frame = NSRect(x: 0, y: 0, width: 260, height: 56)
+        hosting.frame = NSRect(x: 0, y: 0, width: 260, height: 70)
 
         let panel = NSPanel(
             contentRect: hosting.frame,
@@ -248,8 +248,8 @@ private struct HUDView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .frame(width: 260, height: 56)
+        .padding(.vertical, 10)
+        .frame(width: 260, height: 70)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -290,7 +290,7 @@ private struct HUDView: View {
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(titleFont)
@@ -307,6 +307,20 @@ private struct HUDView: View {
                 WaveStrip(phase: phase, level: model.level,
                           tick: model.levelTick, fraction: stripFraction)
             }
+            if let cancelHint {
+                Text(cancelHint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// A quiet affordance line: Esc bails out of the current dictation. Shown
+    /// only while there's something to cancel — recording or recognizing.
+    private var cancelHint: String? {
+        switch model.mode {
+        case .recording, .transcribing: return L("Esc to cancel")
+        default: return nil
         }
     }
 

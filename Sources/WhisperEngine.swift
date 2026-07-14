@@ -129,6 +129,7 @@ actor WhisperEngine {
     /// language-scoped filler-word cleanup even in auto-detect mode).
     func transcribe(floats: [Float], language: String, prompt: String,
                     translate: Bool = false,
+                    isCancelled: (@Sendable () -> Bool)? = nil,
                     onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
         -> (text: String, detectedLanguage: String) {
         guard let pipe else {
@@ -156,11 +157,16 @@ actor WhisperEngine {
             chunkingStrategy: .vad  // split long recordings at pauses — more reliable
         )
         var callback: TranscriptionCallback = nil
-        if let onProgress {
+        if onProgress != nil || isCancelled != nil {
             let tally = ProgressTally()
             let durationSec = Double(floats.count) / Double(WhisperKit.sampleRate)
             callback = { [weak pipe] update in
-                if let words = tally.update(windowId: update.windowId, text: update.text) {
+                // Esc mid-recognition: returning false is WhisperKit's own
+                // early-stop — it halts decoding and returns what it has so far
+                // (which the caller then discards). Checked first, before any
+                // progress work.
+                if isCancelled?() == true { return false }
+                if let onProgress, let words = tally.update(windowId: update.windowId, text: update.text) {
                     // pipe.progress only ticks at chunk boundaries — a 1–2 chunk
                     // recording would sit at 0% and jump at the end. Blend in a
                     // continuous estimate from decoded words: at a conservative
