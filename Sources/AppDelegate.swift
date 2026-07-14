@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
+        // WindowServer freeze) and write evidence to ~/Library/Logs/Dictate.
+        MainThreadWatchdog.shared.start()
         statusController = StatusItemController(
             dictation: dictation,
             openSettings: { [weak self] in self?.showSettings() },
@@ -70,6 +73,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self?.resultShown = true   // idle must not hide the "Cancelled" HUD
                 self?.hud.showCancelled()
+            }
+        }
+        dictation.onMicBusy = { [weak self] in
+            DispatchQueue.main.async {
+                self?.resultShown = true   // idle must not hide the "mic busy" HUD
+                self?.hud.showMicBusy()
+            }
+        }
+        dictation.onNothingHeard = { [weak self] in
+            DispatchQueue.main.async {
+                self?.resultShown = true   // idle must not hide the "didn't catch that" HUD
+                self?.hud.showResult(success: false)
             }
         }
         dictation.onLevel = { [weak self] level in

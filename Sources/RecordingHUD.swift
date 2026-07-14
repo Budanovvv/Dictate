@@ -4,7 +4,7 @@ import SwiftUI
 /// Floating status panel at the bottom of the screen. Never takes focus or mouse events.
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
-        case recording, transcribing, empty, downloading, warming, cancelled, copied
+        case recording, transcribing, empty, downloading, warming, cancelled, copied, micBusy
     }
 
     @Published var mode: Mode = .recording
@@ -50,7 +50,10 @@ final class RecordingHUD {
     func setTranscribeProgress(_ fraction: Double, words: Int) {
         guard model.mode == .transcribing else { return }
         model.transcribeFraction = max(model.transcribeFraction, min(fraction, 0.97))
-        model.transcribeWords = words
+        // Words is the sum across decoding windows and can wobble down as a
+        // window's hypothesis is revised mid-decode. Clamp it forward-only —
+        // same as the bar — so the counter climbs smoothly instead of jumping.
+        model.transcribeWords = max(model.transcribeWords, words)
     }
 
     func showDownloading(_ progress: Double) {
@@ -76,6 +79,16 @@ final class RecordingHUD {
         model.mode = .copied
         show()
         scheduleHide(after: 2.5)
+    }
+
+    /// Another app holds the mic (voice-processing) — dictation got no audio.
+    /// Actionable message so the user knows it's not "speak louder".
+    func showMicBusy() {
+        cancelHide()
+        stopElapsed()
+        model.mode = .micBusy
+        show()
+        scheduleHide(after: 3.0)
     }
 
     /// Esc pressed: brief flash, then hide.
@@ -131,7 +144,9 @@ final class RecordingHUD {
     }
 
     func setLevel(_ level: Double) {
-        model.level = model.level * 0.5 + level * 0.5
+        // Weighted toward the new sample so the bars track speech peaks snappily
+        // instead of averaging them into a gentle breathing motion.
+        model.level = model.level * 0.35 + level * 0.65
         model.levelTick &+= 1
     }
 
@@ -241,6 +256,9 @@ private struct HUDView: View {
         case .empty:
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
+        case .micBusy:
+            Image(systemName: "mic.slash")
+                .font(.system(size: 17)).foregroundStyle(.secondary)
         case .downloading:
             Image(systemName: "arrow.down.circle")
                 .font(.system(size: 18)).foregroundStyle(Brand.gradientDiagonal)
@@ -279,6 +297,7 @@ private struct HUDView: View {
         case .recording: return L("Recording…")
         case .transcribing: return L("Recognizing…")
         case .empty: return L("Sorry, I didn't catch that — could you say it again?")
+        case .micBusy: return L("Another app is using the microphone right now — close it and try again")
         case .downloading:
             return model.downloadProgress < 0.999
                 ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * 950), 950)
@@ -291,7 +310,7 @@ private struct HUDView: View {
 
     private var titleFont: Font {
         switch model.mode {
-        case .empty, .copied: return .system(size: 11, weight: .medium)
+        case .empty, .copied, .micBusy: return .system(size: 11, weight: .medium)
         case .downloading: return .system(size: 12, weight: .medium).monospacedDigit()
         default: return .system(size: 13, weight: .medium)
         }
@@ -299,7 +318,7 @@ private struct HUDView: View {
 
     private var titleIsSecondary: Bool {
         switch model.mode {
-        case .empty, .cancelled, .copied: return true
+        case .empty, .cancelled, .copied, .micBusy: return true
         default: return false
         }
     }
@@ -317,7 +336,7 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return .voice
         case .transcribing, .downloading, .warming: return .progress
-        case .empty, .cancelled, .copied: return nil
+        case .empty, .cancelled, .copied, .micBusy: return nil
         }
     }
 
@@ -357,7 +376,7 @@ private struct WaveStrip: View {
                     .frame(width: 3.5, height: barHeight(i))
             }
         }
-        .frame(width: 150, height: 12, alignment: .leading)
+        .frame(width: 150, height: 16, alignment: .leading)
         .animation(.easeOut(duration: 0.12), value: tick)
         .animation(.spring(duration: 0.45), value: phase)
         .animation(.easeOut(duration: 0.25), value: litCount)
@@ -375,9 +394,9 @@ private struct WaveStrip: View {
         guard case .voice = phase else { return 5 }
         // ×3 boost: the 12 pt strip needs full swing at normal speech volume.
         // The ripple gives capsules individual motion instead of one breath.
-        let boosted = min(1.0, level * 3)
+        let boosted = min(1.0, level * 1.6)
         let ripple = 0.55 + 0.45 * sin(Double(tick) * 0.6 + Double(i) * 1.7)
-        let h = 2.5 + 9.5 * boosted * Self.weights[i] * ripple
+        let h = 2.5 + 12.5 * boosted * Self.weights[i] * ripple
         return CGFloat(max(2.5, h))
     }
 }

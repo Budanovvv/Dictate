@@ -64,6 +64,19 @@ enum AudioInputDevices {
         return value as String
     }
 
+    /// The device's own nominal sample rate. When another app holds the mic
+    /// in a voice-processing session (Google Meet, Zoom, FaceTime…), the shared
+    /// built-in mic is switched to a reduced rate (typically 24 kHz) and a plain
+    /// input tap on it is starved — no buffers arrive. Comparing the engine's
+    /// reported input rate against this nominal is how we detect that state.
+    static func nominalSampleRate(_ id: AudioDeviceID) -> Double {
+        var addr = address(kAudioDevicePropertyNominalSampleRate)
+        var size = UInt32(MemoryLayout<Float64>.size)
+        var value: Float64 = 0
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &value) == noErr else { return 0 }
+        return value
+    }
+
     private static func transport(_ id: AudioDeviceID) -> UInt32 {
         var addr = address(kAudioDevicePropertyTransportType)
         var size = UInt32(MemoryLayout<UInt32>.size)

@@ -39,7 +39,8 @@ enum Paster {
         }
 
         guard focusLooksEditable() else {
-            Log.d("paste: no text focus -> kept in clipboard")
+            let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
+            Log.d("paste: no text focus (\(app)) -> kept in clipboard")
             return keepInClipboard(text, pb)
         }
 

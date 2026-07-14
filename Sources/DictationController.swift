@@ -34,6 +34,12 @@ final class DictationController {
     var onCancelled: (() -> Void)?
     /// No text cursor — the result went to the clipboard instead of being pasted.
     var onCopiedInstead: (() -> Void)?
+    /// The key was held but the mic delivered no audio because another app
+    /// holds it in voice-processing mode (Google Meet, Zoom, FaceTime…).
+    var onMicBusy: (() -> Void)?
+    /// The key was held but nothing was captured (mic still waking from sleep,
+    /// device not ready) — tell the user instead of failing silently.
+    var onNothingHeard: (() -> Void)?
     private(set) var lastResult: String?
     /// Recent results, newest first (in memory only — never written to disk).
     private(set) var history: [String] = []
@@ -44,6 +50,10 @@ final class DictationController {
     private var tapFailureReported = false
     /// Current recording was started by the translate key.
     private var activeTranslate = false
+    /// When the current recording's key went down — used to tell an accidental
+    /// tap (released almost immediately) from a real attempt that captured no
+    /// audio, so only the latter gets a "didn't hear you" message.
+    private var pressedAt: Date?
     /// App that was frontmost when the key was RELEASED — the intended paste
     /// target. Captured at release, not press, so "hold key, click into the
     /// target field, speak" stays legal; the guard covers only the recognition
@@ -67,6 +77,13 @@ final class DictationController {
         }
         recorder.onLevel = { [weak self] level in
             self?.onLevel?(level)
+        }
+        recorder.onMicBusyDetected = { [weak self] in
+            guard let self, self.state == .recording else { return }
+            _ = self.recorder.stop()
+            Log.d("mic busy detected early -> stop + notify")
+            self.onMicBusy?()   // before .idle so the idle transition can't hide it
+            self.state = .idle
         }
         recorder.onRecoveryFailed = { [weak self] nothingRecorded in
             guard let self, self.state == .recording else { return }
@@ -147,20 +164,18 @@ final class DictationController {
     private func beginRecording(translate: Bool) {
         guard !paused, state == .idle else { return }
         activeTranslate = translate
-        // HUD first: bringing the input up can block the main thread for
-        // seconds on a cold or Bluetooth mic (hardware wake + SCO
-        // negotiation). The small delay lets the pill render before that;
-        // start() itself never fails synchronously — the recorder retries a
-        // not-yet-ready device and reports via onRecoveryFailed.
+        pressedAt = Date()
         state = .recording
         Self.soundStart?.play()
         // Load the model while the user is speaking, so it's warm by the
         // time they release — hides the one-time warm-up behind the speech.
         preloadModel()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self, self.state == .recording else { return }
-            self.recorder.start()
-        }
+        // start() returns immediately now: it hands the blocking input bring-up
+        // (which can take seconds on a cold/Bluetooth mic) to a background
+        // queue, so the pill renders and the UI stays responsive. It never
+        // fails synchronously — the recorder retries a not-yet-ready device and
+        // reports via onRecoveryFailed.
+        recorder.start()
     }
 
     /// Esc while recording: discard the audio, transcribe nothing.
@@ -178,8 +193,25 @@ final class DictationController {
         targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         guard duration >= 0.3 else {
+            // Nothing usable was captured. A quick tap (< 0.5 s) is an
+            // accidental touch — stay silent as before. But if the key was
+            // genuinely held, the mic gave us nothing: say so instead of
+            // seeming deaf. A foreign input format means another app owns the
+            // mic (Meet/Zoom); otherwise it was likely still waking up.
+            // The message fires before state = .idle so the idle transition
+            // doesn't hide it (same ordering as finish()).
+            let held = pressedAt.map { Date().timeIntervalSince($0) } ?? 0
+            if held >= 0.5 {
+                if recorder.sawForeignFormat {
+                    Log.d("empty after \(String(format: "%.1f", held))s hold -> mic busy")
+                    onMicBusy?()
+                } else {
+                    Log.d("empty after \(String(format: "%.1f", held))s hold -> nothing heard")
+                    onNothingHeard?()
+                }
+            }
             state = .idle
-            return  // accidental short press
+            return  // accidental short press or unusable capture
         }
 
         let translate = activeTranslate
