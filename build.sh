@@ -17,9 +17,15 @@ DD="$HOME/Library/Caches/DictateBuild"
 EXTRA=()
 [ "${1:-}" = "--nosign" ] && EXTRA+=(CODE_SIGNING_ALLOWED=NO)
 
-echo "==> xcodebuild (Release)…"
+# CFBundleVersion = git commit count: a monotonic build number with nothing to
+# hand-bump. Sparkle compares it to decide an update is newer, so it must only
+# grow — the commit count on main does. Falls back to 0 outside a git checkout.
+BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
+
+echo "==> xcodebuild (Release), build ${BUILD_NUMBER}"
 xcodebuild -project Dictate.xcodeproj -scheme Dictate -configuration Release \
-    -destination 'platform=macOS' -derivedDataPath "$DD" build ${EXTRA[@]+"${EXTRA[@]}"} \
+    -destination 'platform=macOS' -derivedDataPath "$DD" \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" build ${EXTRA[@]+"${EXTRA[@]}"} \
     | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED" || true
 
 APP="$DD/Build/Products/Release/Dictate.app"

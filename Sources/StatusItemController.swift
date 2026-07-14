@@ -237,7 +237,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             string: "\nMade by Valentyn Budanov",
             attributes: [.font: NSFont.systemFont(ofSize: 11)]
         ))
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+        // Show "Version 2.2.0" without the parenthetical build number: it's now
+        // the git commit count (a Sparkle-only technical value), meaningless to
+        // a user. Empty .version drops the "(…)" the standard panel would add.
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
     }
 
     @objc private func quit() {

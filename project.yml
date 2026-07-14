@@ -35,9 +35,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
         PRODUCT_NAME: Dictate
-        MARKETING_VERSION: "2.1.1"
-        # Sparkle compares CFBundleVersion (= this) — bump on every release.
-        CURRENT_PROJECT_VERSION: "9"
+        MARKETING_VERSION: "2.2.0"
+        # CFBundleVersion (what Sparkle compares) is injected at build time from
+        # the git commit count — see build.sh. No hand-bumped counter to forget.
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.0"
         # ObjC shim: converts NSException from AVFoundation into NSError
