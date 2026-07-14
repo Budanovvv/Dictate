@@ -29,6 +29,12 @@
     <string>UhSe9t1eHl6devlZIFuLPLn6lPibnA6I4yWpDvyrui4=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
+    <!-- Download and install updates silently in the background: this is a
+         menu-bar utility, so a "new version available?" prompt is easy to miss
+         behind other windows or on another Space. With this key Sparkle applies
+         the update on its own and swaps it in on next launch. -->
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Dictate records your voice while you hold the dictation key to transcribe it on-device.</string>
     <key>CFBundleDevelopmentRegion</key>
