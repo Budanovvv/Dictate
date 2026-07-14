@@ -60,3 +60,35 @@ final class LanguageListTests: XCTestCase {
         XCTAssertTrue(codes.contains("en"))
     }
 }
+
+final class ReplacementsTests: XCTestCase {
+    /// Plain literal rules: case-insensitive, whole-word only.
+    func testLiteralRule() {
+        let rules = [["сиквел", "SQL"]]
+        XCTAssertEqual(Replacements.process("я знаю Сиквел", rules: rules, fillerLanguage: nil),
+                       "я знаю SQL")
+        // whole-word: must not fire inside another word
+        XCTAssertEqual(Replacements.process("сиквелы", rules: rules, fillerLanguage: nil),
+                       "сиквелы")
+    }
+
+    /// A single "re:" rule stands in for a swarm of spellings and Russian
+    /// case endings that no list of literals could keep pace with.
+    func testRegexRuleCoversInflections() {
+        let rules = [["re:(?:хо|уо)(?:л{1,2}|у)?\\s*-?\\s*кол{1,2}(?:ом|ами|ах|ов|ей|а|у|е|ы|ю)?",
+                      "WholeCall"]]
+        for input in ["хоу кол", "холл коллу", "хол-кол", "холлколл", "по холл коллу мы работаем"] {
+            XCTAssertTrue(Replacements.process(input, rules: rules, fillerLanguage: nil).contains("WholeCall"),
+                          "regex rule should catch \(input)")
+        }
+    }
+
+    /// Latin spellings collapse to the same brand.
+    func testRegexRuleLatin() {
+        let rules = [["re:(?:whole|hol{1,2}|hall)\\s*-?\\s*(?:call|kol{1,2}|kow|cow|coll?)", "WholeCall"]]
+        for input in ["holkow", "holkol", "whole call", "wholecall", "hall call"] {
+            XCTAssertEqual(Replacements.process(input, rules: rules, fillerLanguage: nil), "WholeCall",
+                           "regex rule should catch \(input)")
+        }
+    }
+}

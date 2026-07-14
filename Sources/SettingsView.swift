@@ -143,8 +143,10 @@ struct SettingsView: View {
 
             // — Vocabulary —
             Section {
-                TextField("", text: $promptText, axis: .vertical)
-                    .lineLimit(2...4)
+                TextEditor(text: $promptText)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 52, maxHeight: 96)
                     .onChange(of: promptText) { Settings.shared.prompt = $0 }
             } header: { Text(L("Vocabulary hint")) } footer: {
                 Text(L("Names, terms, jargon — comma-separated. Helps recognition spell them right."))
@@ -154,10 +156,10 @@ struct SettingsView: View {
             Section {
                 ForEach(replacements.indices, id: \.self) { i in
                     HStack(spacing: 8) {
-                        TextField(L("Heard"), text: replacementBinding(i, 0))
+                        LeadingTextField(placeholder: L("Heard"), text: replacementBinding(i, 0))
                         Image(systemName: "arrow.right")
                             .font(.caption).foregroundStyle(.secondary)
-                        TextField(L("Insert"), text: replacementBinding(i, 1))
+                        LeadingTextField(placeholder: L("Insert"), text: replacementBinding(i, 1))
                         Button {
                             replacements.remove(at: i)
                             Settings.shared.replacements = replacements
@@ -308,6 +310,47 @@ private struct KeyRecorder: View {
                 .buttonStyle(.plain)
                 .help(L("Remove"))
             }
+        }
+    }
+}
+
+/// Borderless single-line field that types left-to-right. SwiftUI's TextField
+/// inside `.formStyle(.grouped)` force-aligns its text to the trailing edge and
+/// ignores `.multilineTextAlignment`, so we drop to AppKit for the replacement
+/// rows. Transparent + no border → visually matches the surrounding form.
+private struct LeadingTextField: NSViewRepresentable {
+    let placeholder: String
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.alignment = .left
+        field.placeholderString = placeholder
+        field.font = .preferredFont(forTextStyle: .body)
+        field.lineBreakMode = .byTruncatingTail
+        field.usesSingleLineMode = true
+        field.cell?.isScrollable = true
+        field.delegate = context.coordinator
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        if field.stringValue != text { field.stringValue = text }
+        field.placeholderString = placeholder
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        private let text: Binding<String>
+        init(text: Binding<String>) { self.text = text }
+        func controlTextDidChange(_ note: Notification) {
+            guard let field = note.object as? NSTextField else { return }
+            text.wrappedValue = field.stringValue
         }
     }
 }

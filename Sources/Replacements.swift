@@ -10,7 +10,9 @@ import Foundation
 ///    the English set catches it.
 /// 2. User dictionary: [heard phrase, exact output] pairs from Settings —
 ///    names, brands, acronyms ("сиквел" → "SQL"). User rules win over
-///    built-ins on the same phrase.
+///    built-ins on the same phrase. A phrase prefixed with "re:" is treated
+///    as a raw case-insensitive regex (no escaping, no word-boundary wrap) —
+///    one rule for a name that arrives in many spellings and inflections.
 ///
 /// Matching is case-insensitive; word-boundary aware for alphabetic scripts,
 /// bare for CJK (no spaces there). Longer phrases apply first.
@@ -95,7 +97,14 @@ enum Replacements {
 
         var result = text
         for (phrase, output) in ordered {
-            guard let re = try? NSRegularExpression(pattern: pattern(for: phrase),
+            // A rule may opt into a raw regex with the "re:" prefix — for names
+            // that arrive in a swarm of spellings (accent, inflection) that no
+            // list of literals can keep up with. The pattern author owns their
+            // own boundaries; everything else stays an escaped literal.
+            let rawPattern = phrase.hasPrefix("re:")
+                ? String(phrase.dropFirst(3))
+                : pattern(for: phrase)
+            guard let re = try? NSRegularExpression(pattern: rawPattern,
                                                     options: [.caseInsensitive]) else { continue }
             // Marks inserted BY COMMAND get a sentinel: the user's explicit
             // mark must beat whatever punctuation Whisper guessed around the
