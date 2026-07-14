@@ -45,7 +45,13 @@ trap finish_phantom_watch EXIT
 echo "  ✅ build"
 ./test.sh --quick >/dev/null 2>&1 && echo "  ✅ quick tests" || { echo "  ❌ tests"; exit 1; }
 
-# 2. DMG with branded layout; background: assets/dmg-background.tiff (1x+2x).
+# 2. Plain DMG: Dictate.app + an /Applications alias, nothing else. No branded
+# window layout on purpose — a .DS_Store with a saved window state makes Finder
+# auto-open the volume when it mounts, and that window flashes on screen every
+# time Sparkle mounts the DMG to apply a silent update. A plain hdiutil image
+# has no such saved state, so silent updates stay silent; a person who opens the
+# DMG by hand still gets a plain window with the app and the Applications alias
+# to drag into.
 # Staging lives OUTSIDE iCloud: ./release is on the Desktop, and the iCloud
 # daemon tags files there within seconds (com.apple.fileprovider.*, FinderInfo)
 # — the tags get packed into the DMG and break strict codesign of the app.
@@ -54,23 +60,8 @@ rm -rf "$OUT" "$STAGE" && mkdir -p "$OUT" "$STAGE"
 ditto "$APP" "$STAGE/Dictate.app"
 codesign --verify --strict "$STAGE/Dictate.app" \
     || { echo "  ❌ staged app fails strict codesign (xattr detritus?)"; exit 1; }
-if command -v create-dmg >/dev/null; then
-    create-dmg \
-        --volname "Dictate" \
-        --volicon "Sources/AppIcon.icns" \
-        --background "assets/dmg-background.tiff" \
-        --window-size 600 400 \
-        --icon-size 128 \
-        --icon "Dictate.app" 150 185 \
-        --app-drop-link 450 185 \
-        --hide-extension "Dictate.app" \
-        --no-internet-enable \
-        "$DMG" "$STAGE" >/dev/null
-else
-    echo "  ⚠️  create-dmg not found (brew install create-dmg) — building a plain DMG"
-    ln -s /Applications "$STAGE/Applications"
-    hdiutil create -volname "Dictate" -srcfolder "$STAGE" -ov -format UDZO -quiet "$DMG"
-fi
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -volname "Dictate" -srcfolder "$STAGE" -ov -format UDZO -quiet "$DMG"
 rm -rf "$STAGE"
 codesign --force --sign "Apple Development" "$DMG" 2>/dev/null || true
 echo "  ✅ DMG: $DMG ($(du -h "$DMG" | cut -f1 | xargs))"

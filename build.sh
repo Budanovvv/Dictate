@@ -12,6 +12,16 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Dictate.xcodeproj is generated from project.yml (XcodeGen) and gitignored.
+# Regenerate it every build so project.yml stays the single source of truth —
+# otherwise a MARKETING_VERSION bump in project.yml never reaches the built app
+# (the version lives in the .pbxproj, which xcodebuild reads as-is).
+if command -v xcodegen >/dev/null; then
+    xcodegen generate --quiet
+else
+    echo "!! xcodegen not found (brew install xcodegen) — using existing Dictate.xcodeproj as-is"
+fi
+
 DD="$HOME/Library/Caches/DictateBuild"
 
 EXTRA=()
