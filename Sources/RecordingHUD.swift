@@ -23,6 +23,14 @@ final class RecordingHUD {
     private var panel: NSPanel?
     private var elapsedTimer: Timer?
     private var hideWork: DispatchWorkItem?
+    /// True between show() and hide(): the pill is meant to be on screen. A
+    /// hide() fade that finishes AFTER a new show() must not order the panel
+    /// out. Reading panel.alphaValue in the completion proved unreliable — the
+    /// window's model alphaValue reads 0 even once a fresh show() has animated
+    /// it back toward 1, so the guard never fired (0 "hide skipped" in logs)
+    /// and every rapid re-press flashed the Recording pill for ~8 ms then
+    /// ordered it out. This explicit intent flag decides it deterministically.
+    private var wantsVisible = false
 
     func showRecording() {
         cancelHide()
@@ -126,22 +134,31 @@ final class RecordingHUD {
 
     func hide() {
         stopElapsed()
+        wantsVisible = false
         guard let panel else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
             panel.animator().alphaValue = 0
-        } completionHandler: { [weak panel] in
+        } completionHandler: { [weak self, weak panel] in
             // A show() may have started while this fade was in flight (rapid
             // back-to-back dictations) — its completion must not yank the
-            // freshly shown pill off screen. Only order out if still hidden.
-            if let panel, panel.alphaValue == 0 {
+            // freshly shown pill off screen. show() sets wantsVisible = true,
+            // so a re-press between hide() and this completion cancels the
+            // order-out. Only order out if nothing asked to be visible since.
+            guard let self, let panel else { return }
+            if self.wantsVisible {
+                Log.d("hud: hide skipped — a new show is in flight")
+            } else {
                 panel.orderOut(nil)
                 Log.d("hud: hidden (ordered out)")
-            } else {
-                Log.d("hud: hide skipped — a new show is in flight")
             }
         }
     }
+
+    /// Test hook: is the pill currently ordered onto the screen? Used by the
+    /// rapid-re-press regression test to prove a stale hide completion no
+    /// longer orders a freshly shown pill out.
+    var pillIsOnScreen: Bool { panel?.isVisible ?? false }
 
     func setLevel(_ level: Double) {
         // Weighted toward the new sample so the bars track speech peaks snappily
@@ -171,6 +188,7 @@ final class RecordingHUD {
 
     private func show() {
         let panel = ensurePanel()
+        wantsVisible = true
         position(panel)
         panel.alphaValue = 0
         panel.orderFrontRegardless()

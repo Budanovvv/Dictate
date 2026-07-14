@@ -71,6 +71,8 @@ targets:
       - path: Sources/AudioDevices.swift
       - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift
+      - path: Sources/RecordingHUD.swift
+      - path: Sources/Brand.swift
       - path: Sources/ObjCExceptionCatcher.h
       - path: Sources/ObjCExceptionCatcher.m
     dependencies:
