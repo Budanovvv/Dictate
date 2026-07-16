@@ -84,15 +84,16 @@ enum Paster {
         return .keptInClipboard
     }
 
-    /// Best-effort probe of the system-wide focused element. A confident
-    /// "not a text target" blocks the paste — and so does "nothing is focused
-    /// at all": an empty focus is exactly "no text cursor", the case the manual
-    /// ⌘V HUD exists for, and a blind paste there is how dictation vanishes into
-    /// the void. But once an element IS focused we stay permissive about its
-    /// role: AX info is often missing or wrong (Chromium builds its tree
-    /// lazily), and a false negative there would break dictation into real apps.
-    /// Returns the verdict plus the focused role (nil when AX gave us an element
-    /// with no readable role) so the caller can log where a blind paste lands.
+    /// Best-effort probe of the system-wide focused element. Blocks the paste
+    /// on a confident "not a text target" — and on "nothing is focused at all":
+    /// an empty focus is exactly "no text cursor", the case the manual ⌘V HUD
+    /// exists for, and a blind paste there is how dictation vanishes into the
+    /// void. For an ambiguous role (a group or web area that may or may not hold
+    /// an editor) we don't guess by name — a role denylist is always leaky, as a
+    /// dictation lost into Finder's AXGroup showed. Instead we ask the element
+    /// whether it can actually take text. Returns the verdict plus the focused
+    /// role (nil when AX gave us an element with no readable role) so the caller
+    /// can log where a blind paste lands.
     private static func focusProbe() -> (editable: Bool, role: String?) {
         var focusedRef: CFTypeRef?
         // No focused element → keep in clipboard and let the user place a cursor.
@@ -104,22 +105,33 @@ enum Paster {
 
         var roleRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
-              let role = roleRef as? String else { return (true, nil) }
+              let role = roleRef as? String else { return (canEditText(element), nil) }
 
         if [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) { return (true, role) }
 
-        let definitelyNotText: Set<String> = [
-            kAXButtonRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole,
-            kAXMenuButtonRole, kAXMenuItemRole, kAXMenuBarItemRole, kAXWindowRole,
-            kAXImageRole, kAXStaticTextRole, kAXScrollAreaRole, kAXOutlineRole,
-            kAXTableRole, kAXListRole, kAXRowRole, kAXCellRole, kAXToolbarRole,
-            "AXLink", kAXSplitGroupRole, kAXSliderRole, kAXTabGroupRole,
-        ]
-        if definitelyNotText.contains(role) { return (false, role) }
+        // Anything else — group, web area, unknown — pastes only if it exposes
+        // a text-editing capability. Real editors (including contentEditable web
+        // content) do; containers like Finder's file view don't.
+        return (canEditText(element), role)
+    }
 
-        // Unknown role (web area, group…): editable web content usually
-        // exposes a selected-text attribute; either way stay permissive.
-        return (true, role)
+    /// Does the focused element actually hold a text cursor? Merely *reading*
+    /// kAXSelectedTextRange is not proof: Finder's desktop AXGroup answers it
+    /// too (a dictation vanished exactly there — log 2026-07-16 11:59, range=true,
+    /// role=AXGroup). What separates a real text input — native or contentEditable
+    /// web content — is that the selection range is *settable*: that's how apps
+    /// place the cursor programmatically, and passive containers don't allow it.
+    /// Logs both raw signals: the one breadcrumb if the verdict is ever wrong
+    /// for some app.
+    private static func canEditText(_ element: AXUIElement) -> Bool {
+        var rangeRef: CFTypeRef?
+        let hasRange = AXUIElementCopyAttributeValue(
+            element, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success
+        var settable: DarwinBoolean = false
+        let rangeSettable = AXUIElementIsAttributeSettable(
+            element, kAXSelectedTextRangeAttribute as CFString, &settable) == .success && settable.boolValue
+        Log.d("paste: capability range=\(hasRange) rangeSettable=\(rangeSettable)")
+        return rangeSettable
     }
 
     private static func sendCmdV() {
