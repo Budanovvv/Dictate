@@ -38,11 +38,16 @@ enum Paster {
             return keepInClipboard(text, pb)
         }
 
-        guard focusLooksEditable() else {
-            let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
-            Log.d("paste: no text focus (\(app)) -> kept in clipboard")
+        let (editable, role) = focusProbe()
+        let app = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
+        guard editable else {
+            Log.d("paste: no text focus (\(app) role=\(role ?? "nil")) -> kept in clipboard")
             return keepInClipboard(text, pb)
         }
+        // Blind ⌘V path: the target isn't a confirmed text field, only "not
+        // provably wrong". If the text lands nowhere the user gets no HUD, so
+        // record where it went — the only breadcrumb when a paste goes astray.
+        Log.d("paste: sending ⌘V -> \(app) role=\(role ?? "nil")")
 
         // If a restore from the previous paste is still pending, the original
         // is already saved — don't overwrite it with our own text
@@ -79,24 +84,29 @@ enum Paster {
         return .keptInClipboard
     }
 
-    /// Best-effort probe of the system-wide focused element. Only a confident
-    /// "not a text target" blocks the paste: AX info is often missing or wrong
-    /// (Chromium builds its tree lazily), so unknown roles and errors paste
-    /// as before — a false negative here would break dictation into real apps.
-    private static func focusLooksEditable() -> Bool {
+    /// Best-effort probe of the system-wide focused element. A confident
+    /// "not a text target" blocks the paste — and so does "nothing is focused
+    /// at all": an empty focus is exactly "no text cursor", the case the manual
+    /// ⌘V HUD exists for, and a blind paste there is how dictation vanishes into
+    /// the void. But once an element IS focused we stay permissive about its
+    /// role: AX info is often missing or wrong (Chromium builds its tree
+    /// lazily), and a false negative there would break dictation into real apps.
+    /// Returns the verdict plus the focused role (nil when AX gave us an element
+    /// with no readable role) so the caller can log where a blind paste lands.
+    private static func focusProbe() -> (editable: Bool, role: String?) {
         var focusedRef: CFTypeRef?
+        // No focused element → keep in clipboard and let the user place a cursor.
         guard AXUIElementCopyAttributeValue(
             AXUIElementCreateSystemWide(),
             kAXFocusedUIElementAttribute as CFString, &focusedRef
-        ) == .success, let focused = focusedRef else { return true }
+        ) == .success, let focused = focusedRef else { return (false, nil) }
         let element = focused as! AXUIElement
 
         var roleRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
-              let role = roleRef as? String else { return true }
+              let role = roleRef as? String else { return (true, nil) }
 
-        if [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) { return true }
-        Log.d("paste: focused role=\(role)")
+        if [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) { return (true, role) }
 
         let definitelyNotText: Set<String> = [
             kAXButtonRole, kAXCheckBoxRole, kAXRadioButtonRole, kAXPopUpButtonRole,
@@ -105,11 +115,11 @@ enum Paster {
             kAXTableRole, kAXListRole, kAXRowRole, kAXCellRole, kAXToolbarRole,
             "AXLink", kAXSplitGroupRole, kAXSliderRole, kAXTabGroupRole,
         ]
-        if definitelyNotText.contains(role) { return false }
+        if definitelyNotText.contains(role) { return (false, role) }
 
         // Unknown role (web area, group…): editable web content usually
         // exposes a selected-text attribute; either way stay permissive.
-        return true
+        return (true, role)
     }
 
     private static func sendCmdV() {
