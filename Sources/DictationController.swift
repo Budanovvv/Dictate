@@ -185,6 +185,13 @@ final class DictationController {
         pressedAt = Date()
         state = .recording
         Self.soundStart?.play()
+        // Wake the target app's accessibility tree now, while the user speaks:
+        // Chromium/Electron/WebKit build it lazily and otherwise expose no
+        // focused element at paste time, sending dictation to a manual ⌘V even
+        // with a live cursor. Doing it here gives the tree seconds to populate.
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            Paster.wakeAccessibility(pid: pid)
+        }
         // Load the model while the user is speaking, so it's warm by the
         // time they release — hides the one-time warm-up behind the speech.
         preloadModel()

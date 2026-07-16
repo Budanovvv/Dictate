@@ -95,13 +95,17 @@ enum Paster {
     /// role (nil when AX gave us an element with no readable role) so the caller
     /// can log where a blind paste lands.
     private static func focusProbe() -> (editable: Bool, role: String?) {
-        var focusedRef: CFTypeRef?
-        // No focused element → keep in clipboard and let the user place a cursor.
-        guard AXUIElementCopyAttributeValue(
-            AXUIElementCreateSystemWide(),
-            kAXFocusedUIElementAttribute as CFString, &focusedRef
-        ) == .success, let focused = focusedRef else { return (false, nil) }
-        let element = focused as! AXUIElement
+        // No focused element → keep in clipboard and let the user place a
+        // cursor. But Chromium/Electron/WebKit report nothing here until their
+        // lazy AX tree is built, so an empty first read isn't proof of "no
+        // cursor": wake the frontmost app's accessibility and read once more.
+        var focused = systemWideFocusedElement()
+        if focused == nil, let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            wakeAccessibility(pid: pid)
+            focused = systemWideFocusedElement()
+            Log.d("paste: no focus on first read, woke \(pid) -> \(focused == nil ? "still empty" : "got element")")
+        }
+        guard let element = focused else { return (false, nil) }
 
         var roleRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
@@ -132,6 +136,30 @@ enum Paster {
             element, kAXSelectedTextRangeAttribute as CFString, &settable) == .success && settable.boolValue
         Log.d("paste: capability range=\(hasRange) rangeSettable=\(rangeSettable)")
         return rangeSettable
+    }
+
+    private static func systemWideFocusedElement() -> AXUIElement? {
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            AXUIElementCreateSystemWide(),
+            kAXFocusedUIElementAttribute as CFString, &focusedRef
+        ) == .success, let focused = focusedRef else { return nil }
+        return (focused as! AXUIElement)
+    }
+
+    /// Wakes an app's accessibility tree by setting AXManualAccessibility — the
+    /// same on-demand signal VoiceOver sends. Chromium/Electron and WebKit build
+    /// their AX tree lazily and expose no focused element until an assistive
+    /// client asks; without this the focus probe sees nothing and dictation
+    /// falls back to a manual ⌘V even when a real text cursor is right there.
+    /// Native apps ignore the unknown attribute, so this is safe to call blindly
+    /// and leaves the empty-desktop "no cursor" case (Finder) still blocked.
+    /// Best called at record start, giving Chromium the whole speech +
+    /// recognition window to build the tree before we probe.
+    static func wakeAccessibility(pid: pid_t) {
+        AXUIElementSetAttributeValue(
+            AXUIElementCreateApplication(pid),
+            "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
     private static func sendCmdV() {
