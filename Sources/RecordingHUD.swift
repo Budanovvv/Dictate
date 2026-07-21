@@ -4,10 +4,12 @@ import SwiftUI
 /// Floating status panel at the bottom of the screen. Never takes focus or mouse events.
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
-        case recording, transcribing, empty, downloading, warming, cancelled, copied, micBusy
+        case recording, transcribing, empty, downloading, warming, cancelled, copied, micBusy, tooQuiet, tooLoud
     }
 
     @Published var mode: Mode = .recording
+    /// Name of the app holding the mic, for the .micBusy message (nil = generic).
+    @Published var busyApp: String?
     @Published var level: Double = 0
     @Published var elapsed: Int = 0
     @Published var downloadProgress: Double = 0
@@ -91,12 +93,26 @@ final class RecordingHUD {
 
     /// Another app holds the mic (voice-processing) — dictation got no audio.
     /// Actionable message so the user knows it's not "speak louder".
-    func showMicBusy() {
+    func showMicBusy(appName: String? = nil) {
         cancelHide()
         stopElapsed()
+        model.busyApp = appName
         model.mode = .micBusy
         show()
         scheduleHide(after: 3.0)
+    }
+
+    /// Audio came in but was far too quiet / too loud for recognition — a
+    /// specific nudge instead of the generic "didn't catch that".
+    func showTooQuiet() { showLevelNotice(.tooQuiet) }
+    func showTooLoud() { showLevelNotice(.tooLoud) }
+
+    private func showLevelNotice(_ mode: HUDModel.Mode) {
+        cancelHide()
+        stopElapsed()
+        model.mode = mode
+        show()
+        scheduleHide(after: 2.5)
     }
 
     /// Esc pressed: brief flash, then hide.
@@ -277,6 +293,12 @@ private struct HUDView: View {
         case .micBusy:
             Image(systemName: "mic.slash")
                 .font(.system(size: 17)).foregroundStyle(.secondary)
+        case .tooQuiet:
+            Image(systemName: "speaker.wave.1")
+                .font(.system(size: 16)).foregroundStyle(.secondary)
+        case .tooLoud:
+            Image(systemName: "speaker.wave.3")
+                .font(.system(size: 16)).foregroundStyle(.secondary)
         case .downloading:
             Image(systemName: "arrow.down.circle")
                 .font(.system(size: 18)).foregroundStyle(Brand.gradientDiagonal)
@@ -329,7 +351,13 @@ private struct HUDView: View {
         case .recording: return L("Recording…")
         case .transcribing: return L("Recognizing…")
         case .empty: return L("Sorry, I didn't catch that — could you say it again?")
-        case .micBusy: return L("Another app is using the microphone right now — close it and try again")
+        case .micBusy:
+            if let app = model.busyApp, !app.isEmpty {
+                return Lf("%@ is using the microphone right now — close it and try again", app)
+            }
+            return L("Another app is using the microphone right now — close it and try again")
+        case .tooQuiet: return L("That was very quiet — move closer to the microphone")
+        case .tooLoud: return L("That was too loud — move back a little from the microphone")
         case .downloading:
             return model.downloadProgress < 0.999
                 ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * 950), 950)
@@ -342,7 +370,7 @@ private struct HUDView: View {
 
     private var titleFont: Font {
         switch model.mode {
-        case .empty, .copied, .micBusy: return .system(size: 11, weight: .medium)
+        case .empty, .copied, .micBusy, .tooQuiet, .tooLoud: return .system(size: 11, weight: .medium)
         case .downloading: return .system(size: 12, weight: .medium).monospacedDigit()
         default: return .system(size: 13, weight: .medium)
         }
@@ -350,7 +378,7 @@ private struct HUDView: View {
 
     private var titleIsSecondary: Bool {
         switch model.mode {
-        case .empty, .cancelled, .copied, .micBusy: return true
+        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud: return true
         default: return false
         }
     }
@@ -368,7 +396,7 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return .voice
         case .transcribing, .downloading, .warming: return .progress
-        case .empty, .cancelled, .copied, .micBusy: return nil
+        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud: return nil
         }
     }
 

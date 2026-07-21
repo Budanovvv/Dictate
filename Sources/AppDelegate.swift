@@ -75,16 +75,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.hud.showCancelled()
             }
         }
-        dictation.onMicBusy = { [weak self] in
+        dictation.onMicBusy = { [weak self] appName in
             DispatchQueue.main.async {
                 self?.resultShown = true   // idle must not hide the "mic busy" HUD
-                self?.hud.showMicBusy()
+                self?.hud.showMicBusy(appName: appName)
             }
         }
         dictation.onNothingHeard = { [weak self] in
             DispatchQueue.main.async {
                 self?.resultShown = true   // idle must not hide the "didn't catch that" HUD
                 self?.hud.showResult(success: false)
+            }
+        }
+        dictation.onTooQuiet = { [weak self] in
+            DispatchQueue.main.async {
+                self?.resultShown = true   // idle must not hide the "too quiet" HUD
+                self?.hud.showTooQuiet()
+            }
+        }
+        dictation.onTooLoud = { [weak self] in
+            DispatchQueue.main.async {
+                self?.resultShown = true   // idle must not hide the "too loud" HUD
+                self?.hud.showTooLoud()
             }
         }
         dictation.onLevel = { [weak self] level in
@@ -101,6 +113,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             showOnboarding()
         }
+        // Bring the pre-roll ring up if it's enabled (no-op otherwise). Also
+        // called after the settings toggle and after mic permission is granted.
+        PrerollBuffer.shared.refresh()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -128,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.onboardingWindow?.close()
             self.onboardingWindow = nil
             self.dictation.restart()
+            PrerollBuffer.shared.refresh()   // mic permission just granted
         }, dictation: dictation)
         let window = makeWindow(title: L("Welcome to Dictate"), content: view)
         onboardingWindow = window

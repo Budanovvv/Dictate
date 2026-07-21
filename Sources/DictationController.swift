@@ -45,11 +45,18 @@ final class DictationController {
     /// No text cursor — the result went to the clipboard instead of being pasted.
     var onCopiedInstead: (() -> Void)?
     /// The key was held but the mic delivered no audio because another app
-    /// holds it in voice-processing mode (Google Meet, Zoom, FaceTime…).
-    var onMicBusy: (() -> Void)?
+    /// holds it in voice-processing mode (Google Meet, Zoom, FaceTime…). The
+    /// argument is that app's name when known, for a specific message.
+    var onMicBusy: ((String?) -> Void)?
     /// The key was held but nothing was captured (mic still waking from sleep,
     /// device not ready) — tell the user instead of failing silently.
     var onNothingHeard: (() -> Void)?
+    /// Audio was captured but far too quiet for any speech — suggest moving
+    /// closer to the mic instead of the generic "didn't catch that".
+    var onTooQuiet: (() -> Void)?
+    /// Audio was captured but heavily clipped (input gain too high / too loud) —
+    /// suggest backing off, so the distortion that defeats recognition is named.
+    var onTooLoud: (() -> Void)?
     private(set) var lastResult: String?
     /// Recent results, newest first (in memory only — never written to disk).
     private(set) var history: [String] = []
@@ -77,6 +84,16 @@ final class DictationController {
     private var activeCancel: CancelToken?
     /// The recognition Task, so cancel() can tear it down.
     private var transcribeTask: Task<Void, Never>?
+    /// Hands-free auto-stop bookkeeping (only when the setting is on): whether
+    /// this recording has heard speech yet (so a silent lead-in never triggers
+    /// a stop), and when the last above-threshold level arrived.
+    private var autoStopArmed = false
+    private var autoStopHeardSpeech = false
+    private var autoStopLastLoud = Date()
+    /// Pre-roll audio captured at key-press (Int16 PCM), prepended to a real
+    /// dictation so a word begun just before the press isn't lost. nil when the
+    /// pre-roll setting is off.
+    private var prerollPCM: Data?
 
     private static let soundStart = NSSound(contentsOfFile: "/System/Library/Sounds/Pop.aiff", byReference: true)
     private static let soundStop = NSSound(contentsOfFile: "/System/Library/Sounds/Purr.aiff", byReference: true)
@@ -94,13 +111,16 @@ final class DictationController {
             self?.onError?(Lf("Recording truncated at %d seconds (limit)", AudioRecorder.maxDurationSec))
         }
         recorder.onLevel = { [weak self] level in
-            self?.onLevel?(level)
+            guard let self else { return }
+            self.onLevel?(level)
+            self.autoStopTick(level: level)
         }
         recorder.onMicBusyDetected = { [weak self] in
             guard let self, self.state == .recording else { return }
+            let app = self.recorder.busyAppName
             _ = self.recorder.stop()
             Log.d("mic busy detected early -> stop + notify")
-            self.onMicBusy?()   // before .idle so the idle transition can't hide it
+            self.onMicBusy?(app)   // before .idle so the idle transition can't hide it
             self.state = .idle
         }
         recorder.onRecoveryFailed = { [weak self] nothingRecorded in
@@ -183,6 +203,13 @@ final class DictationController {
         guard !paused, state == .idle else { return }
         activeTranslate = translate
         pressedAt = Date()
+        autoStopArmed = Settings.shared.autoStopOnSilence
+        autoStopHeardSpeech = false
+        autoStopLastLoud = Date()
+        // Snapshot the pre-roll ring at press: it holds audio from just before
+        // now, prepended only if this turns into a real dictation (so a stray
+        // tap can't manufacture one out of ambient sound).
+        prerollPCM = Settings.shared.prerollEnabled ? PrerollBuffer.shared.snapshot() : nil
         state = .recording
         Self.soundStart?.play()
         // Wake the target app's accessibility tree now, while the user speaks:
@@ -224,8 +251,28 @@ final class DictationController {
         }
     }
 
+    /// Hands-free: runs on the main thread for every level update. Once speech
+    /// has been heard, a long-enough quiet stretch ends the recording as if the
+    /// key were released. A silent lead-in never triggers it, so nothing stops
+    /// before the user has actually spoken.
+    private func autoStopTick(level: Double) {
+        guard autoStopArmed, state == .recording else { return }
+        if level >= 0.08 {
+            autoStopHeardSpeech = true
+            autoStopLastLoud = Date()
+            return
+        }
+        guard autoStopHeardSpeech else { return }
+        if Date().timeIntervalSince(autoStopLastLoud) >= Settings.shared.autoStopSilenceSeconds {
+            Log.d("hands-free: silence \(String(format: "%.1f", Settings.shared.autoStopSilenceSeconds))s -> auto stop")
+            autoStopArmed = false
+            endRecording()
+        }
+    }
+
     private func endRecording() {
         guard state == .recording else { return }
+        autoStopArmed = false
         let (pcm, duration) = recorder.stop()
         Self.soundStop?.play()
         targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -242,7 +289,7 @@ final class DictationController {
             if held >= 0.5 {
                 if recorder.sawForeignFormat {
                     Log.d("empty after \(String(format: "%.1f", held))s hold -> mic busy")
-                    onMicBusy?()
+                    onMicBusy?(recorder.busyAppName)
                 } else {
                     Log.d("empty after \(String(format: "%.1f", held))s hold -> nothing heard")
                     onNothingHeard?()
@@ -252,25 +299,48 @@ final class DictationController {
             return  // accidental short press or unusable capture
         }
 
-        let translate = activeTranslate
-        let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+        // Snapshot the level stats now — a later dictation resets the recorder
+        // while this one's recognition Task may still be deciding what to show.
+        let peak = recorder.peakLevel
+        let clip = recorder.clippedFraction
 
-        // Energy numbers: logged for calibration, and used as the fallback
-        // gate if the VAD model is unavailable.
+        let translate = activeTranslate
+        // Prepend the pre-roll to a confirmed dictation (leading silence in it
+        // is trimmed below, so a quiet ring adds nothing but a caught onset).
+        let fullPCM: Data
+        if let pre = prerollPCM, !pre.isEmpty {
+            Log.d("preroll: prepending \(pre.count)B (~\(String(format: "%.2f", Double(pre.count) / Double(AudioRecorder.sampleRate * 2)))s)")
+            fullPCM = pre + pcm
+        } else {
+            fullPCM = pcm
+        }
+        prerollPCM = nil
+        let floats = AudioRecorder.floatSamples(fromPCM: fullPCM)
+
+        // Per-0.1s-window energy, in temporal order (bounds are read from it
+        // before it's sorted for the p90/mean summary).
         let window = AudioRecorder.sampleRate / 10
-        var windowRMS: [Double] = []
+        var energies: [Double] = []
         var i = 0
         while i < floats.count {
             let end = min(i + window, floats.count)
             var e: Double = 0
             for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
-            windowRMS.append((e / Double(end - i)).squareRoot())
+            energies.append((e / Double(end - i)).squareRoot())
             i = end
         }
-        windowRMS.sort()
+        let windowRMS = energies.sorted()
         let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
         let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
-        Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90))")
+        Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90)) peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip))")
+
+        // Trim leading/trailing silence before Whisper: windows well below the
+        // speech level (< 8% of p90) at the very edges are dropped, keeping a
+        // 150 ms margin so a quiet word onset is never clipped. Conservative on
+        // purpose — a low threshold plus the margin can only shorten pure
+        // silence, and it never touches audio between the first and last voiced
+        // window. Speeds recognition and cuts edge hallucinations.
+        let speechFloats = Self.trimSilence(floats, energies: energies, window: window, p90: p90)
 
         state = .transcribing
         let language = Settings.shared.language
@@ -285,13 +355,51 @@ final class DictationController {
             // confident phrases on it). Energy heuristic is the fallback only.
             let speech = await SpeechGate.shared.hasSpeech(floats) ?? (p90 > 0.012)
             guard speech else {
-                Log.d("silence gate -> empty result")
-                await MainActor.run { self.finish(text: "", seconds: 0, translate: translate, token: token) }
+                Log.d("silence gate -> empty result (peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip)))")
+                await MainActor.run {
+                    self.reportEmptyCapture(peak: peak, clip: clip, token: token)
+                }
                 return
             }
-            await self.transcribeLocal(floats: floats, language: language,
+            await self.transcribeLocal(floats: speechFloats, language: language,
                                        prompt: prompt, tier: tier, translate: translate, token: token)
         }
+    }
+
+    /// Nothing recognizable was captured though the key was held and audio came
+    /// in. Pick the most useful nudge: heavy clipping → "too loud"; a very low
+    /// peak → "too quiet"; otherwise the generic "didn't catch that". Ordering
+    /// mirrors finish(): fire before state = .idle so nothing hides the pill.
+    @MainActor
+    private func reportEmptyCapture(peak: Double, clip: Double, token: CancelToken) {
+        guard !token.isCancelled else { return }
+        onResultText?("")
+        if clip > 0.02 {
+            onTooLoud?()
+        } else if peak < 0.02 {
+            onTooQuiet?()
+        } else {
+            onNothingHeard?()
+        }
+        state = .idle
+    }
+
+    /// Drops pure-silence windows from the head and tail, keeping a margin so a
+    /// quiet onset/offset survives. Returns the original array unchanged when
+    /// there's no clear silence to cut (or nothing voiced at all).
+    private static func trimSilence(_ floats: [Float], energies: [Double],
+                                    window: Int, p90: Double) -> [Float] {
+        guard p90 > 0, !energies.isEmpty, floats.count > window * 4 else { return floats }
+        let threshold = p90 * 0.08
+        guard let firstVoiced = energies.firstIndex(where: { $0 > threshold }),
+              let lastVoiced = energies.lastIndex(where: { $0 > threshold }) else { return floats }
+        let margin = 2   // windows (~200 ms) of padding on each side
+        let startWin = max(0, firstVoiced - margin)
+        let endWin = min(energies.count - 1, lastVoiced + margin)
+        let start = startWin * window
+        let end = min(floats.count, (endWin + 1) * window)
+        guard start < end, end - start < floats.count else { return floats }
+        return Array(floats[start..<end])
     }
 
     private func transcribeLocal(floats: [Float], language: String,

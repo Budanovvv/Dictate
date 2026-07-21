@@ -42,6 +42,27 @@ final class AudioRecorder {
     /// (Google Meet, Zoom, FaceTime…). Read after stop() to tell a genuine
     /// silence apart from "the mic is busy elsewhere".
     private(set) var sawForeignFormat = false
+    /// Name of the app holding the mic when a foreign format was seen (Google
+    /// Meet, Zoom…), best-effort. nil when unknown. Read after stop()/onMicBusy
+    /// to name the culprit in the "mic busy" message.
+    private(set) var busyAppName: String?
+    /// The device we pinned for this recording — the one to avoid when falling
+    /// back to another mic because this one is held elsewhere.
+    private var pinnedDeviceID: AudioDeviceID?
+    /// One automatic fallback to a separate input device per recording (a busy
+    /// built-in mic + a USB mic present). Guards against a switch loop.
+    private var triedFallback = false
+    /// Loudest normalized sample seen this recording (0…1) and the fraction of
+    /// samples at the Int16 ceiling — surfaced as "too quiet"/"too loud" hints
+    /// when nothing usable was recognized.
+    private(set) var peakLevel: Double = 0
+    private var clippedSamples = 0
+    private var totalSamples = 0
+    /// Fraction of captured samples pinned near the Int16 ceiling (0…1).
+    var clippedFraction: Double {
+        lock.lock(); defer { lock.unlock() }
+        return totalSamples > 0 ? Double(clippedSamples) / Double(totalSamples) : 0
+    }
     /// Fired (on the main thread) when the mic is held by another app and even
     /// voice processing couldn't get audio — so the pill can say "mic busy"
     /// the moment it's clear, instead of after the user finishes speaking.
@@ -62,6 +83,12 @@ final class AudioRecorder {
         rebuilding = false
         sawForeignFormat = false
         micBusyReported = false
+        busyAppName = nil
+        pinnedDeviceID = nil
+        triedFallback = false
+        peakLevel = 0
+        clippedSamples = 0
+        totalSamples = 0
         // Bring the input up off the main thread — engine.start()/installTap
         // block for seconds on a cold/Bluetooth mic and used to freeze the UI.
         // State and HUD stay on main; only the blocking HAL work runs here.
@@ -116,13 +143,15 @@ final class AudioRecorder {
     }
 
     /// Installs the tap and starts the engine for the current input device.
-    private func attachInput() throws {
+    /// `override` forces a specific device (used by the busy-mic fallback);
+    /// otherwise the device follows the mic setting.
+    private func attachInput(override: AudioDeviceID? = nil) throws {
         let input = engine.inputNode
         // Pin the input per the mic setting (default: built-in). Bluetooth
         // mics take seconds of HFP negotiation and record phone-call quality;
         // with the built-in mic pinned the headphones stay in music mode.
         var pinnedID: AudioDeviceID?
-        if var deviceID = AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID),
+        if var deviceID = override ?? AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID),
            let unit = input.audioUnit {
             let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
                                               kAudioUnitScope_Global, 0, &deviceID,
@@ -130,6 +159,7 @@ final class AudioRecorder {
             Log.d("audio: pin device id=\(deviceID) status=\(status)")
             pinnedID = deviceID
         }
+        pinnedDeviceID = pinnedID
 
         // Another app holding the mic in voice-processing mode (Google Meet,
         // Zoom, FaceTime…) switches the shared device to a reduced rate and
@@ -146,7 +176,10 @@ final class AudioRecorder {
             if reported > 0, nominal > 0 {
                 if abs(reported - nominal) > 1 {
                     sawForeignFormat = true
-                    Log.d("audio: mic mode=BUSY (\(Int(reported))Hz ≠ nominal \(Int(nominal))Hz — another app holds the mic, voice-processing)")
+                    // Name the culprit for the "mic busy" message (best-effort).
+                    let ourPID = ProcessInfo.processInfo.processIdentifier
+                    busyAppName = AudioInputDevices.appsRunningInput(excluding: ourPID).first
+                    Log.d("audio: mic mode=BUSY (\(Int(reported))Hz ≠ nominal \(Int(nominal))Hz — another app holds the mic, voice-processing)\(busyAppName.map { " app=\($0)" } ?? "")")
                 } else {
                     Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal — free to record)")
                 }
@@ -189,7 +222,7 @@ final class AudioRecorder {
     /// need seconds to report a valid format (Bluetooth negotiation, wake
     /// from sleep) — retry ~4.5 s; cancel via onRecoveryFailed only if
     /// recovery fails.
-    private func rebuildInputChain(attempt: Int = 0) {
+    private func rebuildInputChain(attempt: Int = 0, override: AudioDeviceID? = nil) {
         guard isRecording else { return }
         if attempt == 0 {
             guard !rebuilding else { return }   // coalesce repeated notifications
@@ -202,7 +235,7 @@ final class AudioRecorder {
         engine.reset()
 
         do {
-            try attachInput()
+            try attachInput(override: override)
             rebuilding = false
             Log.d("audio: input attached (attempt \(attempt))")
             scheduleMicBusyWatchdog()
@@ -222,7 +255,7 @@ final class AudioRecorder {
             return
         }
         ioQueue.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.rebuildInputChain(attempt: attempt + 1)
+            self?.rebuildInputChain(attempt: attempt + 1, override: override)
         }
     }
 
@@ -242,6 +275,18 @@ final class AudioRecorder {
             let empty = self.samples.isEmpty
             self.lock.unlock()
             guard empty else { return }   // audio arrived — the mic is ours
+            // Before declaring the mic busy, try one switch to a separate
+            // physical input (e.g. a USB mic) — the call app may hold only the
+            // built-in device while another mic is free. Only if one exists;
+            // otherwise keep the honest "busy" message.
+            if !self.triedFallback, let avoid = self.pinnedDeviceID,
+               let alt = AudioInputDevices.fallbackInput(avoiding: avoid) {
+                self.triedFallback = true
+                Log.d("audio: mic busy -> falling back to input id=\(alt)")
+                self.rebuilding = false   // let the fallback rebuild proceed
+                self.ioQueue.async { [weak self] in self?.rebuildInputChain(override: alt) }
+                return
+            }
             self.micBusyReported = true
             Log.d("audio: foreign format + no audio after 0.4s -> mic busy (early)")
             self.onMicBusyDetected?()
@@ -311,14 +356,27 @@ final class AudioRecorder {
         }
         guard err == nil, out.frameLength > 0, let ch = out.int16ChannelData else { return }
 
-        // RMS level for the indicator (slight gain so normal speech is visible)
+        // Single pass over the buffer: RMS for the indicator, plus peak and
+        // clipping tally for the "too quiet"/"too loud" hints. Samples within
+        // ~0.3 dBFS of the Int16 ceiling count as clipped.
+        let n = Int(out.frameLength)
+        var sum: Double = 0
+        var peak = 0
+        var clipped = 0
+        for i in 0..<n {
+            let s = Int(ch[0][i])
+            let a = abs(s)
+            if a > peak { peak = a }
+            if a >= 32760 { clipped += 1 }
+            let v = Double(s) / 32768.0
+            sum += v * v
+        }
+        lock.lock()
+        peakLevel = max(peakLevel, Double(peak) / 32768.0)
+        clippedSamples += clipped
+        totalSamples += n
+        lock.unlock()
         if let onLevel {
-            var sum: Double = 0
-            let n = Int(out.frameLength)
-            for i in 0..<n {
-                let v = Double(ch[0][i]) / 32768.0
-                sum += v * v
-            }
             let level = min(1.0, (sum / Double(n)).squareRoot() * 24)
             DispatchQueue.main.async { onLevel(level) }
         }

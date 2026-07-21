@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 
 /// Core Audio HAL input devices: enumeration and the recording-time pick.
@@ -44,7 +45,81 @@ enum AudioInputDevices {
         }
     }
 
+    /// Display names of the apps currently running microphone input, excluding
+    /// our own process. When another app holds the mic in voice-processing mode
+    /// we can name the culprit ("Microphone busy: Google Meet") instead of a
+    /// generic message. Backed by the Core Audio process objects API (macOS 14+):
+    /// each process object exposes whether it's running input, its pid and its
+    /// bundle ID — reading these needs no tap entitlement (that's only for
+    /// actually capturing another process's audio). Returns [] if nothing else
+    /// is capturing or the API is unavailable.
+    static func appsRunningInput(excluding excludedPID: pid_t) -> [String] {
+        var addr = address(kAudioHardwarePropertyProcessObjectList)
+        var size: UInt32 = 0
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(system, &addr, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var procs = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &addr, 0, nil, &size, &procs) == noErr else { return [] }
+
+        var names: [String] = []
+        var seen = Set<String>()
+        for proc in procs {
+            guard boolProperty(proc, kAudioProcessPropertyIsRunningInput) else { continue }
+            let pid = pidProperty(proc)
+            if pid == excludedPID { continue }
+            guard let name = appName(pid: pid, bundleID: string(proc, kAudioProcessPropertyBundleID)) else { continue }
+            if seen.insert(name).inserted { names.append(name) }
+        }
+        return names
+    }
+
+    /// Best display name for a capturing process: the running app's localized
+    /// name (handles helper processes — Chrome's audio runs in a helper whose
+    /// parent bundle is Google Chrome), else the bundle's last component.
+    private static func appName(pid: pid_t, bundleID: String?) -> String? {
+        if pid > 0, let app = NSRunningApplication(processIdentifier: pid), let n = app.localizedName {
+            return n
+        }
+        if let bundleID {
+            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
+               let n = app.localizedName {
+                return n
+            }
+            return bundleID.split(separator: ".").last.map(String.init)
+        }
+        return nil
+    }
+
+    /// A different input device to fall back to when the current one (`avoid`)
+    /// is held by another app in voice-processing mode. Prefers a truly separate
+    /// physical device (USB mic, audio interface) — never Bluetooth (HFP is slow
+    /// and phone-quality) and never a virtual/aggregate loopback. Returns nil
+    /// when the only real mic is the one that's busy, so the caller keeps the
+    /// honest "mic busy" message instead of switching to nothing.
+    static func fallbackInput(avoiding avoid: AudioDeviceID) -> AudioDeviceID? {
+        all().first { dev in
+            dev.id != avoid && !dev.isBluetooth && dev.transport != kAudioDeviceTransportTypeVirtual
+                && dev.transport != kAudioDeviceTransportTypeAggregate
+        }?.id
+    }
+
     // MARK: - HAL property plumbing
+
+    private static func boolProperty(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> Bool {
+        var addr = address(selector)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var value: UInt32 = 0
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &value) == noErr else { return false }
+        return value != 0
+    }
+
+    private static func pidProperty(_ id: AudioObjectID) -> pid_t {
+        var addr = address(kAudioProcessPropertyPID)
+        var size = UInt32(MemoryLayout<pid_t>.size)
+        var value: pid_t = -1
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &value) == noErr else { return -1 }
+        return value
+    }
 
     private static func address(_ selector: AudioObjectPropertySelector,
                                 scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal)

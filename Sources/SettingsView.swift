@@ -24,6 +24,8 @@ struct SettingsView: View {
     @State private var micDevices = AudioInputDevices.all()
     @State private var replacements = Settings.shared.replacements
     @State private var removeFillers = Settings.shared.removeFillers
+    @State private var autoStopOnSilence = Settings.shared.autoStopOnSilence
+    @State private var prerollEnabled = Settings.shared.prerollEnabled
 
     private var languageOptions: [(code: String, name: String)] { LanguageList.options }
 
@@ -84,11 +86,28 @@ struct SettingsView: View {
 
                 Toggle(L("Remove filler words"), isOn: $removeFillers)
                     .onChange(of: removeFillers) { Settings.shared.removeFillers = $0 }
+
+                Toggle(L("Stop automatically after a pause"), isOn: $autoStopOnSilence)
+                    .onChange(of: autoStopOnSilence) { Settings.shared.autoStopOnSilence = $0 }
+
+                Toggle(L("Catch the start of speech (keeps the mic on)"), isOn: $prerollEnabled)
+                    .onChange(of: prerollEnabled) {
+                        Settings.shared.prerollEnabled = $0
+                        PrerollBuffer.shared.refresh()
+                    }
             } header: { Text(L("Dictation")) } footer: {
-                if micUID != "" {
-                    Text(L("Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate."))
-                        .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    if micUID != "" {
+                        Text(L("Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate."))
+                    }
+                    if autoStopOnSilence {
+                        Text(L("Instead of holding the key the whole time, the recording ends on its own after a short silence."))
+                    }
+                    if prerollEnabled {
+                        Text(L("Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit."))
+                    }
                 }
+                .font(.caption).foregroundStyle(.secondary)
             }
 
             // — Shortcuts —

@@ -30,9 +30,22 @@ final class MainThreadWatchdog {
     private let queue = DispatchQueue(label: "com.valentynbudanov.Dictate.watchdog", qos: .utility)
     private var timer: DispatchSourceTimer?
     private let lock = NSLock()
-    private var lastBeat = Date()
+    /// Monotonic timestamps (`systemUptime` = mach_absolute_time), NOT wall clock:
+    /// system sleep freezes the whole process, so `Date()` would advance by the
+    /// full sleep duration while the timer sat suspended — every wake would then
+    /// look like a multi-minute "wedge" (confirmed against pmset: each false hang
+    /// matched the preceding Maintenance Sleep to the second). systemUptime does
+    /// not tick during sleep, so sleeping adds ~0 to the measured age; a genuine
+    /// main-thread block (process running, main stuck) still advances it.
+    private var lastBeat = ProcessInfo.processInfo.systemUptime
+    /// When the watchdog tick itself last ran. If two ticks are separated by far
+    /// more than the 2s schedule, the timer was suspended (sleep/app-nap) — this
+    /// tick woke into a stale world and must not judge the gap as a hang.
+    private var lastTick = ProcessInfo.processInfo.systemUptime
     /// Seconds the main thread may be unresponsive before it's called wedged.
     private let threshold: TimeInterval = 15
+    /// A tick gap beyond this means the timer was suspended, not merely late.
+    private let sleepGap: TimeInterval = 8
     /// Set once per continuous hang so we capture one sample, not one every tick.
     private var captured = false
 
@@ -54,9 +67,23 @@ final class MainThreadWatchdog {
         // wedged this block never runs, so lastBeat goes stale.
         DispatchQueue.main.async { [weak self] in self?.beat() }
 
+        let nowUptime = ProcessInfo.processInfo.systemUptime
         lock.lock()
-        let age = Date().timeIntervalSince(lastBeat)
+        let sinceTick = nowUptime - lastTick
+        lastTick = nowUptime
+        let age = nowUptime - lastBeat
         lock.unlock()
+
+        // The timer skipped its own cadence by a wide margin -> the process was
+        // suspended (system sleep / app nap), not hung. systemUptime already
+        // excludes sleep, so `age` shouldn't spike, but a wake also hasn't let
+        // the pending heartbeat run yet; treat this tick as a fresh start.
+        if sinceTick >= sleepGap {
+            beat()             // re-seed so the post-wake main thread isn't judged
+            captured = false
+            Log.d("watchdog: tick gap \(Int(sinceTick))s (process was suspended) -> re-armed")
+            return
+        }
 
         if age >= threshold {
             if !captured {
@@ -70,7 +97,7 @@ final class MainThreadWatchdog {
 
     private func beat() {
         lock.lock()
-        lastBeat = Date()
+        lastBeat = ProcessInfo.processInfo.systemUptime
         lock.unlock()
     }
 

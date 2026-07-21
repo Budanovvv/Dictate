@@ -71,6 +71,33 @@ final class Settings {
         set { d.set(newValue, forKey: "replacements") }
     }
 
+    /// Hands-free: end the recording automatically after a pause, instead of
+    /// requiring the key held the whole time. Off by default — push-to-talk is
+    /// the predictable default; this changes the interaction model.
+    var autoStopOnSilence: Bool {
+        get { d.bool(forKey: "autoStopOnSilence") }
+        set { d.set(newValue, forKey: "autoStopOnSilence") }
+    }
+
+    /// Seconds of silence that end a hands-free recording. Clamped to a sane
+    /// range so a stray value can't make it fire instantly or never.
+    var autoStopSilenceSeconds: Double {
+        get {
+            let v = d.object(forKey: "autoStopSilenceSeconds") as? Double ?? 1.5
+            return min(5, max(0.6, v))
+        }
+        set { d.set(newValue, forKey: "autoStopSilenceSeconds") }
+    }
+
+    /// Pre-roll: keep the last moment of audio buffered so speech started a
+    /// hair before the key is pressed isn't clipped. OFF by default and gated
+    /// behind this switch because it keeps the microphone open continuously —
+    /// the macOS privacy indicator stays lit and it uses a little more power.
+    var prerollEnabled: Bool {
+        get { d.bool(forKey: "prerollEnabled") }
+        set { d.set(newValue, forKey: "prerollEnabled") }
+    }
+
     /// Single model, no tier picker — see ModelTier.
     var modelTier: ModelTier { .ultra }
 }

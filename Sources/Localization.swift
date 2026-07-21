@@ -101,6 +101,13 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ сейчас использует микрофон — закрой его и попробуй снова",
+        "That was very quiet — move closer to the microphone": "Очень тихо — придвиньтесь ближе к микрофону",
+        "That was too loud — move back a little from the microphone": "Слишком громко — немного отодвиньтесь от микрофона",
+        "Stop automatically after a pause": "Останавливать автоматически после паузы",
+        "Catch the start of speech (keeps the mic on)": "Ловить начало речи (микрофон остаётся включённым)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Не нужно держать клавишу всё время — запись завершится сама после короткой паузы.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Держит в буфере последний момент звука, чтобы слово, начатое перед нажатием, не потерялось. Микрофон остаётся включённым, поэтому индикатор приватности macOS горит постоянно.",
         "Remove filler words": "Убирать слова-паразиты",
         "Commands for: %@. ": "Команды для языка: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Точечные правки распознанного текста: имена, бренды, аббревиатуры.",
@@ -263,6 +270,13 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ зараз використовує мікрофон — закрий його та спробуй знову",
+        "That was very quiet — move closer to the microphone": "Дуже тихо — присуньтеся ближче до мікрофона",
+        "That was too loud — move back a little from the microphone": "Надто гучно — трохи відсуньтеся від мікрофона",
+        "Stop automatically after a pause": "Зупиняти автоматично після паузи",
+        "Catch the start of speech (keeps the mic on)": "Ловити початок мовлення (мікрофон лишається ввімкненим)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Не потрібно тримати клавішу весь час — запис завершиться сам після короткої паузи.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Тримає в буфері останню мить звуку, щоб слово, почате перед натисканням, не загубилося. Мікрофон лишається ввімкненим, тому індикатор приватності macOS горить постійно.",
         "Remove filler words": "Прибирати слова-паразити",
         "Commands for: %@. ": "Команди для мови: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Точкові правки розпізнаного тексту: імена, бренди, абревіатури.",
@@ -416,6 +430,13 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ está usando el micrófono ahora — ciérralo e inténtalo de nuevo",
+        "That was very quiet — move closer to the microphone": "Fue muy bajo — acércate al micrófono",
+        "That was too loud — move back a little from the microphone": "Fue demasiado alto — aléjate un poco del micrófono",
+        "Stop automatically after a pause": "Detener automáticamente tras una pausa",
+        "Catch the start of speech (keeps the mic on)": "Capturar el inicio del habla (mantiene el micrófono activo)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "En lugar de mantener la tecla todo el tiempo, la grabación termina sola tras un breve silencio.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Mantiene un instante de audio en búfer para que una palabra iniciada justo antes de pulsar no se pierda. El micrófono permanece activo, así que el punto de privacidad de macOS sigue encendido.",
         "Remove filler words": "Eliminar muletillas",
         "Commands for: %@. ": "Comandos para: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Correcciones exactas del texto reconocido: nombres, marcas, siglas.",
@@ -578,6 +599,13 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ está usando o microfone agora — feche-o e tente novamente",
+        "That was very quiet — move closer to the microphone": "Ficou muito baixo — aproxime-se do microfone",
+        "That was too loud — move back a little from the microphone": "Ficou muito alto — afaste-se um pouco do microfone",
+        "Stop automatically after a pause": "Parar automaticamente após uma pausa",
+        "Catch the start of speech (keeps the mic on)": "Capturar o início da fala (mantém o microfone ligado)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Em vez de segurar a tecla o tempo todo, a gravação termina sozinha após um breve silêncio.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Mantém um instante de áudio em buffer para que uma palavra iniciada logo antes de pressionar não se perca. O microfone permanece ligado, então o ponto de privacidade do macOS fica aceso.",
         "Remove filler words": "Remover vícios de linguagem",
         "Commands for: %@. ": "Comandos para: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Correções exatas do texto reconhecido: nomes, marcas, siglas.",
@@ -740,6 +768,13 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ utilise le microphone en ce moment — fermez-le et réessayez",
+        "That was very quiet — move closer to the microphone": "C'était très faible — rapprochez-vous du microphone",
+        "That was too loud — move back a little from the microphone": "C'était trop fort — éloignez-vous un peu du microphone",
+        "Stop automatically after a pause": "Arrêter automatiquement après une pause",
+        "Catch the start of speech (keeps the mic on)": "Capturer le début de la parole (garde le micro allumé)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Au lieu de maintenir la touche tout le temps, l'enregistrement s'arrête seul après un court silence.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Garde un instant d'audio en mémoire pour qu'un mot commencé juste avant l'appui ne soit pas perdu. Le micro reste allumé, donc le point de confidentialité de macOS reste allumé.",
         "Remove filler words": "Supprimer les tics de langage",
         "Commands for: %@. ": "Commandes pour : %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Corrections exactes du texte reconnu : noms, marques, sigles.",
@@ -902,6 +937,13 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ verwendet gerade das Mikrofon — schließe es und versuche es erneut",
+        "That was very quiet — move closer to the microphone": "Das war sehr leise — geh näher ans Mikrofon",
+        "That was too loud — move back a little from the microphone": "Das war zu laut — geh etwas weiter vom Mikrofon weg",
+        "Stop automatically after a pause": "Nach einer Pause automatisch stoppen",
+        "Catch the start of speech (keeps the mic on)": "Sprechbeginn mitschneiden (Mikrofon bleibt an)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Statt die Taste die ganze Zeit zu halten, endet die Aufnahme nach kurzer Stille von selbst.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Hält einen Moment Audio im Puffer, damit ein kurz vor dem Drücken begonnenes Wort nicht verloren geht. Das Mikrofon bleibt an, daher leuchtet der Datenschutzpunkt von macOS dauerhaft.",
         "Remove filler words": "Füllwörter entfernen",
         "Commands for: %@. ": "Befehle für: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Punktgenaue Korrekturen des erkannten Texts: Namen, Marken, Abkürzungen.",
@@ -1064,6 +1106,13 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ 正在使用麦克风——请关闭它后重试",
+        "That was very quiet — move closer to the microphone": "声音太小了——请靠近麦克风",
+        "That was too loud — move back a little from the microphone": "声音太大了——请离麦克风远一点",
+        "Stop automatically after a pause": "停顿后自动停止",
+        "Catch the start of speech (keeps the mic on)": "捕捉说话开头（麦克风保持开启）",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "无需全程按住按键，短暂静音后录音会自动结束。",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "缓存最近一小段音频，让你按下前刚开口的词不丢失。麦克风保持开启，因此 macOS 隐私指示点会一直亮着。",
         "Remove filler words": "移除口头语",
         "Commands for: %@. ": "命令语言：%@。",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "对识别文本的精确修正：名称、品牌、缩写。",
@@ -1226,6 +1275,13 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ がマイクを使用中です — 終了してもう一度お試しください",
+        "That was very quiet — move closer to the microphone": "音がとても小さいです — マイクに近づいてください",
+        "That was too loud — move back a little from the microphone": "音が大きすぎます — マイクから少し離れてください",
+        "Stop automatically after a pause": "一定の無音で自動的に停止",
+        "Catch the start of speech (keeps the mic on)": "話し始めを取りこぼさない（マイクは常時オン）",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "キーを押し続けなくても、少し黙ると録音が自動的に終わります。",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "直前の音声を少しだけ保持し、押す直前に言い始めた言葉を逃しません。マイクは常時オンのため、macOS のプライバシー表示（点）が点灯し続けます。",
         "Remove filler words": "つなぎ言葉を除去",
         "Commands for: %@. ": "コマンドの言語：%@。",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "認識テキストへの正確な修正：名前、ブランド、略語。",
@@ -1388,6 +1444,13 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@에서 지금 마이크를 사용 중입니다 — 종료한 뒤 다시 시도하세요",
+        "That was very quiet — move closer to the microphone": "소리가 너무 작습니다 — 마이크에 더 가까이 오세요",
+        "That was too loud — move back a little from the microphone": "소리가 너무 큽니다 — 마이크에서 조금 떨어지세요",
+        "Stop automatically after a pause": "잠시 멈추면 자동으로 정지",
+        "Catch the start of speech (keeps the mic on)": "말의 시작을 놓치지 않기 (마이크 계속 켜짐)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "키를 계속 누르고 있지 않아도 잠깐 조용해지면 녹음이 자동으로 끝납니다.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "직전의 음성을 잠시 버퍼에 담아, 누르기 바로 전에 시작한 단어를 놓치지 않습니다. 마이크가 계속 켜져 있어 macOS 개인정보 표시 점이 계속 켜져 있습니다.",
         "Remove filler words": "군말 제거",
         "Commands for: %@. ": "명령 언어: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "인식된 텍스트의 정확한 교정: 이름, 브랜드, 약어.",
@@ -1550,6 +1613,13 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "%@ đang dùng micrô — hãy đóng ứng dụng đó rồi thử lại",
+        "That was very quiet — move closer to the microphone": "Âm thanh quá nhỏ — hãy lại gần micrô hơn",
+        "That was too loud — move back a little from the microphone": "Âm thanh quá to — hãy lùi ra xa micrô một chút",
+        "Stop automatically after a pause": "Tự động dừng sau khi ngừng nói",
+        "Catch the start of speech (keeps the mic on)": "Bắt đầu câu nói không bị mất (micrô luôn bật)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Không cần giữ phím suốt — bản ghi tự kết thúc sau một khoảng lặng ngắn.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Giữ lại một khoảnh khắc âm thanh gần nhất để không mất từ bạn bắt đầu ngay trước khi nhấn. Micrô luôn bật, nên chấm quyền riêng tư của macOS luôn sáng.",
         "Remove filler words": "Loại bỏ từ đệm",
         "Commands for: %@. ": "Lệnh cho: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Sửa chính xác văn bản đã nhận dạng: tên, thương hiệu, từ viết tắt.",
@@ -1712,6 +1782,13 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "%@ is using the microphone right now — close it and try again": "Ginagamit ng %@ ang mikropono ngayon — isara ito at subukan ulit",
+        "That was very quiet — move closer to the microphone": "Napakahina — lumapit sa mikropono",
+        "That was too loud — move back a little from the microphone": "Napakalakas — lumayo nang kaunti sa mikropono",
+        "Stop automatically after a pause": "Awtomatikong huminto pagkatapos ng paghinto",
+        "Catch the start of speech (keeps the mic on)": "Mahuli ang simula ng pagsasalita (nakabukas ang mikropono)",
+        "Instead of holding the key the whole time, the recording ends on its own after a short silence.": "Sa halip na pindutin nang tuloy-tuloy ang key, kusang matatapos ang pag-record pagkatapos ng maikling katahimikan.",
+        "Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit.": "Nagtatago ng sandaling audio para hindi mawala ang salitang sinimulan bago mo pindutin. Nananatiling bukas ang mikropono, kaya patuloy na nakasindi ang privacy dot ng macOS.",
         "Remove filler words": "Alisin ang mga filler word",
         "Commands for: %@. ": "Mga command para sa: %@. ",
         "Exact fixes applied to the recognized text: names, brands, acronyms.": "Eksaktong pagwawasto ng nakilalang teksto: pangalan, brand, acronym.",
