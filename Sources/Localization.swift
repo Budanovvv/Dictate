@@ -101,6 +101,18 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Automatic (any language)": "Автоматически (любой язык)",
+        "detect while you speak": "определяется на ходу",
+        "Search language…": "Поиск языка…",
+        "Suggested": "Предлагаемые",
+        "No language matches your search.": "Ничего не найдено.",
+        "Translate → English": "Перевод → English",
+        "Setting the Dictation key — click one above, or press a key.": "Назначаем клавишу диктовки — выберите выше или нажмите клавишу.",
+        "Setting the Translate key — click one above, or press a key.": "Назначаем клавишу перевода — выберите выше или нажмите клавишу.",
+        "Press a key…": "Нажмите клавишу…",
+        "Press a key… (Esc)": "Нажмите клавишу… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Безопасные клавиши для удержания: ряд F и модификаторы",
+        "Translate key": "Клавиша перевода",
         "%@ is using the microphone right now — close it and try again": "%@ сейчас использует микрофон — закрой его и попробуй снова",
         "That was very quiet — move closer to the microphone": "Очень тихо — придвиньтесь ближе к микрофону",
         "That was too loud — move back a little from the microphone": "Слишком громко — немного отодвиньтесь от микрофона",
@@ -270,6 +282,18 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Automatic (any language)": "Автоматично (будь-яка мова)",
+        "detect while you speak": "визначається на ходу",
+        "Search language…": "Пошук мови…",
+        "Suggested": "Пропоновані",
+        "No language matches your search.": "Нічого не знайдено.",
+        "Translate → English": "Переклад → English",
+        "Setting the Dictation key — click one above, or press a key.": "Призначаємо клавішу диктування — виберіть вище або натисніть клавішу.",
+        "Setting the Translate key — click one above, or press a key.": "Призначаємо клавішу перекладу — виберіть вище або натисніть клавішу.",
+        "Press a key…": "Натисніть клавішу…",
+        "Press a key… (Esc)": "Натисніть клавішу… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Безпечні клавіші для утримання: ряд F і модифікатори",
+        "Translate key": "Клавіша перекладу",
         "%@ is using the microphone right now — close it and try again": "%@ зараз використовує мікрофон — закрий його та спробуй знову",
         "That was very quiet — move closer to the microphone": "Дуже тихо — присуньтеся ближче до мікрофона",
         "That was too loud — move back a little from the microphone": "Надто гучно — трохи відсуньтеся від мікрофона",
@@ -430,6 +454,18 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Automatic (any language)": "Automático (cualquier idioma)",
+        "detect while you speak": "se detecta al hablar",
+        "Search language…": "Buscar idioma…",
+        "Suggested": "Sugeridos",
+        "No language matches your search.": "Ningún idioma coincide con tu búsqueda.",
+        "Translate → English": "Traducir → inglés",
+        "Setting the Dictation key — click one above, or press a key.": "Asignando la tecla de dictado: elige una arriba o pulsa una tecla.",
+        "Setting the Translate key — click one above, or press a key.": "Asignando la tecla de traducción: elige una arriba o pulsa una tecla.",
+        "Press a key…": "Pulsa una tecla…",
+        "Press a key… (Esc)": "Pulsa una tecla… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Teclas seguras para mantener: fila de función y modificadores",
+        "Translate key": "Tecla de traducción",
         "%@ is using the microphone right now — close it and try again": "%@ está usando el micrófono ahora — ciérralo e inténtalo de nuevo",
         "That was very quiet — move closer to the microphone": "Fue muy bajo — acércate al micrófono",
         "That was too loud — move back a little from the microphone": "Fue demasiado alto — aléjate un poco del micrófono",
@@ -599,6 +635,18 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Automatic (any language)": "Automático (qualquer idioma)",
+        "detect while you speak": "detectado enquanto você fala",
+        "Search language…": "Buscar idioma…",
+        "Suggested": "Sugeridos",
+        "No language matches your search.": "Nenhum idioma corresponde à busca.",
+        "Translate → English": "Traduzir → inglês",
+        "Setting the Dictation key — click one above, or press a key.": "Definindo a tecla de ditado — escolha uma acima ou pressione uma tecla.",
+        "Setting the Translate key — click one above, or press a key.": "Definindo a tecla de tradução — escolha uma acima ou pressione uma tecla.",
+        "Press a key…": "Pressione uma tecla…",
+        "Press a key… (Esc)": "Pressione uma tecla… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Teclas seguras para segurar: linha de função e modificadores",
+        "Translate key": "Tecla de tradução",
         "%@ is using the microphone right now — close it and try again": "%@ está usando o microfone agora — feche-o e tente novamente",
         "That was very quiet — move closer to the microphone": "Ficou muito baixo — aproxime-se do microfone",
         "That was too loud — move back a little from the microphone": "Ficou muito alto — afaste-se um pouco do microfone",
@@ -768,6 +816,18 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Automatic (any language)": "Automatique (toute langue)",
+        "detect while you speak": "détecté pendant que vous parlez",
+        "Search language…": "Rechercher une langue…",
+        "Suggested": "Suggestions",
+        "No language matches your search.": "Aucune langue ne correspond.",
+        "Translate → English": "Traduire → anglais",
+        "Setting the Dictation key — click one above, or press a key.": "Choix de la touche de dictée — cliquez ci-dessus ou appuyez sur une touche.",
+        "Setting the Translate key — click one above, or press a key.": "Choix de la touche de traduction — cliquez ci-dessus ou appuyez sur une touche.",
+        "Press a key…": "Appuyez sur une touche…",
+        "Press a key… (Esc)": "Appuyez sur une touche… (Échap)",
+        "Safe keys to hold: function row and modifiers": "Touches sûres à maintenir : rangée de fonction et modificateurs",
+        "Translate key": "Touche de traduction",
         "%@ is using the microphone right now — close it and try again": "%@ utilise le microphone en ce moment — fermez-le et réessayez",
         "That was very quiet — move closer to the microphone": "C'était très faible — rapprochez-vous du microphone",
         "That was too loud — move back a little from the microphone": "C'était trop fort — éloignez-vous un peu du microphone",
@@ -937,6 +997,18 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Automatic (any language)": "Automatisch (jede Sprache)",
+        "detect while you speak": "wird beim Sprechen erkannt",
+        "Search language…": "Sprache suchen…",
+        "Suggested": "Vorschläge",
+        "No language matches your search.": "Keine Sprache gefunden.",
+        "Translate → English": "Übersetzen → Englisch",
+        "Setting the Dictation key — click one above, or press a key.": "Diktattaste festlegen – oben klicken oder eine Taste drücken.",
+        "Setting the Translate key — click one above, or press a key.": "Übersetzungstaste festlegen – oben klicken oder eine Taste drücken.",
+        "Press a key…": "Taste drücken…",
+        "Press a key… (Esc)": "Taste drücken… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Sichere Tasten zum Halten: Funktionsreihe und Modifikatoren",
+        "Translate key": "Übersetzungstaste",
         "%@ is using the microphone right now — close it and try again": "%@ verwendet gerade das Mikrofon — schließe es und versuche es erneut",
         "That was very quiet — move closer to the microphone": "Das war sehr leise — geh näher ans Mikrofon",
         "That was too loud — move back a little from the microphone": "Das war zu laut — geh etwas weiter vom Mikrofon weg",
@@ -1106,6 +1178,18 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Automatic (any language)": "自动（任何语言）",
+        "detect while you speak": "说话时自动识别",
+        "Search language…": "搜索语言…",
+        "Suggested": "推荐",
+        "No language matches your search.": "没有匹配的语言。",
+        "Translate → English": "翻译 → 英语",
+        "Setting the Dictation key — click one above, or press a key.": "设置听写键——点击上方，或按一个键。",
+        "Setting the Translate key — click one above, or press a key.": "设置翻译键——点击上方，或按一个键。",
+        "Press a key…": "按一个键…",
+        "Press a key… (Esc)": "按一个键…（Esc）",
+        "Safe keys to hold: function row and modifiers": "适合长按的安全按键：功能键行和修饰键",
+        "Translate key": "翻译键",
         "%@ is using the microphone right now — close it and try again": "%@ 正在使用麦克风——请关闭它后重试",
         "That was very quiet — move closer to the microphone": "声音太小了——请靠近麦克风",
         "That was too loud — move back a little from the microphone": "声音太大了——请离麦克风远一点",
@@ -1275,6 +1359,18 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Automatic (any language)": "自動（すべての言語）",
+        "detect while you speak": "話しながら判別",
+        "Search language…": "言語を検索…",
+        "Suggested": "おすすめ",
+        "No language matches your search.": "一致する言語がありません。",
+        "Translate → English": "翻訳 → 英語",
+        "Setting the Dictation key — click one above, or press a key.": "音声入力キーを設定 — 上をクリックするかキーを押してください。",
+        "Setting the Translate key — click one above, or press a key.": "翻訳キーを設定 — 上をクリックするかキーを押してください。",
+        "Press a key…": "キーを押してください…",
+        "Press a key… (Esc)": "キーを押してください…（Esc）",
+        "Safe keys to hold: function row and modifiers": "押し続けても安全なキー：ファンクション列と修飾キー",
+        "Translate key": "翻訳キー",
         "%@ is using the microphone right now — close it and try again": "%@ がマイクを使用中です — 終了してもう一度お試しください",
         "That was very quiet — move closer to the microphone": "音がとても小さいです — マイクに近づいてください",
         "That was too loud — move back a little from the microphone": "音が大きすぎます — マイクから少し離れてください",
@@ -1444,6 +1540,18 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Automatic (any language)": "자동 (모든 언어)",
+        "detect while you speak": "말하는 동안 감지",
+        "Search language…": "언어 검색…",
+        "Suggested": "추천",
+        "No language matches your search.": "일치하는 언어가 없습니다.",
+        "Translate → English": "번역 → 영어",
+        "Setting the Dictation key — click one above, or press a key.": "받아쓰기 키 설정 — 위에서 선택하거나 키를 누르세요.",
+        "Setting the Translate key — click one above, or press a key.": "번역 키 설정 — 위에서 선택하거나 키를 누르세요.",
+        "Press a key…": "키를 누르세요…",
+        "Press a key… (Esc)": "키를 누르세요… (Esc)",
+        "Safe keys to hold: function row and modifiers": "누르고 있기 안전한 키: 기능 키 행과 조합 키",
+        "Translate key": "번역 키",
         "%@ is using the microphone right now — close it and try again": "%@에서 지금 마이크를 사용 중입니다 — 종료한 뒤 다시 시도하세요",
         "That was very quiet — move closer to the microphone": "소리가 너무 작습니다 — 마이크에 더 가까이 오세요",
         "That was too loud — move back a little from the microphone": "소리가 너무 큽니다 — 마이크에서 조금 떨어지세요",
@@ -1613,6 +1721,18 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Automatic (any language)": "Tự động (mọi ngôn ngữ)",
+        "detect while you speak": "nhận diện khi bạn nói",
+        "Search language…": "Tìm ngôn ngữ…",
+        "Suggested": "Gợi ý",
+        "No language matches your search.": "Không có ngôn ngữ nào khớp.",
+        "Translate → English": "Dịch → tiếng Anh",
+        "Setting the Dictation key — click one above, or press a key.": "Đặt phím đọc chính tả — chọn ở trên hoặc nhấn một phím.",
+        "Setting the Translate key — click one above, or press a key.": "Đặt phím dịch — chọn ở trên hoặc nhấn một phím.",
+        "Press a key…": "Nhấn một phím…",
+        "Press a key… (Esc)": "Nhấn một phím… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Phím an toàn để giữ: hàng phím chức năng và phím bổ trợ",
+        "Translate key": "Phím dịch",
         "%@ is using the microphone right now — close it and try again": "%@ đang dùng micrô — hãy đóng ứng dụng đó rồi thử lại",
         "That was very quiet — move closer to the microphone": "Âm thanh quá nhỏ — hãy lại gần micrô hơn",
         "That was too loud — move back a little from the microphone": "Âm thanh quá to — hãy lùi ra xa micrô một chút",
@@ -1782,6 +1902,18 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Automatic (any language)": "Awtomatiko (anumang wika)",
+        "detect while you speak": "natutukoy habang nagsasalita",
+        "Search language…": "Maghanap ng wika…",
+        "Suggested": "Iminumungkahi",
+        "No language matches your search.": "Walang wikang tumutugma.",
+        "Translate → English": "Isalin → Ingles",
+        "Setting the Dictation key — click one above, or press a key.": "Itinatakda ang key ng Diktasyon — pumili sa itaas, o pumindot ng key.",
+        "Setting the Translate key — click one above, or press a key.": "Itinatakda ang key ng Pagsasalin — pumili sa itaas, o pumindot ng key.",
+        "Press a key…": "Pindutin ang isang key…",
+        "Press a key… (Esc)": "Pindutin ang isang key… (Esc)",
+        "Safe keys to hold: function row and modifiers": "Ligtas na key na pipindutin: function row at modifiers",
+        "Translate key": "Key ng pagsasalin",
         "%@ is using the microphone right now — close it and try again": "Ginagamit ng %@ ang mikropono ngayon — isara ito at subukan ulit",
         "That was very quiet — move closer to the microphone": "Napakahina — lumapit sa mikropono",
         "That was too loud — move back a little from the microphone": "Napakalakas — lumayo nang kaunti sa mikropono",

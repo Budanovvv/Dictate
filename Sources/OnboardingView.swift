@@ -216,78 +216,67 @@ private struct ModelStep: View {
 // MARK: - Step 3: hotkey + translate key
 
 private struct HotkeyStep: View {
-    @StateObject private var mainCapture = KeyCapture()
-    @StateObject private var translateCapture = KeyCapture()
+    private enum Target { case dictation, translate }
+
+    @StateObject private var capture = KeyCapture()
+    @State private var mainCode = Settings.shared.hotkeyKeyCode
     @State private var mainName = Settings.shared.hotkeyName
+    @State private var translateCode = Settings.shared.translateKeyCode
     @State private var translateName = Settings.shared.translateKeyName
     @State private var translateSet = Settings.shared.translateKeyCode != nil
     @State private var unsafeKey = !KeyNames.isSafeHotkey(Settings.shared.hotkeyKeyCode)
     @State private var language = Settings.shared.language
-
-    private var languageOptions: [(code: String, name: String)] {
-        LanguageList.options
-    }
+    @State private var armed = Target.dictation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(L("Two keys, two results")).font(.title.bold())
             Text(L("Hold a key and speak. The key you hold decides what gets typed."))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
                 Text(L("You'll dictate in:")).foregroundStyle(.secondary)
-                Picker("", selection: $language) {
-                    Text(L("Automatic (detect any language)")).tag("")
-                    ForEach(languageOptions, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
+                LanguagePicker(selection: $language, tint: Brand.indigo)
+                    .onChange(of: language) { code in
+                        Settings.shared.language = code
+                        assignDefaultTranslateKeyIfNeeded()
+                        if code == "en" { armed = .dictation }
                     }
-                }
-                .labelsHidden()
-                .fixedSize()
-                .onChange(of: language) { code in
-                    Settings.shared.language = code
-                    assignDefaultTranslateKeyIfNeeded()
-                }
             }
 
-            HStack(alignment: .top, spacing: 14) {
-                KeyCard(
-                    title: L("Dictation"),
-                    caption: L("Types exactly what you say"),
-                    keyName: KeyNames.displayName(mainName),
-                    tint: Brand.indigo,
-                    capture: mainCapture
-                )
+            // Pick which key you're assigning; each chip shows its current binding.
+            HStack(spacing: 10) {
+                TargetChip(title: L("Dictation"),
+                           keyName: KeyNames.displayName(mainName),
+                           tint: Brand.indigo,
+                           armed: armed == .dictation) { armed = .dictation }
                 if language != "en" {
-                    KeyCard(
-                        title: L("Translate to English"),
-                        caption: L("Same speech — typed in English"),
-                        keyName: translateSet ? KeyNames.displayName(translateName) : L("Not set"),
-                        tint: Brand.cyan,
-                        capture: translateCapture
-                    )
+                    TargetChip(title: L("Translate → English"),
+                               keyName: translateSet ? KeyNames.displayName(translateName) : L("Not set"),
+                               tint: Brand.cyan,
+                               armed: armed == .translate) { armed = .translate }
                 }
             }
-            .onReceive(mainCapture.$capturedKeyCode) { code in
-                guard let code, let capturedName = mainCapture.capturedName else { return }
-                guard code != Settings.shared.translateKeyCode else { return }
-                Settings.shared.hotkeyKeyCode = code
-                Settings.shared.hotkeyName = capturedName
-                mainName = capturedName
-                unsafeKey = !KeyNames.isSafeHotkey(code)
-            }
-            .onReceive(translateCapture.$capturedKeyCode) { code in
-                guard let code, let capturedName = translateCapture.capturedName else { return }
-                guard code != Settings.shared.hotkeyKeyCode else { return }
-                Settings.shared.translateKeyCode = code
-                Settings.shared.translateKeyName = capturedName
-                translateName = capturedName
-                translateSet = true
-            }
 
-            if language == "en" {
-                Text(L("Not needed — you already dictate in English."))
+            // Safe-key schematic — click a key to bind it to the armed target.
+            HotkeyKeyboard(
+                dictationCode: mainCode,
+                translateCode: language == "en" ? nil : translateCode,
+                dictationTint: Brand.indigo,
+                translateTint: Brand.cyan
+            ) { code, name in assign(code, name) }
+
+            HStack(spacing: 8) {
+                Text(armed == .dictation
+                     ? L("Setting the Dictation key — click one above, or press a key.")
+                     : L("Setting the Translate key — click one above, or press a key."))
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button(capture.capturing ? L("Press a key… (Esc)") : L("Press a key…")) {
+                    capture.begin()
+                }
+                .controlSize(.small).disabled(capture.capturing)
             }
 
             if unsafeKey {
@@ -296,12 +285,34 @@ private struct HotkeyStep: View {
                     .foregroundStyle(.orange).font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Text(L("Set to your system language — keep it or choose another."))
-                .font(.caption).foregroundStyle(.secondary)
             Spacer()
         }
         .onAppear { assignDefaultTranslateKeyIfNeeded() }
+        .onReceive(capture.$capturedKeyCode) { code in
+            guard let code, let name = capture.capturedName else { return }
+            assign(code, name)
+        }
+    }
+
+    /// Assign a key (from a schematic click or a physical press) to whichever
+    /// target is armed. Guards against binding the same physical key to both.
+    private func assign(_ code: Int, _ name: String) {
+        switch armed {
+        case .dictation:
+            guard code != translateCode else { return }
+            Settings.shared.hotkeyKeyCode = code
+            Settings.shared.hotkeyName = name
+            mainCode = code
+            mainName = name
+            unsafeKey = !KeyNames.isSafeHotkey(code)
+        case .translate:
+            guard code != mainCode else { return }
+            Settings.shared.translateKeyCode = code
+            Settings.shared.translateKeyName = name
+            translateCode = code
+            translateName = name
+            translateSet = true
+        }
     }
 
     /// The translate key comes pre-assigned (right ⌘) for non-English speakers:
@@ -313,56 +324,40 @@ private struct HotkeyStep: View {
               Settings.shared.hotkeyKeyCode != 54 else { return }
         Settings.shared.translateKeyCode = 54
         Settings.shared.translateKeyName = "Right Command (⌘)"
+        translateCode = 54
         translateName = "Right Command (⌘)"
         translateSet = true
     }
 }
 
-/// A keycap-style card: the key drawn like a physical key (matching the app
-/// icon), with what holding it produces. The onboarding "scheme" is live —
-/// these are the real assigned keys.
-private struct KeyCard: View {
+/// A chip for one dictation role: its title and the key currently bound to it,
+/// with an armed ring marking it as the target a schematic click or a press will
+/// assign. Tapping arms it.
+private struct TargetChip: View {
     let title: String
-    let caption: String
     let keyName: String
     let tint: Color
-    @ObservedObject var capture: KeyCapture
+    let armed: Bool
+    let tap: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text(title).font(.headline)
-
-            // Keycap with a visible "side" below — pseudo-3D, like the app icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(tint.opacity(0.45))
-                    .offset(y: 4)
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(LinearGradient(colors: [Color(nsColor: .windowBackgroundColor), tint.opacity(0.10)],
-                                         startPoint: .top, endPoint: .bottom))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(tint.opacity(0.5), lineWidth: 1))
+        Button(action: tap) {
+            VStack(spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
                 Text(keyName)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .padding(.horizontal, 8)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(tint)
+                    .minimumScaleFactor(0.6).lineLimit(1)
             }
-            .frame(height: 52)
-
-            Text(caption)
-                .font(.caption).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Button(capture.capturing ? L("Press a key… (Esc to cancel)") : L("Change")) {
-                capture.begin()
-            }
-            .controlSize(.small)
-            .disabled(capture.capturing)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10).padding(.horizontal, 8)
+            .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(armed ? 0.14 : 0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(tint.opacity(armed ? 0.9 : 0.0), lineWidth: 2))
+            .contentShape(Rectangle())
         }
-        .padding(12)
-        .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 14).fill(.quaternary.opacity(0.35)))
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(armed ? [.isButton, .isSelected] : .isButton)
     }
 }
 
