@@ -10,6 +10,14 @@ final class Settings {
         set { d.set(newValue, forKey: "onboardingDone") }
     }
 
+    /// Whether we've applied the "launch at login on by default" one-time
+    /// registration. Set the first time the app runs so we never re-enable it
+    /// after the user has turned it off themselves.
+    var didSetLoginItemDefault: Bool {
+        get { d.bool(forKey: "didSetLoginItemDefault") }
+        set { d.set(newValue, forKey: "didSetLoginItemDefault") }
+    }
+
     /// Virtual keycode of the hold-to-talk key (default 61 — right Option)
     var hotkeyKeyCode: Int {
         get { d.object(forKey: "hotkeyKeyCode") as? Int ?? 61 }

@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import Sparkle
 import SwiftUI
 
@@ -18,6 +19,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
         // WindowServer freeze) and write evidence to ~/Library/Logs/Dictate.
         MainThreadWatchdog.shared.start()
+
+        // Launch at login is on by default: register the login item once, the
+        // first time the app runs. A flag keeps us from re-enabling it if the
+        // user later turns the toggle off (in onboarding or Settings). register()
+        // needs the app in a valid location (/Applications) — try? swallows the
+        // failure if it's run from elsewhere.
+        if !Settings.shared.didSetLoginItemDefault {
+            Settings.shared.didSetLoginItemDefault = true
+            try? SMAppService.mainApp.register()
+        }
+
         statusController = StatusItemController(
             dictation: dictation,
             openSettings: { [weak self] in self?.showSettings() },
