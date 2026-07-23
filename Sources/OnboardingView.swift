@@ -247,11 +247,13 @@ private struct HotkeyStep: View {
             // Pick which key you're assigning; each chip shows its current binding.
             HStack(spacing: 10) {
                 TargetChip(title: L("Dictation"),
+                           caption: L("Types exactly what you say"),
                            keyName: KeyNames.displayName(mainName),
                            tint: Brand.indigo,
                            armed: armed == .dictation) { armed = .dictation }
                 if language != "en" {
                     TargetChip(title: L("Translate → English"),
+                               caption: L("Same speech — typed in English"),
                                keyName: translateSet ? KeyNames.displayName(translateName) : L("Not set"),
                                tint: Brand.cyan,
                                armed: armed == .translate) { armed = .translate }
@@ -335,6 +337,7 @@ private struct HotkeyStep: View {
 /// assign. Tapping arms it.
 private struct TargetChip: View {
     let title: String
+    let caption: String
     let keyName: String
     let tint: Color
     let armed: Bool
@@ -348,6 +351,10 @@ private struct TargetChip: View {
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(tint)
                     .minimumScaleFactor(0.6).lineLimit(1)
+                Text(caption)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10).padding(.horizontal, 8)
