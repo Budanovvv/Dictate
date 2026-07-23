@@ -161,6 +161,20 @@ final class AudioRecorder {
         }
         pinnedDeviceID = pinnedID
 
+        // Forcing a different device mid-recording (the busy-mic fallback) swaps
+        // the HAL device out from under an engine that still holds the previous
+        // device's cached input format — installTap with the new device's format
+        // then throws "Failed to create tap due to format mismatch" (seen live
+        // falling back off a Chrome voice-processing session, while the very same
+        // 24 kHz format attached cleanly on the initial, un-cached device). The
+        // engine is already stopped here (rebuildInputChain), so a reset after
+        // the switch is cheap and makes the input node re-pull the new device's
+        // format before the tap. Only the override path re-pins a *different*
+        // device; the normal path matches what the fresh engine already saw.
+        if override != nil {
+            engine.reset()
+        }
+
         // Another app holding the mic in voice-processing mode (Google Meet,
         // Zoom, FaceTime…) switches the shared device to a reduced rate and
         // starves a plain tap — the recording comes back empty. A rate that

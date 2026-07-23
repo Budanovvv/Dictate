@@ -96,11 +96,28 @@ enum AudioInputDevices {
     /// and phone-quality) and never a virtual/aggregate loopback. Returns nil
     /// when the only real mic is the one that's busy, so the caller keeps the
     /// honest "mic busy" message instead of switching to nothing.
+    ///
+    /// Also skips a candidate that another process is already running IO on: a
+    /// voice-processing session drags the whole shared input path to its reduced
+    /// rate, so a second device surfaced by that session reports the same 24 kHz
+    /// and starves a plain tap just like the built-in did (measured live falling
+    /// back off a Google Chrome session — the "fallback" was itself busy, so the
+    /// switch only added a second of failed tap retries before "mic busy"). A
+    /// running candidate is no escape; only a genuinely idle mic is.
     static func fallbackInput(avoiding avoid: AudioDeviceID) -> AudioDeviceID? {
         all().first { dev in
             dev.id != avoid && !dev.isBluetooth && dev.transport != kAudioDeviceTransportTypeVirtual
                 && dev.transport != kAudioDeviceTransportTypeAggregate
+                && !isRunningSomewhere(dev.id)
         }?.id
+    }
+
+    /// Whether any process is currently running input/output on this device.
+    /// Reads through the HAL (no VP session or attached engine needed), so it's
+    /// how `fallbackInput` tells an idle mic from one already swept into another
+    /// app's voice-processing session.
+    static func isRunningSomewhere(_ id: AudioDeviceID) -> Bool {
+        boolProperty(id, kAudioDevicePropertyDeviceIsRunningSomewhere)
     }
 
     // MARK: - HAL property plumbing
