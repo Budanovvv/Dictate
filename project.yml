@@ -54,6 +54,24 @@ targets:
         # Menu bar utility, no Dock presence. The Dock icon appears dynamically
         # while a window is open (onboarding/settings) — see AppDelegate.
         LSUIElement: YES
+      configs:
+        # Release ships outside the App Store (DMG + Sparkle), so it must be
+        # signed with the Developer ID Application cert and carry a secure
+        # timestamp — that plus the hardened runtime above is what Apple's
+        # notary service requires. Automatic signing picks "Apple Development"
+        # for a plain build and would fail notarization, so Release pins the
+        # Developer ID identity explicitly. Debug stays on Automatic for quick
+        # local runs. build.sh builds Release, so ./build.sh --install already
+        # produces exactly the signed artifact that ships.
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          OTHER_CODE_SIGN_FLAGS: "--timestamp"
+          # Xcode injects com.apple.security.get-task-allow (lets a debugger
+          # attach) into every build; the notary service rejects it. Release is
+          # never debugged, so strip it — otherwise the main binary fails
+          # notarization with "requests the get-task-allow entitlement".
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
   # Unit tests: compile the tested sources directly (no TEST_HOST,
   # so the tests do not launch the GUI app and do not depend on TCC).
