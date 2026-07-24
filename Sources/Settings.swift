@@ -145,6 +145,14 @@ final class Settings {
         set { d.set(newValue, forKey: "livePreview") }
     }
 
+    /// Type confirmed words straight into the focused app while the user is
+    /// still speaking (rides on the live-preview cycle). Off by default while
+    /// the feature is being broken in — it writes into a foreign document.
+    var liveTyping: Bool {
+        get { d.bool(forKey: "liveTyping") }
+        set { d.set(newValue, forKey: "liveTyping") }
+    }
+
     /// Target language of the translate key. Every target — English included —
     /// is a plain transcription followed by Apple's on-device Translation.
     var translateTargetCode: String {

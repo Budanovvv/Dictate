@@ -149,6 +149,14 @@ struct SettingsView: View {
                 Toggle(L("Live text while recording"), isOn: $livePreview)
                     .onChange(of: livePreview) { Settings.shared.livePreview = $0 }
 
+                // Live typing at the cursor exists but is a HIDDEN experiment
+                // (defaults write … liveTyping -bool YES): the Whisper
+                // re-decode architecture bottoms out at ~2.5 s of lag in
+                // bursts — honest but not the "it types as I speak" feel.
+                // Roadmap: rebuild on SpeechAnalyzer (macOS 26+), which
+                // streams sub-second partials — the CommitEngine/TypeInjector
+                // core carries over unchanged.
+
                 Toggle(L("Stop automatically after a pause"), isOn: $autoStopOnSilence)
                     .onChange(of: autoStopOnSilence) { Settings.shared.autoStopOnSilence = $0 }
 

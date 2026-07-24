@@ -67,6 +67,11 @@ final class HotkeyMonitor {
     }
 
     private func handle(type: CGEventType, event: CGEvent) {
+        // Our own live typing comes back through this tap (it is a real keyboard
+        // event as far as the system is concerned). It is marked with a magic
+        // location — never treat it as something the user pressed.
+        if event.location == TypeInjector.syntheticEventLocation { return }
+
         // The system disables the tap on timeout — re-enable it
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }

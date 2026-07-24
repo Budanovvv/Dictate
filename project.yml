@@ -94,6 +94,7 @@ targets:
       - path: Sources/Settings.swift
       - path: Sources/LanguageList.swift
       - path: Sources/Replacements.swift
+      - path: Sources/CommitEngine.swift
       - path: Sources/AudioRecorder.swift
       - path: Sources/AudioDevices.swift
       - path: Sources/Log.swift

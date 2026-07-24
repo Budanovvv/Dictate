@@ -85,6 +85,13 @@ enum Paster {
         return .keptInClipboard
     }
 
+    /// Is there a real text cursor right now? Same verdict the paste path uses,
+    /// asked before a dictation starts: live typing may only arm itself when
+    /// the answer is an unambiguous yes.
+    static func hasEditableFocus() -> Bool {
+        focusProbe().editable
+    }
+
     /// Best-effort probe of the system-wide focused element. Blocks the paste
     /// on a confident "not a text target" — and on "nothing is focused at all":
     /// an empty focus is exactly "no text cursor", the case the manual ⌘V HUD

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// A one-shot cancellation flag, safe to read from any thread. One per
 /// dictation: the WhisperKit decode callback polls `isCancelled` off the main
@@ -55,6 +56,7 @@ final class DictationController {
         didSet {
             if paused, state == .recording {
                 stopLivePreview()
+                resetLiveTyping()
                 _ = recorder.stop()
                 state = .idle
             }
@@ -123,6 +125,35 @@ final class DictationController {
     private var previewTimer: Timer?
     private var previewBusy = false
     private var previewCancel: CancelToken?
+    /// Live typing: non-nil only while this dictation types into the focused
+    /// app as the user speaks. Armed once in beginRecording (see armLiveTyping)
+    /// and fed from the preview cycle, whose hypotheses it turns into words
+    /// that can never need erasing.
+    private var liveEngine: CommitEngine?
+    /// The app live typing started in. Anything else being frontmost means the
+    /// text would land in a foreign window — see typeLive.
+    private var liveTargetPID: pid_t?
+    /// Live typing is over for this dictation (target app changed, secure
+    /// input): the engine keeps committing, but everything from here on is
+    /// delivered by the normal paste path at the end.
+    private var liveFrozen = false
+    /// Committed text that was never typed because we froze — pasted together
+    /// with the final remainder, so nothing spoken is lost.
+    private var liveUntyped = ""
+    /// Last moment the mic was above the speech threshold — live typing's own
+    /// VAD, for the silence force-commit.
+    private var liveLastLoudAt = Date()
+    /// One silence flush per pause — reset the moment speech resumes.
+    private var liveSilenceFlushed = false
+    /// Silence that flushes the engine's whole tail. The pause tells us the
+    /// audio behind those words will not change any more; 0.6 s is long enough
+    /// that a between-words breath doesn't trigger it.
+    private static let liveSilenceCommit: TimeInterval = 0.6
+    /// Every live insertion goes through this one serial queue, enqueued only
+    /// from the main actor — so chunks reach the document in commit order and
+    /// the final remainder can never overtake them, while TypeInjector's ~2 ms
+    /// per 20 characters stays off the main thread.
+    private static let typeQueue = DispatchQueue(label: "com.dictate.livetyping")
 
     private static let soundStart = NSSound(contentsOfFile: "/System/Library/Sounds/Pop.aiff", byReference: true)
     private static let soundStop = NSSound(contentsOfFile: "/System/Library/Sounds/Purr.aiff", byReference: true)
@@ -142,6 +173,12 @@ final class DictationController {
         recorder.onLevel = { [weak self] level in
             guard let self else { return }
             self.onLevel?(level)
+            // AudioRecorder delivers levels on the main thread; the silence
+            // flush inside types text (MainActor-isolated), so make the
+            // isolation explicit instead of relying on the convention.
+            MainActor.assumeIsolated {
+                self.liveLevelTick(level: level)
+            }
             self.autoStopTick(level: level)
         }
         recorder.onMicBusyDetected = { [weak self] in
@@ -214,6 +251,7 @@ final class DictationController {
         tapRetryTimer = nil
         monitor.stop()
         stopLivePreview()
+        resetLiveTyping()
         if state == .recording { _ = recorder.stop() }
     }
 
@@ -255,6 +293,10 @@ final class DictationController {
         if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
             Paster.wakeAccessibility(pid: pid)
         }
+        // Decided once, here: everything live typing needs to know (the target
+        // app, the focus, the settings) is true or false now, and re-asking
+        // mid-dictation would only produce a mode that flickers.
+        armLiveTyping(translate: translate)
         // Load the model while the user is speaking, so it's warm by the
         // time they release — hides the one-time warm-up behind the speech.
         preloadModel()
@@ -271,7 +313,10 @@ final class DictationController {
 
     private func startLivePreview() {
         guard Settings.shared.livePreview else { return }
-        previewTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+        // 0.75 s: LocalAgreement latency is ~2× this interval, so the cadence
+        // is THE live-typing lag knob. previewBusy keeps a slow decode from
+        // piling passes up, so a short interval is safe on any machine.
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
             self?.previewTick()
         }
     }
@@ -302,15 +347,201 @@ final class DictationController {
             // Long recordings: preview only the tail — a full re-decode of the
             // whole buffer every tick grows quadratically.
             let window = Array(floats.suffix(30 * AudioRecorder.sampleRate))
+            let started = Date()
             guard let (text, _) = try? await WhisperEngine.shared.transcribe(
                 floats: window, tier: .fast, language: language, prompt: prompt,
                 isCancelled: { token.isCancelled }) else { return }
+            Log.d(String(format: "live: pass %.2fs over %.1fs audio",
+                         Date().timeIntervalSince(started),
+                         Double(window.count) / Double(AudioRecorder.sampleRate)))
             await MainActor.run {
                 guard let self, self.state == .recording, !token.isCancelled,
                       !text.isEmpty else { return }
-                self.onLivePreview?(text)
+                self.handlePreview(text)
             }
         }
+    }
+
+    // MARK: - Live typing
+
+    /// A fresh hypothesis over the growing buffer. Without live typing it is
+    /// the pill's whole line, as before; with it, the hypothesis is first fed
+    /// to the engine, everything that became safe goes into the document, and
+    /// only what is still settling stays in the pill — the committed part is
+    /// deliberately absent from the HUD, it already lives in the user's app.
+    @MainActor
+    private func handlePreview(_ text: String) {
+        guard let engine = liveEngine else {
+            onLivePreview?(text)
+            return
+        }
+        // A pause is the strongest agreement signal there is: flush the tail
+        // the engine is still holding before feeding it anything newer.
+        if Date().timeIntervalSince(liveLastLoudAt) >= Self.liveSilenceCommit {
+            typeLive(liveProcessed(engine.forceCommit().newlyCommitted))
+        }
+        let update = engine.ingest(hypothesis: text)
+        Log.d("live: ingest -> commit \(update.newlyCommitted.count) chars, tail \(update.volatileTail.split(whereSeparator: \.isWhitespace).count) words")
+        typeLive(liveProcessed(update.newlyCommitted))
+        // Frozen: nothing reaches the document any more, so the pill has to
+        // show everything that is still owed — held-back text included.
+        onLivePreview?(liveFrozen
+            ? (liveUntyped + " " + update.volatileTail).trimmingCharacters(in: .whitespaces)
+            : update.volatileTail)
+    }
+
+    /// Live typing's own VAD, fed by every level update: the last moment the
+    /// mic was above the speech threshold (the same 0.08 hands-free uses).
+    /// Silence flushes the engine's tail IMMEDIATELY from here — waiting for
+    /// the next preview tick added up to a full interval of extra lag to the
+    /// strongest commit signal there is.
+    @MainActor
+    private func liveLevelTick(level: Double) {
+        guard liveEngine != nil, state == .recording else { return }
+        if level >= 0.08 {
+            liveLastLoudAt = Date()
+            liveSilenceFlushed = false
+            return
+        }
+        guard !liveSilenceFlushed, !liveFrozen,
+              Date().timeIntervalSince(liveLastLoudAt) >= Self.liveSilenceCommit,
+              let engine = liveEngine else { return }
+        liveSilenceFlushed = true
+        let update = engine.forceCommit()
+        guard !update.newlyCommitted.isEmpty else { return }
+        Log.d("live: silence flush \(update.newlyCommitted.count) chars")
+        typeLive(liveProcessed(update.newlyCommitted))
+        onLivePreview?(update.volatileTail)
+    }
+
+    /// Decides, once per dictation, whether words go into the app while the
+    /// user is still speaking. Every condition here is a reason the mode
+    /// cannot work rather than a preference: translation and polish rewrite
+    /// the text as a whole (there is nothing stable to type early), the live
+    /// cycle IS the preview cycle, and typing needs a text cursor that is
+    /// ours to write into.
+    private func armLiveTyping(translate: Bool) {
+        resetLiveTyping()
+        guard Settings.shared.liveTyping, !translate, !suppressInsertion,
+              !Settings.shared.polishEnabled, Settings.shared.livePreview else { return }
+        guard !IsSecureEventInputEnabled() else {
+            Log.d("live: secure input is on -> normal mode")
+            return
+        }
+        guard Paster.hasEditableFocus() else {
+            Log.d("live: no text focus -> normal mode")
+            return
+        }
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        liveTargetPID = pid
+        liveLastLoudAt = Date()
+        liveEngine = CommitEngine(holdBackPhrases: Self.holdBackPhrases())
+        Log.d("live: armed (pid \(pid))")
+    }
+
+    private func resetLiveTyping() {
+        liveEngine = nil
+        liveTargetPID = nil
+        liveFrozen = false
+        liveSilenceFlushed = false
+        liveUntyped = ""
+    }
+
+    /// Everything Replacements can rewrite, so that the engine never lets one
+    /// of these phrases out in two pieces: the built-in voice commands of all
+    /// languages (they are all active at once) plus the user's own literal
+    /// rules. A "re:" rule is a regex with no word form — it can never match
+    /// the engine's word-by-word hold-back, and is left out.
+    private static func holdBackPhrases() -> [String] {
+        var phrases = Replacements.commandsByLanguage.values.flatMap { $0.map(\.phrase) }
+        phrases += Settings.shared.replacements.compactMap { rule -> String? in
+            guard let phrase = rule.first?.trimmingCharacters(in: .whitespaces),
+                  !phrase.isEmpty, !phrase.hasPrefix("re:") else { return nil }
+            return phrase
+        }
+        return phrases
+    }
+
+    /// Runs the normal post-processing over one committed chunk. The engine's
+    /// hold-back guarantees a replaceable phrase always arrives whole, so this
+    /// sees the same phrases the final pass would. Fillers are cleaned only
+    /// when the dictation language is known — in auto mode there is no
+    /// detected language yet, and the final pass will do it.
+    ///
+    /// Replacements.tidy trims both edges, and the chunk's leading space is
+    /// what joins it to the text already in the document: it is set aside
+    /// before processing and put back after.
+    private func liveProcessed(_ chunk: String) -> String {
+        guard !chunk.isEmpty else { return "" }
+        let language = Settings.shared.language
+        let separator = String(chunk.prefix(while: \.isWhitespace))
+        let body = String(chunk.dropFirst(separator.count))
+        let processed = Replacements.process(
+            body, rules: Settings.shared.replacements,
+            fillerLanguage: Settings.shared.removeFillers && !language.isEmpty ? language : nil)
+        // A chunk that was nothing but a filler leaves no separator behind.
+        return processed.isEmpty ? "" : separator + processed
+    }
+
+    /// Puts one chunk into the focused app. The target is re-checked before
+    /// every insertion, because the one thing that must never happen is text
+    /// meant for one window landing in another: the moment the frontmost app
+    /// is not the one we started in (or secure input comes up over a password
+    /// field), live typing is over for this dictation and the rest is kept for
+    /// the paste path.
+    @MainActor
+    private func typeLive(_ text: String) {
+        guard !text.isEmpty else { return }
+        if !liveFrozen {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier != liveTargetPID {
+                liveFrozen = true
+                Log.d("live: frontmost app changed -> frozen")
+            } else if IsSecureEventInputEnabled() {
+                liveFrozen = true
+                Log.d("live: secure input came up -> frozen")
+            }
+        }
+        guard !liveFrozen else {
+            liveUntyped += text
+            return
+        }
+        Self.typeQueue.async { TypeInjector.type(text) }
+    }
+
+    /// The full pass arrived: deliver whatever live typing has not put in the
+    /// document yet. Alignment runs against the RAW transcription — the engine
+    /// committed raw words, before any replacements — and only the remainder
+    /// it hands back is processed and inserted.
+    @MainActor
+    private func deliverLive(rawFinal: String) -> Paster.Outcome {
+        guard let engine = liveEngine else { return .pasted }
+        let remainder = liveProcessed(engine.finish(finalText: rawFinal))
+        // A line break in the remainder (a trailing "new line" command) can't
+        // be typed — TypeInjector flattens \n to a space because a synthesized
+        // Return sends messages in chats. The paste path inserts it correctly.
+        if !liveFrozen, remainder.contains("\n") {
+            Log.d("live: final tail has line breaks -> paste path")
+            return Paster.paste(remainder.trimmingCharacters(in: .whitespaces),
+                                expectedTargetPID: targetAppPID)
+        }
+        // typeLive keeps the invariant either way: it types the remainder, or
+        // (if the target is gone) adds it to what is still owed.
+        if liveFrozen { liveUntyped += remainder } else { typeLive(remainder) }
+        if !liveFrozen {
+            // The same trailing space the paste path adds, for the same
+            // reason: without it two dictations in a row glue into one word.
+            if !engine.committedText.isEmpty { typeLive(" ") }
+            Log.d("live: final tail \(remainder.count) chars typed")
+            return .pasted
+        }
+        // Frozen — by the target app changing now or at any point earlier.
+        // Everything still owed goes out as one ordinary paste, with all the
+        // checks that path makes of its own.
+        let pending = liveUntyped.trimmingCharacters(in: .whitespaces)
+        liveUntyped = ""
+        guard !pending.isEmpty else { return .pasted }
+        Log.d("live: frozen -> \(pending.count) chars via the paste path")
+        return Paster.paste(pending, expectedTargetPID: targetAppPID)
     }
 
     /// Esc: abandon the current dictation, whatever stage it's in. While
@@ -322,12 +553,17 @@ final class DictationController {
         switch state {
         case .recording:
             stopLivePreview()
+            // Whatever live typing already committed stays in the document —
+            // it cannot be taken back, and it was said. Only the volatile tail
+            // is thrown away, together with the audio.
+            resetLiveTyping()
             _ = recorder.stop()
             state = .idle
             onNotice?(.cancelled)
         case .transcribing:
             activeCancel?.cancel()
             transcribeTask?.cancel()
+            resetLiveTyping()
             state = .idle
             onNotice?(.cancelled)   // before nothing else can hide it
         case .idle:
@@ -380,6 +616,7 @@ final class DictationController {
                     onNotice?(.nothingHeard)
                 }
             }
+            resetLiveTyping()
             state = .idle
             return  // accidental short press or unusable capture
         }
@@ -469,6 +706,7 @@ final class DictationController {
     /// mirrors finish(): fire before state = .idle so nothing hides the pill.
     @MainActor
     private func reportEmptyCapture(peak: Double, clip: Double, token: CancelToken) {
+        resetLiveTyping()
         guard !token.isCancelled else { return }
         onResultText?("")
         if clip > 0.02 {
@@ -566,13 +804,14 @@ final class DictationController {
                     processed = polished
                 }
             }
-            await finish(text: processed, seconds: Date().timeIntervalSince(started),
+            await finish(text: processed, rawText: text, seconds: Date().timeIntervalSince(started),
                          translate: translate, translateDataMissing: dataMissing, token: token)
         } catch {
             await MainActor.run {
                 // A user-cancelled recognition may surface as a thrown error;
                 // cancel() already moved us to idle and showed "Cancelled", so
                 // stay silent instead of flashing a scary error message.
+                self.resetLiveTyping()
                 guard !token.isCancelled else { return }
                 self.state = .idle
                 self.onError?(error.localizedDescription)
@@ -580,8 +819,11 @@ final class DictationController {
         }
     }
 
+    /// - Parameter rawText: the transcription before post-processing. Only live
+    ///   typing needs it: the engine committed raw words, so the final text has
+    ///   to be aligned against the raw form to see what is left to insert.
     @MainActor
-    private func finish(text: String, seconds: Double, translate: Bool,
+    private func finish(text: String, rawText: String = "", seconds: Double, translate: Bool,
                         translateDataMissing: Bool = false, token: CancelToken) {
         // Esc arrived while this recognition was finishing: throw the (partial)
         // result away — no insertion, no history. cancel() already set idle and
@@ -604,8 +846,13 @@ final class DictationController {
         }
         var copied = false
         if !text.isEmpty, !suppressInsertion {
-            copied = Paster.paste(text, expectedTargetPID: targetAppPID) == .keptInClipboard
+            // Live typing already put most of this in the document — inserting
+            // `text` again would duplicate the whole dictation.
+            copied = liveEngine != nil
+                ? deliverLive(rawFinal: rawText) == .keptInClipboard
+                : Paster.paste(text, expectedTargetPID: targetAppPID) == .keptInClipboard
         }
+        resetLiveTyping()
         Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
         // One pill per dictation. "Copied" wins: without it the text is
         // nowhere the user can see. Untranslated text is at least in place.
