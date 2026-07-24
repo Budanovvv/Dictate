@@ -4,7 +4,8 @@ import SwiftUI
 /// Floating status panel at the bottom of the screen. Never takes focus or mouse events.
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
-        case recording, transcribing, empty, downloading, cancelled, copied, micBusy, tooQuiet, tooLoud, translateTip
+        case recording, transcribing, empty, downloading, cancelled, copied, micBusy, tooQuiet,
+             tooLoud, translateTip, translateDataMissing
     }
 
     @Published var mode: Mode = .recording
@@ -16,9 +17,16 @@ final class HUDModel: ObservableObject {
     @Published var busyApp: String?
     /// Display name of the translate key, for the .translateTip message.
     @Published var tipKeyName = ""
+    /// Rolling live transcription shown while recording ("" = none yet).
+    @Published var liveText = ""
+    /// The transcribing phase entered the LLM polish pass — same pill,
+    /// its title flips to "Polishing…".
+    @Published var polishing = false
     @Published var level: Double = 0
     @Published var elapsed: Int = 0
     @Published var downloadProgress: Double = 0
+    /// Size of the model being downloaded (fast and translate models differ).
+    @Published var downloadTotalMB = 950
     /// Determinate transcription: fraction of audio processed (monotonic) + words so far.
     @Published var transcribeFraction: Double = 0
     @Published var transcribeWords: Int = 0
@@ -46,8 +54,15 @@ final class RecordingHUD {
         model.mode = .recording
         model.level = 0
         model.elapsed = 0
+        model.liveText = ""
         startElapsed()
         show()
+    }
+
+    /// Rolling live transcription while the user speaks (fast-model preview).
+    func setLivePreview(_ text: String) {
+        guard model.mode == .recording else { return }
+        model.liveText = text
     }
 
     func showTranscribing(translate: Bool = false) {
@@ -58,8 +73,16 @@ final class RecordingHUD {
             model.transcribeWords = 0
         }
         model.translate = translate
+        model.polishing = false
         model.mode = .transcribing
         show()
+    }
+
+    /// Recognition finished, the local LLM polish pass is running.
+    func showPolishing() {
+        guard model.mode == .transcribing else { return }
+        model.polishing = true
+        model.transcribeFraction = max(model.transcribeFraction, 0.97)
     }
 
     /// One-time discovery nudge: the user has a translate key configured but
@@ -85,10 +108,11 @@ final class RecordingHUD {
         model.transcribeWords = max(model.transcribeWords, words)
     }
 
-    func showDownloading(_ progress: Double) {
+    func showDownloading(_ progress: Double, totalMB: Int) {
         cancelHide()
         stopElapsed()
         model.downloadProgress = progress
+        model.downloadTotalMB = totalMB
         model.mode = .downloading
         show()
     }
@@ -111,6 +135,17 @@ final class RecordingHUD {
         model.mode = .micBusy
         show()
         scheduleHide(after: 3.0)
+    }
+
+    /// The text was inserted, but in the spoken language: macOS has no
+    /// translation data for the pair. Longer on screen than the other
+    /// notices — it asks the user to go somewhere and do something.
+    func showTranslateDataMissing() {
+        cancelHide()
+        stopElapsed()
+        model.mode = .translateDataMissing
+        show()
+        scheduleHide(after: 4.0)
     }
 
     /// Audio came in but was far too quiet / too loud for recognition — a
@@ -309,6 +344,11 @@ private struct HUDView: View {
         case .translateTip:
             Image(systemName: "globe")
                 .font(.system(size: 17)).foregroundStyle(Brand.cyan)
+        case .translateDataMissing:
+            // Same globe as the tip, but gray: this one reports a shortfall,
+            // and gray is what every other "didn't work" pill wears.
+            Image(systemName: "globe")
+                .font(.system(size: 17)).foregroundStyle(.secondary)
         case .empty:
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
@@ -351,7 +391,15 @@ private struct HUDView: View {
                 WaveStrip(phase: phase, level: model.level,
                           tick: model.levelTick, fraction: stripFraction)
             }
-            if let cancelHint {
+            // Live transcription takes the hint line's slot while recording:
+            // the tail of what's been heard so far, growing from the right.
+            if model.mode == .recording, !model.liveText.isEmpty {
+                Text(model.liveText)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            } else if let cancelHint {
                 Text(cancelHint)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
@@ -370,8 +418,14 @@ private struct HUDView: View {
 
     private var title: String {
         switch model.mode {
-        case .recording: return model.translate ? L("Recording → English…") : L("Recording…")
-        case .transcribing: return model.translate ? L("Translating…") : L("Recognizing…")
+        case .recording:
+            guard model.translate else { return L("Recording…") }
+            let target = Settings.shared.translateTargetCode
+            return target == "en" ? L("Recording → English…")
+                                  : Lf("Recording → %@…", LanguageList.endonym(for: target))
+        case .transcribing:
+            if model.polishing { return L("Polishing…") }
+            return model.translate ? L("Translating…") : L("Recognizing…")
         case .translateTip:
             return Lf("Tip: hold %@ instead — your speech comes out in English.", model.tipKeyName)
         case .empty: return L("Sorry, I didn't catch that — could you say it again?")
@@ -382,8 +436,10 @@ private struct HUDView: View {
             return L("Another app is using the microphone right now — close it and try again")
         case .tooQuiet: return L("That was very quiet — move closer to the microphone")
         case .tooLoud: return L("That was too loud — move back a little from the microphone")
+        case .translateDataMissing:
+            return L("Translation data isn't downloaded — open Settings to get it")
         case .downloading:
-            let total = Settings.shared.modelTier.sizeMB
+            let total = model.downloadTotalMB
             return model.downloadProgress < 0.999
                 ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * Double(total)), total)
                 : L("Warming up the model…")
@@ -394,7 +450,8 @@ private struct HUDView: View {
 
     private var titleFont: Font {
         switch model.mode {
-        case .empty, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip: return .system(size: 11, weight: .medium)
+        case .empty, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip, .translateDataMissing:
+            return .system(size: 11, weight: .medium)
         case .downloading: return .system(size: 12, weight: .medium).monospacedDigit()
         default: return .system(size: 13, weight: .medium)
         }
@@ -402,7 +459,8 @@ private struct HUDView: View {
 
     private var titleIsSecondary: Bool {
         switch model.mode {
-        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud: return true
+        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud, .translateDataMissing:
+            return true
         default: return false
         }
     }
@@ -420,7 +478,8 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return .voice
         case .transcribing, .downloading: return .progress
-        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip: return nil
+        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip,
+             .translateDataMissing: return nil
         }
     }
 

@@ -137,8 +137,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(title)
 
         if Settings.shared.translateKeyCode != nil {
+            let key = KeyNames.displayName(Settings.shared.translateKeyName)
+            let target = Settings.shared.translateTargetCode
+            // Non-English targets compose from the picker's own label instead
+            // of asking for one translated string per language.
             let tr = NSMenuItem(
-                title: Lf("Translate to English: %@", KeyNames.displayName(Settings.shared.translateKeyName)),
+                title: target == "en"
+                    ? Lf("Translate to English: %@", key)
+                    : L("Translate to") + " " + LanguageList.endonym(for: target) + ": " + key,
                 action: nil, keyEquivalent: ""
             )
             tr.isEnabled = false

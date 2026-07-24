@@ -6,14 +6,16 @@ import WhisperKit
 actor WhisperEngine {
     static let shared = WhisperEngine()
 
-    private var pipe: WhisperKit?
-    private var loadedVariant: String?
-    /// In-flight model load. The actor is reentrant across the long awaits in
-    /// prepare (download, WhisperKit init) — without this, the routine trio of
-    /// prepare() calls (app-start preload, record-start preload, the transcribe
-    /// path) could each pass the `pipe != nil` check and start a second
-    /// parallel ~1 GB model load. Latecomers await the same task instead.
-    private var preparing: (variant: String, task: Task<Void, Error>)?
+    /// Loaded pipelines by variant. Keyed rather than a single slot so a future
+    /// tier can be resident alongside the current one without a reload.
+    private var pipes: [String: WhisperKit] = [:]
+    /// In-flight model loads by variant. The actor is reentrant across the
+    /// long awaits in prepare (download, WhisperKit init) — without this, the
+    /// routine trio of prepare() calls (app-start preload, record-start
+    /// preload, the transcribe path) could each pass the "already loaded"
+    /// check and start a second parallel ~1 GB model load. Latecomers await
+    /// the same task instead.
+    private var preparing: [String: Task<Void, Error>] = [:]
 
     /// Folder for downloaded models: ~/Library/Application Support/Dictate/models
     private static var modelsBase: URL {
@@ -56,32 +58,68 @@ actor WhisperEngine {
 
     /// Model for this tier is loaded into memory.
     func isReady(for tier: ModelTier) -> Bool {
-        pipe != nil && loadedVariant == tier.variant
+        pipes[tier.variant] != nil
+    }
+
+    /// In-flight plain downloads by variant — download() and prepare() must
+    /// see each other: a dictation mid-catch-up would otherwise start a second
+    /// Hugging Face sync of the very same variant (the sync re-verifies every
+    /// file and can invalidate the half-downloaded copy).
+    private var downloading: [String: Task<Void, Error>] = [:]
+
+    /// Download only, no load/compile — the onboarding progress bar stays
+    /// honest (loading into the Neural Engine has no progress callback and
+    /// would freeze the bar for minutes; it happens in the background via
+    /// preloadModel while the user walks the remaining steps).
+    func download(tier: ModelTier, progress: @Sendable @escaping (Double) -> Void) async throws {
+        let variant = tier.variant
+        guard !Self.isModelComplete(variant) else { return }
+        if let inflight = downloading[variant] {
+            try await inflight.value
+            return
+        }
+        // A prepare() in flight already includes the download — ride it.
+        if let inflight = preparing[variant] {
+            try await inflight.value
+            return
+        }
+        let task = Task {
+            Log.d("model: downloading \(variant)")
+            _ = try await WhisperKit.download(
+                variant: variant,
+                downloadBase: Self.modelsBase,
+                progressCallback: { p in progress(p.fractionCompleted) }
+            )
+        }
+        downloading[variant] = task
+        defer { downloading[variant] = nil }
+        try await task.value
     }
 
     /// Downloads (if needed) and loads the selected model. progress: 0…1.
     /// Concurrent calls coalesce into one load; only the first caller's
     /// progress closure reports (they all feed the same HUD anyway).
     func prepare(tier: ModelTier, progress: @Sendable @escaping (Double) -> Void) async throws {
-        if pipe != nil, loadedVariant == tier.variant { return }
         let variant = tier.variant
-        if let inflight = preparing {
-            if inflight.variant == variant {
-                try await inflight.task.value
-                return
-            }
-            // A different variant mid-flight (can't happen with a single tier,
-            // but stay safe): let it finish before replacing the pipe.
-            _ = try? await inflight.task.value
+        if pipes[variant] != nil { return }
+        if let inflight = preparing[variant] {
+            try await inflight.value
+            return
         }
         let task = Task { try await performPrepare(variant: variant, progress: progress) }
-        preparing = (variant, task)
-        defer { preparing = nil }
+        preparing[variant] = task
+        defer { preparing[variant] = nil }
         try await task.value
     }
 
     private func performPrepare(variant: String,
                                 progress: @Sendable @escaping (Double) -> Void) async throws {
+        // A plain download() of this variant in flight (the post-update turbo
+        // catch-up)? Let it finish — the complete model then loads offline
+        // below instead of racing it with a second sync.
+        if let inflight = downloading[variant] {
+            _ = try? await inflight.value
+        }
         // Offline-first: a complete model on disk loads as-is, without asking
         // Hugging Face anything. The network sync runs only for a missing or
         // partial model — it re-verifies every file and, if interrupted (app
@@ -113,16 +151,17 @@ actor WhisperEngine {
             load: true,
             download: false
         )
-        pipe = try await WhisperKit(config)
-        loadedVariant = variant
-        // Old tiers would otherwise pile up on disk (~1 GB each)
-        Self.removeOtherModels(keeping: variant)
+        pipes[variant] = try await WhisperKit(config)
+        // Retired tiers would otherwise pile up on disk (~1 GB each) — the
+        // dropped translation model is cleared from existing installs here.
+        Self.removeOtherModels()
     }
 
-    private static func removeOtherModels(keeping variant: String) {
+    private static func removeOtherModels() {
+        let keep = Set(ModelTier.allCases.map(\.variant))
         let repoDir = modelsBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml")
         guard let items = try? FileManager.default.contentsOfDirectory(atPath: repoDir.path) else { return }
-        for item in items where item != variant {
+        for item in items where !keep.contains(item) {
             try? FileManager.default.removeItem(at: repoDir.appendingPathComponent(item))
         }
     }
@@ -146,17 +185,17 @@ actor WhisperEngine {
         }
     }
 
-    /// Transcribes audio (16 kHz float). language "" → auto-detect.
-    /// prompt — terms dictionary. translate=true → translate to English.
+    /// Transcribes audio (16 kHz float) with the given tier's model.
+    /// language "" → auto-detect. prompt — terms dictionary. Transcription
+    /// only: translation is Apple Translation's job now, downstream.
     /// onProgress: overall fraction of audio processed (0…1) + words so far.
     /// Returns the text and the language Whisper detected (drives the
     /// language-scoped filler-word cleanup even in auto-detect mode).
-    func transcribe(floats: [Float], language: String, prompt: String,
-                    translate: Bool = false,
+    func transcribe(floats: [Float], tier: ModelTier, language: String, prompt: String,
                     isCancelled: (@Sendable () -> Bool)? = nil,
                     onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
         -> (text: String, detectedLanguage: String) {
-        guard let pipe else {
+        guard let pipe = pipes[tier.variant] else {
             throw NSError(domain: "Dictate", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Whisper model not loaded"])
         }
@@ -170,10 +209,10 @@ actor WhisperEngine {
         Log.d("prompt: \(prompt.count) chars -> \(promptTokens?.count ?? 0) tokens applied")
 
         let options = DecodingOptions(
-            task: translate ? .translate : .transcribe,
+            task: .transcribe,
             language: language.isEmpty ? nil : language,
-            // prefill is REQUIRED: without it the <|translate|> task token is not
-            // injected and translation silently degrades to plain transcription.
+            // Prefill stays on: it is what makes the task/language tokens land
+            // deterministically, and turning it off changed decoding behaviour.
             usePrefillPrompt: true,
             detectLanguage: language.isEmpty,
             skipSpecialTokens: true,

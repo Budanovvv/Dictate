@@ -38,6 +38,11 @@ final class DictationController {
         /// loud) — suggest backing off, so the distortion that defeats
         /// recognition is named.
         case tooLoud
+        /// The dictation was translated with Apple Translation, but macOS has
+        /// no data for that language pair. The native text is inserted anyway
+        /// (nothing is lost) — this says why it came out in the spoken
+        /// language and where to fix it.
+        case translateDataMissing
     }
 
     private let monitor = HotkeyMonitor()
@@ -47,7 +52,13 @@ final class DictationController {
     }
 
     var paused = false {
-        didSet { if paused, state == .recording { _ = recorder.stop(); state = .idle } }
+        didSet {
+            if paused, state == .recording {
+                stopLivePreview()
+                _ = recorder.stop()
+                state = .idle
+            }
+        }
     }
     var onStateChange: ((State) -> Void)?
     var onError: ((String) -> Void)?
@@ -59,10 +70,15 @@ final class DictationController {
     var onResult: ((Bool, Int, Double) -> Void)?
     /// Transcribed text (for the onboarding "try it" box).
     var onResultText: ((String) -> Void)?
-    /// Model download progress 0…1.
-    var onModelDownload: ((Double) -> Void)?
+    /// Model download progress 0…1 + total size in MB of the model in flight.
+    var onModelDownload: ((Double, Int) -> Void)?
     /// A dictation ended without a normal result — see Notice.
     var onNotice: ((Notice) -> Void)?
+    /// Rolling live transcription of the current recording (fast model over
+    /// the growing buffer) — the HUD shows it while the user speaks.
+    var onLivePreview: ((String) -> Void)?
+    /// The local LLM polish pass started (HUD switches to "Polishing…").
+    var onPolishing: (() -> Void)?
     /// Recent results, newest first (in memory only — never written to disk).
     private(set) var history: [String] = []
     private(set) var lastStats: (words: Int, seconds: Double)?
@@ -100,6 +116,13 @@ final class DictationController {
     /// dictation so a word begun just before the press isn't lost. nil when the
     /// pre-roll setting is off.
     private var prerollPCM: Data?
+    /// Live preview machinery: a 1.2 s cadence re-decodes the growing buffer
+    /// with the fast model. `previewBusy` keeps one decode in flight at most;
+    /// the token early-stops a decode the moment the key is released, so the
+    /// final transcription never waits behind a stale preview pass.
+    private var previewTimer: Timer?
+    private var previewBusy = false
+    private var previewCancel: CancelToken?
 
     private static let soundStart = NSSound(contentsOfFile: "/System/Library/Sounds/Pop.aiff", byReference: true)
     private static let soundStop = NSSound(contentsOfFile: "/System/Library/Sounds/Purr.aiff", byReference: true)
@@ -167,11 +190,15 @@ final class DictationController {
         }
     }
 
-    /// Loads an already-downloaded model at startup so the first dictation doesn't wait.
-    /// If it isn't downloaded, does nothing — transcribeLocal downloads lazily with progress.
+    /// Loads the already-downloaded model at startup so the first dictation
+    /// doesn't wait. A missing model is skipped — transcribeLocal downloads it
+    /// lazily with progress when actually needed.
     func preloadModel() {
         Task { await SpeechGate.shared.prewarm() }
-        let tier = Settings.shared.modelTier
+        preload(tier: .fast)
+    }
+
+    private func preload(tier: ModelTier) {
         guard WhisperEngine.shared.isModelDownloaded(tier: tier) else { return }
         Task { try? await WhisperEngine.shared.prepare(tier: tier) { _ in } }
     }
@@ -186,6 +213,7 @@ final class DictationController {
         tapRetryTimer?.invalidate()
         tapRetryTimer = nil
         monitor.stop()
+        stopLivePreview()
         if state == .recording { _ = recorder.stop() }
     }
 
@@ -236,6 +264,53 @@ final class DictationController {
         // fails synchronously — the recorder retries a not-yet-ready device and
         // reports via onRecoveryFailed.
         recorder.start()
+        startLivePreview()
+    }
+
+    // MARK: - Live preview
+
+    private func startLivePreview() {
+        guard Settings.shared.livePreview else { return }
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
+            self?.previewTick()
+        }
+    }
+
+    private func stopLivePreview() {
+        previewTimer?.invalidate()
+        previewTimer = nil
+        previewCancel?.cancel()
+        previewCancel = nil
+    }
+
+    private func previewTick() {
+        guard state == .recording, !previewBusy else { return }
+        let pcm = recorder.currentPCM()
+        // Wait for ≥1 s of audio AND an audible signal — Whisper hallucinates
+        // confident phrases on silence, and a phantom preview line is worse
+        // than none.
+        guard pcm.count >= AudioRecorder.sampleRate * 2, recorder.peakLevel > 0.02 else { return }
+        let language = Settings.shared.language
+        let prompt = Settings.shared.prompt
+        let token = CancelToken()
+        previewCancel = token
+        previewBusy = true
+        Task { [weak self] in
+            defer { DispatchQueue.main.async { self?.previewBusy = false } }
+            guard await WhisperEngine.shared.isReady(for: .fast) else { return }
+            let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+            // Long recordings: preview only the tail — a full re-decode of the
+            // whole buffer every tick grows quadratically.
+            let window = Array(floats.suffix(30 * AudioRecorder.sampleRate))
+            guard let (text, _) = try? await WhisperEngine.shared.transcribe(
+                floats: window, tier: .fast, language: language, prompt: prompt,
+                isCancelled: { token.isCancelled }) else { return }
+            await MainActor.run {
+                guard let self, self.state == .recording, !token.isCancelled,
+                      !text.isEmpty else { return }
+                self.onLivePreview?(text)
+            }
+        }
     }
 
     /// Esc: abandon the current dictation, whatever stage it's in. While
@@ -246,6 +321,7 @@ final class DictationController {
     private func cancel() {
         switch state {
         case .recording:
+            stopLivePreview()
             _ = recorder.stop()
             state = .idle
             onNotice?(.cancelled)
@@ -281,6 +357,7 @@ final class DictationController {
     private func endRecording() {
         guard state == .recording else { return }
         autoStopArmed = false
+        stopLivePreview()
         let (pcm, duration) = recorder.stop()
         Self.soundStop?.play()
         targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -327,7 +404,13 @@ final class DictationController {
         state = .transcribing
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt
-        let tier = Settings.shared.modelTier
+        // One route for everything: turbo transcribes, and a translating
+        // dictation then hands the text to Apple's on-device Translation —
+        // English included. Whisper's own task=translate lost the A/B (it
+        // compressed long speech and produced clumsy English) and is gone.
+        let appleTarget: String? = translate ? Settings.shared.translateTargetCode : nil
+        let tier: ModelTier = .fast
+        if translate { Log.d("translate → \(appleTarget ?? "?") via apple") }
         let token = CancelToken()
         activeCancel = token
         transcribeTask = Task {
@@ -375,7 +458,8 @@ final class DictationController {
                 return
             }
             await self.transcribeLocal(floats: speechFloats, language: language,
-                                       prompt: prompt, tier: tier, translate: translate, token: token)
+                                       prompt: prompt, tier: tier, translate: translate,
+                                       appleTarget: appleTarget, token: token)
         }
     }
 
@@ -399,41 +483,91 @@ final class DictationController {
 
     private func transcribeLocal(floats: [Float], language: String,
                                  prompt: String, tier: ModelTier, translate: Bool,
-                                 token: CancelToken) async {
+                                 appleTarget: String?, token: CancelToken) async {
         do {
             let ready = await WhisperEngine.shared.isReady(for: tier)
             if !ready {
-                // Not loaded yet (dictated before preload finished). The loading
-                // usually overlapped the recording, so the remaining wait is short —
-                // keep the normal "Recognizing…" spinner rather than a scary
-                // "warming up" message. Only surface progress if the model still
-                // needs downloading (never happens after onboarding).
+                // Not loaded yet (dictated before preload finished). Two very
+                // different waits hide here. A missing model has to download
+                // (real progress, essentially only before onboarding is done).
+                // An already-downloaded one still has to be loaded and compiled
+                // for the Neural Engine — up to minutes the first time, with no
+                // progress callback of any kind, and the plain "Recognizing…"
+                // spinner made that look like a freeze. A full bar is exactly
+                // the HUD's "Warming up the model…" state, so say so.
                 let downloaded = WhisperEngine.shared.isModelDownloaded(tier: tier)
+                if downloaded, !token.isCancelled {
+                    await MainActor.run { self.onModelDownload?(1.0, tier.sizeMB) }
+                }
                 try await WhisperEngine.shared.prepare(tier: tier) { [weak self] p in
                     // token: Esc already showed "Cancelled" — a late progress
                     // update would flash the download pill over it.
                     guard !downloaded, !token.isCancelled else { return }
-                    DispatchQueue.main.async { self?.onModelDownload?(p) }
+                    DispatchQueue.main.async { self?.onModelDownload?(p, tier.sizeMB) }
+                }
+                // Hand the pill back to recognition. The download/warm-up state
+                // owns the HUD until told otherwise, and setTranscribeProgress
+                // only updates a pill that is already in the transcribing state —
+                // without this the bar would sit at "Warming up…" for the whole
+                // recognition. Replaying the current state (still .transcribing)
+                // is enough; no state churn.
+                if !token.isCancelled {
+                    await MainActor.run { self.onStateChange?(self.state) }
                 }
             }
             let started = Date()
             let (text, detected) = try await WhisperEngine.shared.transcribe(
-                floats: floats, language: language, prompt: prompt, translate: translate,
+                floats: floats, tier: tier, language: language, prompt: prompt,
                 isCancelled: { token.isCancelled },
                 onProgress: { [weak self] fraction, words in
                     DispatchQueue.main.async { self?.onTranscribeProgress?(fraction, words) }
                 }
             )
-            // Fillers are cleaned strictly in THIS dictation's language:
-            // the chosen one, or whatever Whisper detected in auto mode;
-            // translate output is always English.
+            // Fillers are cleaned strictly in THIS dictation's language: the
+            // chosen one, or whatever Whisper detected in auto mode. The text
+            // is always still in the spoken language here — translation runs
+            // after the cleanup, for every target.
             let fillerLanguage: String? = Settings.shared.removeFillers
-                ? (translate ? "en" : (language.isEmpty ? detected : language))
+                ? (language.isEmpty ? detected : language)
                 : nil
-            let processed = Replacements.process(text, rules: Settings.shared.replacements,
+            var processed = Replacements.process(text, rules: Settings.shared.replacements,
                                                  fillerLanguage: fillerLanguage)
+            // Set when the text stayed in the spoken language because macOS has
+            // no data for the pair — finish() turns it into a pill, otherwise
+            // the user only sees "the translation key stopped translating".
+            var dataMissing = false
+            // Target == spoken language: there is nothing to translate, and
+            // macOS has no such pair — asking would fail the dictation into a
+            // "translation data missing" pill over text that is already right.
+            let spoken = language.isEmpty ? detected : language
+            if let appleTarget, appleTarget != spoken, !processed.isEmpty, !token.isCancelled {
+                do {
+                    processed = try await AppleTranslator.shared.translateSmart(
+                        processed, to: appleTarget, source: spoken)
+                } catch {
+                    // Keep the native transcription rather than losing the
+                    // dictation. Only the missing-data case is actionable;
+                    // the rest stay in the log.
+                    dataMissing = (error as? TranslateError) == .dataMissing
+                    Log.d("apple translate failed (\(appleTarget)): \(error.localizedDescription) — inserting native text")
+                }
+            }
+            // Optional local-LLM polish (grammar/fillers/tone) — last in the
+            // chain so it sees the final language. Any failure falls back to
+            // the unpolished text: a dictation must never be lost to a
+            // beautifier.
+            if Settings.shared.polishEnabled, !processed.isEmpty, !token.isCancelled,
+               PolishEngine.isModelDownloaded {
+                await MainActor.run { self.onPolishing?() }
+                if let polished = try? await PolishEngine.shared.polish(
+                    processed, style: Settings.shared.polishStyle,
+                    isCancelled: { token.isCancelled }),
+                   !token.isCancelled {
+                    processed = polished
+                }
+            }
             await finish(text: processed, seconds: Date().timeIntervalSince(started),
-                         translate: translate, token: token)
+                         translate: translate, translateDataMissing: dataMissing, token: token)
         } catch {
             await MainActor.run {
                 // A user-cancelled recognition may surface as a thrown error;
@@ -447,7 +581,8 @@ final class DictationController {
     }
 
     @MainActor
-    private func finish(text: String, seconds: Double, translate: Bool, token: CancelToken) {
+    private func finish(text: String, seconds: Double, translate: Bool,
+                        translateDataMissing: Bool = false, token: CancelToken) {
         // Esc arrived while this recognition was finishing: throw the (partial)
         // result away — no insertion, no history. cancel() already set idle and
         // showed "Cancelled".
@@ -472,8 +607,12 @@ final class DictationController {
             copied = Paster.paste(text, expectedTargetPID: targetAppPID) == .keptInClipboard
         }
         Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
+        // One pill per dictation. "Copied" wins: without it the text is
+        // nowhere the user can see. Untranslated text is at least in place.
         if copied {
             onNotice?(.copiedInstead)
+        } else if translateDataMissing, !text.isEmpty {
+            onNotice?(.translateDataMissing)
         } else {
             onResult?(!text.isEmpty, words, seconds)
         }

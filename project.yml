@@ -2,7 +2,7 @@ name: Dictate
 options:
   bundleIdPrefix: com.valentynbudanov
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 
 packages:
@@ -12,6 +12,13 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.6.0"
+  # Local LLM for the polish feature: llama.cpp (Metal) via LLM.swift.
+  # Chosen over MLX: mlx-swift-examples pins swift-transformers <1.1 while
+  # WhisperKit 0.18 needs 1.1.6+ — unresolvable; LLM.swift has zero shared
+  # dependencies. The GGUF model (~1.9 GB) downloads on demand (PolishEngine).
+  LLMSwift:
+    url: https://github.com/eastriverlee/LLM.swift
+    from: "3.0.3"
   # Silero VAD on CoreML (speech gate in front of Whisper). Apache-2.0;
   # the model itself is bundled from Resources/ — no runtime downloads.
   FluidAudio:
@@ -31,6 +38,8 @@ targets:
       - package: WhisperKit
       - package: Sparkle
       - package: FluidAudio
+      - package: LLMSwift
+        product: LLM
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
@@ -43,7 +52,7 @@ targets:
         # ObjC shim: converts NSException from AVFoundation into NSError
         # (Swift can't catch ObjC exceptions) — see ObjCExceptionCatcher.
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Dictate-Bridging-Header.h
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
         # Automatic signing; the Team is picked once in Xcode (Signing & Capabilities).
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 3BN45AZPR2

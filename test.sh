@@ -46,7 +46,7 @@ if [ "$MODE" != "--quick" ]; then
     # ("codesign wants to use key…") — seen live 2026-07-23, 1 h stuck.
     if xcodebuild test -project Dictate.xcodeproj -scheme Dictate \
         -destination 'platform=macOS,arch=arm64' -derivedDataPath "$DD" \
-        CODE_SIGNING_ALLOWED=NO \
+        -skipMacroValidation CODE_SIGNING_ALLOWED=NO \
         2>&1 | tee /tmp/dictate-tests.log | grep -E "Test Suite|error:" | tail -5
     then
         if grep -qF "** TEST SUCCEEDED **" /tmp/dictate-tests.log; then
@@ -86,10 +86,11 @@ check "Info.plist: microphone usage description" \
 check "Info.plist: 12 localizations declared" \
     bash -c "[ \$(defaults read '$APP/Contents/Info.plist' CFBundleLocalizations | grep -c ,) -ge 11 ]"
 
-# No OpenAI traces in the binary, except model identifiers
-# (openai_whisper-… model variant, openai/whisper-… WhisperKit constants).
+# No OpenAI traces in the binary, except model identifiers (openai_whisper-…
+# variant, openai/whisper-… WhisperKit constants) and llama.cpp's baked-in
+# chat-template comment ("OpenAI Chat Completions") that ships with LLM.swift.
 check "no legacy OpenAI strings in the binary" \
-    bash -c "! strings '$BIN' | grep -i openai | grep -v 'openai_whisper' | grep -vq 'openai/whisper'"
+    bash -c "! strings '$BIN' | grep -i openai | grep -v 'openai_whisper' | grep -v 'OpenAI Chat Completions' | grep -vq 'openai/whisper'"
 # The tokenizer must not go into ~/Documents (tokenizerFolder regression)
 check "tokenizer path is not in Documents" \
     bash -c "! strings '$BIN' | grep -q 'Documents/huggingface'"

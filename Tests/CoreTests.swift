@@ -1,14 +1,14 @@
 import XCTest
 
 final class SettingsTests: XCTestCase {
-    /// The only model is full large-v3: turbo ignores task=translate, so a fallback to it would silently break translation.
-    func testSingleModelIsFullLargeV3() {
-        XCTAssertEqual(Settings.shared.modelTier, .ultra)
-        XCTAssertEqual(ModelTier.allCases, [.ultra])
-        XCTAssertEqual(ModelTier.ultra.variant, "openai_whisper-large-v3_947MB")
-        XCTAssertFalse(ModelTier.ultra.variant.contains("turbo"),
-                       "turbo does not translate — do not fall back to it")
-        XCTAssertEqual(ModelTier.ultra.sizeHint, "~950 MB")
+    /// One tier: turbo, for everything. Translation moved to Apple's on-device
+    /// framework, so the heavy full large-v3 (which was there only because it
+    /// is the sole variant honoring task=translate) must not come back.
+    func testModelTiers() {
+        XCTAssertEqual(ModelTier.allCases, [.fast])
+        XCTAssertEqual(ModelTier.fast.variant, "openai_whisper-large-v3-v20240930_626MB")
+        XCTAssertFalse(ModelTier.fast.variant.contains("947"),
+                       "the full large-v3 is retired — dictation runs on turbo")
     }
 
     /// Shipping default hotkey is the right Option key (runner has clean UserDefaults).

@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var resultShown = false
     private var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    /// Invisible 1×1 panel hosting the Apple Translation session (the
+    /// framework only works through a SwiftUI view — see AppleTranslator).
+    private var translatorHostPanel: NSPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
@@ -88,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 case .nothingHeard: self.hud.showResult(success: false)
                 case .tooQuiet: self.hud.showTooQuiet()
                 case .tooLoud: self.hud.showTooLoud()
+                case .translateDataMissing: self.hud.showTranslateDataMissing()
                 }
             }
         }
@@ -96,8 +100,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             self?.hud.setLevel(level)
             self?.statusController.setLevel(level)
         }
-        dictation.onModelDownload = { [weak self] progress in
-            DispatchQueue.main.async { self?.hud.showDownloading(progress) }
+        // Delivered on main (MainActor.run at the source).
+        dictation.onLivePreview = { [weak self] text in
+            self?.hud.setLivePreview(text)
+        }
+        dictation.onPolishing = { [weak self] in
+            self?.hud.showPolishing()
+        }
+        dictation.onModelDownload = { [weak self] progress, totalMB in
+            DispatchQueue.main.async { self?.hud.showDownloading(progress, totalMB: totalMB) }
         }
 
         // Existing installs predate the onboarding timestamp — seed it now so
@@ -112,13 +123,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         } else {
             showOnboarding()
         }
+        // Installs that predate the turbo tier have no fast model on disk, and
+        // the first dictation after the update would run head-on into a
+        // surprise 626 MB download. Fetch it here instead, in the background
+        // and with the HUD saying what's happening. Only after onboarding —
+        // onboarding downloads its own models with its own progress bar.
+        if Settings.shared.onboardingDone,
+           !WhisperEngine.shared.isModelDownloaded(tier: .fast) {
+            catchUpFastModelDownload()
+        }
+        // Polish is opt-in; whoever opted in expects it fast — warm the LLM.
+        if Settings.shared.polishEnabled, PolishEngine.isModelDownloaded {
+            Task { try? await PolishEngine.shared.prepare { _ in } }
+        }
         // Bring the pre-roll ring up if it's enabled (no-op otherwise). Also
         // called after the settings toggle and after mic permission is granted.
         PrerollBuffer.shared.refresh()
+
+        // Persistent invisible host for Apple Translation: the translationTask
+        // modifier needs a live, on-screen view to run in.
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: false
+        )
+        panel.contentView = NSHostingView(rootView: TranslatorHostView())
+        panel.alphaValue = 0
+        panel.ignoresMouseEvents = true
+        panel.isExcludedFromWindowsMenu = true
+        panel.isReleasedWhenClosed = false
+        panel.orderBack(nil)
+        translatorHostPanel = panel
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         dictation.shutdown()
+    }
+
+    /// One-time catch-up download of the turbo dictation model for installs
+    /// that updated into the hybrid-model release (see the call site). The
+    /// pill only reports while nothing else is using it — a dictation started
+    /// mid-download owns the HUD. Failures are swallowed: there's nothing the
+    /// user can do here and the next launch simply tries again.
+    private func catchUpFastModelDownload() {
+        Log.d("model: turbo missing after update — background download")
+        Task { @MainActor in
+            do {
+                try await WhisperEngine.shared.download(tier: .fast) { [weak self] p in
+                    DispatchQueue.main.async {
+                        guard let self, self.dictation.state == .idle else { return }
+                        self.hud.showDownloading(p, totalMB: ModelTier.fast.sizeMB)
+                    }
+                }
+                if dictation.state == .idle { hud.hide() }
+                Log.d("model: turbo catch-up download finished")
+                dictation.preloadModel()
+            } catch {
+                if dictation.state == .idle { hud.hide() }
+                Log.d("model: turbo catch-up download failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Discovery nudge for the translate key (the deferred "first week" hint).
@@ -131,6 +195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private func maybeShowTranslateTip() {
         let s = Settings.shared
         guard s.language != "en",
+              // The tip's wording promises English — it would lie about any
+              // other target the user picked.
+              s.translateTargetCode == "en",
               s.translateKeyCode != nil,
               !s.translateUsedEver,
               s.dictationCount >= 5,

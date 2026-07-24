@@ -369,6 +369,12 @@ final class AudioRecorder {
         withLock { converter = c }
     }
 
+    /// Snapshot of the audio captured so far (raw Int16 PCM) — feeds the live
+    /// transcription preview without disturbing the recording.
+    func currentPCM() -> Data {
+        withLock { samples }
+    }
+
     /// Stops recording. Returns (raw Int16 PCM, duration in seconds).
     func stop() -> (pcm: Data, duration: Double) {
         // Stop capturing and hand back the audio immediately (the caller needs

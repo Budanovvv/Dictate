@@ -8,17 +8,35 @@ struct OnboardingView: View {
     let dictation: DictationController
 
     @ObservedObject private var loc = Localization.shared
-    @State private var step = 0
+    /// A user who already finished onboarding lands here for one reason only —
+    /// a permission stopped working (seen live: an app update left a stale
+    /// Accessibility entry). Don't march them through welcome/model/keys
+    /// again; open straight on the permissions step.
+    @State private var step = Settings.shared.onboardingDone ? 3 : 0
     @State private var allGranted = Permissions.allGranted
 
     enum ModelState: Equatable { case notReady, downloading(Double), ready }
+
+    /// Models needed at onboarding — one, since translation moved to macOS.
+    static var onboardingTiers: [ModelTier] { [.fast] }
+
     @State private var modelState: ModelState =
-        WhisperEngine.shared.isModelDownloaded(tier: Settings.shared.modelTier) ? .ready : .notReady
+        OnboardingView.onboardingTiers.allSatisfy { WhisperEngine.shared.isModelDownloaded(tier: $0) }
+            ? .ready : .notReady
     @State private var downloadFailed = false
+    @State private var downloadTotalMB = OnboardingView.onboardingTiers.map(\.sizeMB).reduce(0, +)
     /// At least one try-out task completed — only then Return triggers Finish,
     /// so the aha-moment can't be skipped by a reflexive Enter (the button
     /// itself stays clickable always: no hard gate).
     @State private var tryTaskDone = false
+    /// Spoken language and translate target live here, not in HotkeyStep: the
+    /// step view is recreated on every `step` change (`.id(step)`), and the
+    /// translation-data fetch below has to survive that.
+    @State private var obLanguage = Settings.shared.language
+    @State private var obTranslateTarget = Settings.shared.translateTargetCode
+    /// Bumped on entering the keys step so TranslatePrepareView actually
+    /// fetches (its first pass only reports status — see arm()).
+    @State private var obPrepareReload = 0
 
     private let totalSteps = 5
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -51,6 +69,19 @@ struct OnboardingView: View {
             // Once past the model step, load it into memory in the background
             // so the "try it" dictation is instant — no visible warm-up.
             if s >= 2 { dictation.preloadModel() }
+            // Fetch the translation data while a real window is on screen:
+            // macOS attaches its consent sheet to it. At the first dictation
+            // there is no such window and the download can't be asked for.
+            if s == 2 { obPrepareReload += 1 }
+        }
+        // Hung off the ROOT, not off the step content: that content is rebuilt
+        // from scratch on every step change (`.id(step)`), which would tear the
+        // session down together with the system dialog it just opened.
+        .background {
+            TranslatePrepareView(targetCode: obTranslateTarget,
+                                 sourceCode: obLanguage.isEmpty ? nil : obLanguage,
+                                 reload: obPrepareReload,
+                                 onState: { _ in })
         }
     }
 
@@ -58,8 +89,8 @@ struct OnboardingView: View {
     private var content: some View {
         switch step {
         case 0: WelcomeStep()
-        case 1: ModelStep(state: $modelState, failed: downloadFailed)
-        case 2: HotkeyStep()
+        case 1: ModelStep(state: $modelState, failed: downloadFailed, totalMB: downloadTotalMB)
+        case 2: HotkeyStep(language: $obLanguage, translateTarget: $obTranslateTarget)
         case 3: PermissionsStep()
         default: TryItStep(dictation: dictation, taskDone: $tryTaskDone)
         }
@@ -109,15 +140,30 @@ struct OnboardingView: View {
     }
 
     private func startDownload() {
-        let tier = Settings.shared.modelTier
+        // Both models in one visible download with a weighted combined bar —
+        // so the translate try-out later is instant, not a surprise download.
+        // download() only fetches; loading into the Neural Engine happens in
+        // the background (preloadModel on step ≥2) so the bar never freezes.
+        let tiers = Self.onboardingTiers.filter { !WhisperEngine.shared.isModelDownloaded(tier: $0) }
+        let totalMB = Double(tiers.map(\.sizeMB).reduce(0, +))
+        downloadTotalMB = Int(totalMB)
         modelState = .downloading(0)
         downloadFailed = false
         Task {
             do {
-                try await WhisperEngine.shared.prepare(tier: tier) { p in
-                    DispatchQueue.main.async { modelState = .downloading(p) }
+                var doneMB = 0.0
+                for tier in tiers {
+                    try await WhisperEngine.shared.download(tier: tier) { p in
+                        let overall = (doneMB + p * Double(tier.sizeMB)) / totalMB
+                        DispatchQueue.main.async { modelState = .downloading(overall) }
+                    }
+                    doneMB += Double(tier.sizeMB)
                 }
-                await MainActor.run { modelState = .ready; step += 1 }
+                await MainActor.run {
+                    modelState = .ready
+                    dictation.preloadModel()   // start the ANE compile now, in the background
+                    step += 1
+                }
             } catch {
                 // Say WHY the button is suddenly back — a ~1 GB download
                 // failing without a word looks like the app is broken.
@@ -203,11 +249,16 @@ private struct WelcomeStep: View {
 private struct ModelStep: View {
     @Binding var state: OnboardingView.ModelState
     var failed = false
+    var totalMB = ModelTier.fast.sizeMB
+
+    private var sizeHint: String {
+        totalMB >= 1000 ? String(format: "~%.1f GB", Double(totalMB) / 1000) : "~\(totalMB) MB"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("On-device recognition")).font(.title.bold())
-            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3, the best open model there is, 112 languages, and it can translate any of them into English. Your voice never leaves this computer."))
+            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             if case .downloading(let p) = state {
@@ -215,9 +266,9 @@ private struct ModelStep: View {
                     if p < 0.999 {
                         Text(L("Downloading model…")).font(.headline)
                         ProgressView(value: p).frame(maxWidth: 360)
-                        Text(Lf("Downloaded %d of %d MB", Int(p * 950), 950))
+                        Text(Lf("Downloaded %d of %d MB", Int(p * Double(totalMB)), totalMB))
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", L(Settings.shared.modelTier.sizeHint)))
+                        Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         HStack(spacing: 8) {
@@ -232,7 +283,7 @@ private struct ModelStep: View {
                 Label(L("Model ready"), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).padding(.top, 4)
             } else {
-                Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", L(Settings.shared.modelTier.sizeHint)))
+                Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
                     .font(.headline)
                 if failed {
                     Label(L("Download failed. Check your connection and retry."),
@@ -250,6 +301,11 @@ private struct ModelStep: View {
 private struct HotkeyStep: View {
     private enum Target { case dictation, translate }
 
+    /// Owned by OnboardingView — the translation-data fetch hangs off the root
+    /// and has to see these change (this view is recreated on every step).
+    @Binding var language: String
+    @Binding var translateTarget: String
+
     @StateObject private var capture = KeyCapture()
     @State private var mainCode = Settings.shared.hotkeyKeyCode
     @State private var mainName = Settings.shared.hotkeyName
@@ -257,7 +313,6 @@ private struct HotkeyStep: View {
     @State private var translateName = Settings.shared.translateKeyName
     @State private var translateSet = Settings.shared.translateKeyCode != nil
     @State private var unsafeKey = !KeyNames.isSafeHotkey(Settings.shared.hotkeyKeyCode)
-    @State private var language = Settings.shared.language
     @State private var armed = Target.dictation
     /// One-shot cyan ring on the Translate card when it first appears — the
     /// card materializes while the user's eyes are on the language picker,
@@ -280,6 +335,24 @@ private struct HotkeyStep: View {
                     }
             }
 
+            // The translate key's target, decided here rather than buried in
+            // settings: a non-English speaker who wants, say, German has no
+            // reason to discover it later. Hidden for English speakers — the
+            // translate key itself doesn't exist for them.
+            if language != "en" {
+                HStack(spacing: 8) {
+                    Text(L("Translate to") + ":").foregroundStyle(.secondary)
+                    Picker("", selection: $translateTarget) {
+                        ForEach(SettingsView.translateTargets, id: \.self) { code in
+                            Text(code == "en" ? "English" : LanguageList.endonym(for: code)).tag(code)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: translateTarget) { Settings.shared.translateTargetCode = $0 }
+                }
+            }
+
             // Pick which key you're assigning; each chip shows its current binding.
             HStack(spacing: 10) {
                 TargetChip(title: L("Dictation"),
@@ -288,8 +361,8 @@ private struct HotkeyStep: View {
                            tint: Brand.indigo,
                            armed: armed == .dictation) { armed = .dictation }
                 if language != "en" {
-                    TargetChip(title: L("Translate → English"),
-                               caption: L("Same speech — typed in English"),
+                    TargetChip(title: translateChipTitle,
+                               caption: translateChipCaption,
                                keyName: translateSet ? KeyNames.displayName(translateName) : L("Not set"),
                                tint: Brand.cyan,
                                armed: armed == .translate) { armed = .translate }
@@ -342,6 +415,20 @@ private struct HotkeyStep: View {
             guard let code, let name = capture.capturedName else { return }
             assign(code, name)
         }
+    }
+
+    /// English gets its own wording — "typed in English" reads better than the
+    /// generic "translated to X" the other targets need.
+    private var translateChipTitle: String {
+        translateTarget == "en"
+            ? L("Translate → English")
+            : Lf("Translate → %@", LanguageList.endonym(for: translateTarget))
+    }
+
+    private var translateChipCaption: String {
+        translateTarget == "en"
+            ? L("Same speech — typed in English")
+            : Lf("Same speech — translated to %@", LanguageList.endonym(for: translateTarget))
     }
 
     /// Assign a key (from a schematic click or a physical press) to whichever
@@ -444,6 +531,15 @@ private struct PermissionsStep: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(L("In the macOS window, click “Open System Settings” and turn on the switch next to Dictate. (If you accidentally hit “Deny”, no harm done — the “No window appeared?” link below opens the same settings.)"))
+                // The stale-entry dead end (seen live after an app update): the
+                // switch in System Settings is already ON, yet macOS reports
+                // "not trusted", the prompt won't reappear — and without this
+                // hint there is NOTHING the user can click to move forward.
+                if Settings.shared.onboardingDone, ax != .granted {
+                    Label(L("Already ON in System Settings but not green here? Turn the Dictate switch off and back on — after an app update macOS sometimes keeps a stale entry."),
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
                 Button(L("No window appeared? Open settings manually")) {
                     Permissions.openSettingsPane("Privacy_Accessibility")
                 }
@@ -510,6 +606,11 @@ private struct TryItStep: View {
     /// moment of the first success.
     @State private var nudgeTranslate = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    /// The first Neural Engine compile can outlast walking the steps. The
+    /// try-out must SAY it's still preparing — a silent "Warming up" pill only
+    /// after a keypress reads as a hang (the warm-up rake, round two).
+    @State private var engineReady = false
+    private let readyTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var mainKey: String { KeyNames.displayName(Settings.shared.hotkeyName) }
     private var translateKey: String? {
@@ -517,17 +618,39 @@ private struct TryItStep: View {
             ? KeyNames.displayName(Settings.shared.translateKeyName) : nil
     }
 
+    /// English keeps its shorter phrasing; other targets name the language.
+    private func translateTaskText(key: String) -> String {
+        let target = Settings.shared.translateTargetCode
+        return target == "en"
+            ? Lf("Hold %@ and say it again — this time it's typed in English.", key)
+            : Lf("Hold %@ and say it again — this time it comes out in %@.",
+                 key, LanguageList.endonym(for: target))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("Try it out")).font(.title.bold())
-            TryTask(done: didPlain,
-                    text: Lf("Hold %@ and say something — the recognized text shows up below.", mainKey))
-            if let tk = translateKey {
-                TryTask(done: didTranslate,
-                        text: Lf("Hold %@ and say it again — this time it's typed in English.", tk))
-                    .scaleEffect(nudgeTranslate ? 1.05 : 1, anchor: .leading)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.45), value: nudgeTranslate)
+            // Honest state while the one-time Neural Engine compile is still
+            // running: the tasks stay visible but dimmed, and the banner says
+            // what the wait is — without it the first keypress just shows a
+            // "Warming up" pill and reads as a hang.
+            if !engineReady {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(L("Preparing the model for the Neural Engine… A few minutes, one time."))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
+            Group {
+                TryTask(done: didPlain,
+                        text: Lf("Hold %@ and say something — the recognized text shows up below.", mainKey))
+                if let tk = translateKey {
+                    TryTask(done: didTranslate, text: translateTaskText(key: tk))
+                        .scaleEffect(nudgeTranslate ? 1.05 : 1, anchor: .leading)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.45), value: nudgeTranslate)
+                }
+            }
+            .opacity(engineReady ? 1 : 0.45)
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.4))
@@ -560,7 +683,18 @@ private struct TryItStep: View {
 
             Spacer()
         }
+        .onReceive(readyTimer) { _ in
+            guard !engineReady else { return }
+            Task {
+                let ready = await WhisperEngine.shared.isReady(for: .fast)
+                await MainActor.run { engineReady = ready }
+            }
+        }
         .onAppear {
+            Task {
+                let ready = await WhisperEngine.shared.isReady(for: .fast)
+                await MainActor.run { engineReady = ready }
+            }
             dictation.suppressInsertion = true
             dictation.onResultText = { [weak dictation] t in
                 DispatchQueue.main.async {

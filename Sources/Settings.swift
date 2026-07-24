@@ -138,20 +138,46 @@ final class Settings {
         set { d.set(newValue, forKey: "translateTipCount") }
     }
 
-    /// Single model, no tier picker — see ModelTier.
-    var modelTier: ModelTier { .ultra }
+    /// Live transcription preview in the HUD while recording (turbo passes
+    /// over the growing buffer). Costs some battery — can be turned off.
+    var livePreview: Bool {
+        get { d.object(forKey: "livePreview") as? Bool ?? true }
+        set { d.set(newValue, forKey: "livePreview") }
+    }
+
+    /// Target language of the translate key. Every target — English included —
+    /// is a plain transcription followed by Apple's on-device Translation.
+    var translateTargetCode: String {
+        get { d.string(forKey: "translateTargetCode") ?? "en" }
+        set { d.set(newValue, forKey: "translateTargetCode") }
+    }
+
+    /// Post-process dictation with the local LLM (grammar/filler cleanup).
+    /// Off by default: costs seconds of latency and ~2 GB of disk.
+    var polishEnabled: Bool {
+        get { d.bool(forKey: "polishEnabled") }
+        set { d.set(newValue, forKey: "polishEnabled") }
+    }
+
+    /// Polish style: "clean" | "formal" | "friendly".
+    var polishStyle: String {
+        get { d.string(forKey: "polishStyle") ?? "clean" }
+        set { d.set(newValue, forKey: "polishStyle") }
+    }
 }
 
 /// Variant name in argmaxinc/whisperkit-coreml + approximate size.
 enum ModelTier: String, CaseIterable, Identifiable {
-    // Compressed full large-v3: unlike turbo, it supports task=translate.
-    case ultra
+    /// Compressed large-v3-turbo: ~4× faster decode — the everyday dictation
+    /// workhorse and the live-preview engine. The only tier: it cannot
+    /// translate, and it no longer has to (Apple Translation does that now).
+    case fast
     var id: String { rawValue }
 
-    var variant: String { "openai_whisper-large-v3_947MB" }
+    var variant: String { "openai_whisper-large-v3-v20240930_626MB" }
 
     /// One source of truth for the download size shown in HUD/onboarding/settings.
-    var sizeMB: Int { 950 }
+    var sizeMB: Int { 626 }
 
     var sizeHint: String { "~\(sizeMB) MB" }
 }
