@@ -17,11 +17,10 @@ enum Paster {
 
     private static var pendingRestore: [NSPasteboardItem]?
     private static var restoreWork: DispatchWorkItem?
-
-    @discardableResult
-    static func insert(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
-        paste(text, expectedTargetPID: expectedTargetPID)
-    }
+    /// changeCount of OUR pasteboard write. If it moved by restore() time,
+    /// someone else (the user's ⌘C, a clipboard manager) wrote after us —
+    /// restoring the snapshot would silently destroy their copy.
+    private static var ourChangeCount: Int?
 
     @discardableResult
     static func paste(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
@@ -62,6 +61,7 @@ enum Paster {
         let insertion = text.last?.isWhitespace == true ? text : text + " "
         pb.clearContents()
         pb.setString(insertion, forType: .string)
+        ourChangeCount = pb.changeCount
 
         // Short pause so the pasteboard server applies the change
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -79,6 +79,7 @@ enum Paster {
         restoreWork?.cancel()
         restoreWork = nil
         pendingRestore = nil
+        ourChangeCount = nil
         pb.clearContents()
         pb.setString(text, forType: .string)
         return .keptInClipboard
@@ -187,11 +188,20 @@ enum Paster {
 
     private static func restore() {
         let pb = NSPasteboard.general
+        defer {
+            pendingRestore = nil
+            restoreWork = nil
+            ourChangeCount = nil
+        }
+        // Someone wrote to the pasteboard after us — their content wins,
+        // the snapshot is stale.
+        if let ours = ourChangeCount, pb.changeCount != ours {
+            Log.d("paste: pasteboard changed by someone else -> skip restore")
+            return
+        }
         pb.clearContents()
         if let items = pendingRestore, !items.isEmpty {
             pb.writeObjects(items)
         }
-        pendingRestore = nil
-        restoreWork = nil
     }
 }

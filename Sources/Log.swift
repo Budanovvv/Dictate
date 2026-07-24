@@ -18,6 +18,7 @@ enum Log {
     }()
     private static let time: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")   // ASCII digits on any system locale
         f.dateFormat = "HH:mm:ss.SSS"
         return f
     }()

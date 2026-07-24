@@ -58,10 +58,25 @@ final class HotkeyMonitor {
         pressedCodes = []
     }
 
+    /// Whether the tap exists and the system still delivers events to it.
+    /// Revoking Accessibility kills delivery without any notification — a
+    /// periodic isAlive check is the only way to notice and recreate the tap.
+    var isAlive: Bool {
+        guard let tap else { return false }
+        return CGEvent.tapIsEnabled(tap: tap)
+    }
+
     private func handle(type: CGEventType, event: CGEvent) {
         // The system disables the tap on timeout — re-enable it
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            // Events during the disabled window are gone. A missed keyUp would
+            // leave the recording running to the 300 s limit and eat the next
+            // press — re-sync held state from the hardware instead.
+            for code in pressedCodes
+            where !CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(code)) {
+                setPressed(code, false)
+            }
             return
         }
 
@@ -94,14 +109,31 @@ final class HotkeyMonitor {
     }
 
     private func isModifierFlagActive(_ flags: CGEventFlags, keyCode: Int64) -> Bool {
+        // The shared masks (.maskAlternate…) cover BOTH keys of a pair: with
+        // left and right Option held together, releasing one keeps the flag set
+        // and the release would be lost (the code sticks in pressedCodes, the
+        // next press is eaten). The NX_DEVICE* bits in the low word tell the
+        // sides apart; some external/remapped keyboards set neither, so the
+        // shared flag alone is the fallback.
+        let general: CGEventFlags
+        let deviceBit: UInt64
+        let siblingBit: UInt64
         switch keyCode {
-        case 58, 61: return flags.contains(.maskAlternate)
-        case 54, 55: return flags.contains(.maskCommand)
-        case 56, 60: return flags.contains(.maskShift)
-        case 59, 62: return flags.contains(.maskControl)
+        case 58: (general, deviceBit, siblingBit) = (.maskAlternate, 0x20, 0x40)     // left ⌥
+        case 61: (general, deviceBit, siblingBit) = (.maskAlternate, 0x40, 0x20)     // right ⌥
+        case 55: (general, deviceBit, siblingBit) = (.maskCommand, 0x08, 0x10)       // left ⌘
+        case 54: (general, deviceBit, siblingBit) = (.maskCommand, 0x10, 0x08)       // right ⌘
+        case 56: (general, deviceBit, siblingBit) = (.maskShift, 0x02, 0x04)         // left ⇧
+        case 60: (general, deviceBit, siblingBit) = (.maskShift, 0x04, 0x02)         // right ⇧
+        case 59: (general, deviceBit, siblingBit) = (.maskControl, 0x01, 0x2000)     // left ⌃
+        case 62: (general, deviceBit, siblingBit) = (.maskControl, 0x2000, 0x01)     // right ⌃
         case 63: return flags.contains(.maskSecondaryFn)
         case 57: return flags.contains(.maskAlphaShift)
         default: return false
         }
+        guard flags.contains(general) else { return false }
+        let raw = flags.rawValue
+        if raw & (deviceBit | siblingBit) == 0 { return true }   // no device bits — trust the shared flag
+        return raw & deviceBit != 0
     }
 }

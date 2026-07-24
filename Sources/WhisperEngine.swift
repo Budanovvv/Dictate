@@ -8,6 +8,12 @@ actor WhisperEngine {
 
     private var pipe: WhisperKit?
     private var loadedVariant: String?
+    /// In-flight model load. The actor is reentrant across the long awaits in
+    /// prepare (download, WhisperKit init) — without this, the routine trio of
+    /// prepare() calls (app-start preload, record-start preload, the transcribe
+    /// path) could each pass the `pipe != nil` check and start a second
+    /// parallel ~1 GB model load. Latecomers await the same task instead.
+    private var preparing: (variant: String, task: Task<Void, Error>)?
 
     /// Folder for downloaded models: ~/Library/Application Support/Dictate/models
     private static var modelsBase: URL {
@@ -54,10 +60,28 @@ actor WhisperEngine {
     }
 
     /// Downloads (if needed) and loads the selected model. progress: 0…1.
+    /// Concurrent calls coalesce into one load; only the first caller's
+    /// progress closure reports (they all feed the same HUD anyway).
     func prepare(tier: ModelTier, progress: @Sendable @escaping (Double) -> Void) async throws {
         if pipe != nil, loadedVariant == tier.variant { return }
         let variant = tier.variant
+        if let inflight = preparing {
+            if inflight.variant == variant {
+                try await inflight.task.value
+                return
+            }
+            // A different variant mid-flight (can't happen with a single tier,
+            // but stay safe): let it finish before replacing the pipe.
+            _ = try? await inflight.task.value
+        }
+        let task = Task { try await performPrepare(variant: variant, progress: progress) }
+        preparing = (variant, task)
+        defer { preparing = nil }
+        try await task.value
+    }
 
+    private func performPrepare(variant: String,
+                                progress: @Sendable @escaping (Double) -> Void) async throws {
         // Offline-first: a complete model on disk loads as-is, without asking
         // Hugging Face anything. The network sync runs only for a missing or
         // partial model — it re-verifies every file and, if interrupted (app

@@ -1,9 +1,8 @@
 import AppKit
 import ApplicationServices
 import AVFoundation
-import IOKit.hid
 
-/// Checks and requests the three macOS permissions dictation can't work without.
+/// Checks and requests the macOS permissions dictation can't work without.
 enum Permissions {
     enum Status {
         case granted, denied, undetermined
@@ -59,21 +58,6 @@ enum Permissions {
     /// Registers the app in the Accessibility list without showing a dialog.
     static func registerAccessibilityQuietly() {
         _ = AXIsProcessTrusted()
-    }
-
-    // MARK: Input Monitoring (global key capture)
-
-    static var inputMonitoring: Status {
-        switch IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) {
-        case kIOHIDAccessTypeGranted: return .granted
-        case kIOHIDAccessTypeUnknown: return .undetermined
-        default: return .denied
-        }
-    }
-
-    /// Shows the TCC dialog and adds the app to the Input Monitoring list.
-    static func promptInputMonitoring() {
-        IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
     }
 
     // MARK: Opening the relevant System Settings pane

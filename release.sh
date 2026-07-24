@@ -117,18 +117,32 @@ rm -rf "$STAGE"
 codesign --force --timestamp --sign "Developer ID Application" "$UPDATE_DMG"
 echo "  ✅ update DMG: $UPDATE_DMG ($(du -h "$UPDATE_DMG" | cut -f1 | xargs))"
 
-# 3. Notarization — skipped if the keychain profile is not configured. Both DMGs
-# (the branded human download and the plain Sparkle payload) are notarized and
-# stapled so Gatekeeper accepts them offline.
+# 3. Notarization — skipped only when the keychain profile is not configured
+# (or unreachable). Both DMGs (the branded human download and the plain Sparkle
+# payload) are notarized and stapled so Gatekeeper accepts them offline.
+# NOTARIZED gates --publish below: a skip (even a transient network failure of
+# the profile check) must never end in silently publishing unnotarized DMGs.
+NOTARIZED=0
 if xcrun notarytool history --keychain-profile dictate-notary >/dev/null 2>&1; then
     for artifact in "$BRANDED_TMP" "$UPDATE_DMG"; do
         echo "==> Notarization: $(basename "$artifact") (may take a few minutes)…"
-        xcrun notarytool submit "$artifact" --keychain-profile dictate-notary --wait
+        SUBMIT_OUT=$(xcrun notarytool submit "$artifact" --keychain-profile dictate-notary --wait 2>&1) \
+            || { echo "$SUBMIT_OUT"; echo "  ❌ notarization submit failed"; exit 1; }
+        echo "$SUBMIT_OUT"
+        # --wait exits 0 even for "status: Invalid" — check the verdict and pull
+        # the analysis log, otherwise the flow dies later on stapler with no clue.
+        if ! grep -q "status: Accepted" <<<"$SUBMIT_OUT"; then
+            SUB_ID=$(grep -m1 -oE 'id: [0-9a-f-]+' <<<"$SUBMIT_OUT" | awk '{print $2}')
+            echo "  ❌ notarization not accepted for $(basename "$artifact")"
+            [ -n "$SUB_ID" ] && xcrun notarytool log "$SUB_ID" --keychain-profile dictate-notary || true
+            exit 1
+        fi
         xcrun stapler staple "$artifact"
         echo "  ✅ notarized and stapled: $(basename "$artifact")"
     done
+    NOTARIZED=1
 else
-    echo "  ⚠️  notarization skipped: no dictate-notary profile"
+    echo "  ⚠️  notarization skipped: dictate-notary profile missing or unreachable"
     echo "     (set it up: xcrun notarytool store-credentials dictate-notary --apple-id … --team-id 3BN45AZPR2 --password …)"
 fi
 
@@ -138,10 +152,13 @@ fi
 #      stapling so the notarized file is not modified afterwards (an xattr icon
 #      doesn't touch the data fork, so the staple stays valid). Only the branded
 #      DMG gets it — the plain update DMG is never seen by a human.
-osascript -e 'use framework "AppKit"' \
+# Cosmetic only — must never abort a release that is already notarized.
+if osascript -e 'use framework "AppKit"' \
     -e "set i to current application's NSImage's alloc()'s initWithContentsOfFile:\"$PWD/Sources/AppIcon.icns\"" \
-    -e "current application's NSWorkspace's sharedWorkspace()'s setIcon:i forFile:\"$BRANDED_TMP\" options:0" >/dev/null \
-    && echo "  ✅ icon on the .dmg file"
+    -e "current application's NSWorkspace's sharedWorkspace()'s setIcon:i forFile:\"$BRANDED_TMP\" options:0" >/dev/null
+then echo "  ✅ icon on the .dmg file"
+else echo "  ⚠️  couldn't stamp the icon onto the .dmg (cosmetic, continuing)"
+fi
 
 # 4. Release notes — taken from the body of the released commit. GitHub's
 # --generate-notes builds text from pull requests, and we push to main
@@ -196,10 +213,20 @@ echo "  ✅ branded installer ready: $DMG"
 
 # 6. Publishing
 if [ "${1:-}" = "--publish" ]; then
+    if [ "$NOTARIZED" -ne 1 ]; then
+        echo "  ❌ refusing to publish: the DMGs are NOT notarized (see the ⚠️ above)."
+        echo "     Fix the dictate-notary profile / network and re-run ./release.sh --publish"
+        exit 1
+    fi
     git tag -f "v$VERSION" && git push -f origin "v$VERSION"
-    gh release create "v$VERSION" "$DMG" "$UPDATE_DMG" "$OUT/appcast.xml" \
-        --repo "$REPO" --title "Dictate $VERSION" --notes-file "$NOTES_MD" 2>/dev/null \
-      || gh release upload "v$VERSION" "$DMG" "$UPDATE_DMG" "$OUT/appcast.xml" --repo "$REPO" --clobber
+    # No stderr silencing: a failed create (network, expired token) must be
+    # readable, not surface later as a baffling failed upload to a missing release.
+    if ! gh release create "v$VERSION" "$DMG" "$UPDATE_DMG" "$OUT/appcast.xml" \
+        --repo "$REPO" --title "Dictate $VERSION" --notes-file "$NOTES_MD"
+    then
+        echo "  ⚠️  release create failed (already exists?) — uploading assets with --clobber"
+        gh release upload "v$VERSION" "$DMG" "$UPDATE_DMG" "$OUT/appcast.xml" --repo "$REPO" --clobber
+    fi
     echo "  ✅ published: https://github.com/$REPO/releases/tag/v$VERSION"
     echo "  ⚠️  Sparkle will only see the update once the releases repository is public"
 else

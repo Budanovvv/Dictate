@@ -41,8 +41,12 @@ if [ "$MODE" != "--quick" ]; then
 
     echo "==> Unit tests (XCTest)"
     [ "$MODE" = "--e2e" ] && export DICTATE_E2E=1 && touch /tmp/dictate-e2e
+    # CODE_SIGNING_ALLOWED=NO: unit tests run unsigned just fine, and signing
+    # the Debug products can hang the whole run on a Keychain access dialog
+    # ("codesign wants to use key…") — seen live 2026-07-23, 1 h stuck.
     if xcodebuild test -project Dictate.xcodeproj -scheme Dictate \
         -destination 'platform=macOS,arch=arm64' -derivedDataPath "$DD" \
+        CODE_SIGNING_ALLOWED=NO \
         2>&1 | tee /tmp/dictate-tests.log | grep -E "Test Suite|error:" | tail -5
     then
         if grep -qF "** TEST SUCCEEDED **" /tmp/dictate-tests.log; then
@@ -100,16 +104,25 @@ src = pathlib.Path("Sources")
 loc = (src/"Localization.swift").read_text()
 used = set()
 for f in src.glob("*.swift"):
-    if f.name == "Localization.swift": continue
-    for m in re.finditer(r'\bLf?\("((?:[^"\\]|\\.)*)"', f.read_text()):
+    text = f.read_text()
+    if f.name == "Localization.swift":
+        text = text.split("extension Localization")[0]   # code, not the tables
+    for m in re.finditer(r'\bLf?\("((?:[^"\\]|\\.)*)"', text):
         used.add(m.group(1).replace('\\"','"'))
+    for m in re.finditer(r'\.string\(\s*"((?:[^"\\]|\\.)*)"', text):
+        used.add(m.group(1).replace('\\"','"'))
+# Keys that reach L() through variables, not literals:
+# key names (KeyNames.displayName) and the model size hint.
+dynamic = set(re.findall(r'\d+: "((?:[^"\\]|\\.)*)"', (src/"KeyNames.swift").read_text()))
+dynamic.add("~950 MB")
 for name in ["ru","uk","es","pt","fr","de","zh","ja","ko","vi","tl"]:
     m = re.search(rf'static let {name}: \[String: String\] = \[(.*?)\n    \]', loc, re.S)
     keys = {k.replace('\\"','"') for k in re.findall(r'\n        "((?:[^"\\]|\\.)*)":', m.group(1))}
-    if used - keys: sys.exit(1)
+    if used - keys: sys.exit(1)          # a used key is missing from a table
+    if keys - used - dynamic: sys.exit(2)  # orphan: translated ×11 but never shown
 PYEOF
-then echo "  ✅ every key used in code is present in all 11 tables"; PASS=$((PASS+1))
-else echo "  ❌ gaps in the localization tables"; FAIL=$((FAIL+1)); fi
+then echo "  ✅ localization tables complete, no orphaned keys"; PASS=$((PASS+1))
+else echo "  ❌ localization tables: gaps or orphaned keys"; FAIL=$((FAIL+1)); fi
 
 # ── 4. Launch: liveness and single instance ────────────────────────────────
 echo "==> Launch"
@@ -126,8 +139,12 @@ if ! kill -0 $SECOND 2>/dev/null && [ "$(pgrep -x Dictate | wc -l)" -eq 1 ]; the
 else
     echo "  ❌ second-instance protection"; FAIL=$((FAIL+1)); kill $SECOND 2>/dev/null
 fi
-# Stop the app if it was not running before the test.
-[ -z "$WAS_RUNNING" ] && quit_dictate
+# The launch checks ran the DerivedData build — never leave THAT one running.
+# If Dictate was running before the test, hand back the installed copy.
+quit_dictate
+if [ -n "$WAS_RUNNING" ] && [ -d /Applications/Dictate.app ]; then
+    open /Applications/Dictate.app
+fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo

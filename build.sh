@@ -23,27 +23,45 @@ else
 fi
 
 DD="$HOME/Library/Caches/DictateBuild"
+APP="$DD/Build/Products/Release/Dictate.app"
+
+NOSIGN=0; INSTALL=0
+for arg in "$@"; do
+    case "$arg" in
+        --nosign) NOSIGN=1 ;;
+        --install) INSTALL=1 ;;
+        *) echo "!! unknown flag: $arg"; exit 2 ;;
+    esac
+done
 
 EXTRA=()
-[ "${1:-}" = "--nosign" ] && EXTRA+=(CODE_SIGNING_ALLOWED=NO)
+[ "$NOSIGN" = 1 ] && EXTRA+=(CODE_SIGNING_ALLOWED=NO)
 
 # CFBundleVersion = git commit count: a monotonic build number with nothing to
 # hand-bump. Sparkle compares it to decide an update is newer, so it must only
 # grow — the commit count on main does. Falls back to 0 outside a git checkout.
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 
+# Drop the previous artifact FIRST: with it in place, a failed xcodebuild would
+# leave a perfectly signed stale app behind and the checks below would bless it
+# — release.sh could then ship an old binary under a new version number.
+rm -rf "$APP"
+
 echo "==> xcodebuild (Release), build ${BUILD_NUMBER}"
+set +o pipefail   # grep exiting 1 on "no matching lines" must not kill the build output filter
 xcodebuild -project Dictate.xcodeproj -scheme Dictate -configuration Release \
     -destination 'platform=macOS' -derivedDataPath "$DD" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" build ${EXTRA[@]+"${EXTRA[@]}"} \
-    | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED" || true
+    | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED"
+XC=${PIPESTATUS[0]}
+set -o pipefail
+[ "$XC" -eq 0 ] || { echo "!! xcodebuild failed (exit $XC)"; exit 1; }
 
-APP="$DD/Build/Products/Release/Dictate.app"
-{ [ -d "$APP" ] && codesign -v "$APP" 2>/dev/null; } || [ "${1:-}" = "--nosign" ] \
+{ [ -d "$APP" ] && codesign -v "$APP" 2>/dev/null; } || [ "$NOSIGN" = 1 ] \
     || { echo "!! Build or signing failed"; exit 1; }
 echo "==> Done: $APP"
 
-if [ "${1:-}" = "--install" ]; then
+if [ "$INSTALL" = 1 ]; then
     # Graceful quit first: an instant pkill can land mid model-download/verify
     # and corrupt the model state (see internal/GRABLI.md).
     if pgrep -x Dictate >/dev/null; then

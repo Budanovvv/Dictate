@@ -69,4 +69,67 @@ final class ReplacementTests: XCTestCase {
         let rules: [[String]] = [["", "X"], ["один"], []]
         XCTAssertEqual(Replacements.apply(to: "текст один два", rules: rules), "текст один два")
     }
+
+    /// Regression: a two-character punctuation output ("?!") used to get the
+    /// sentinel mark, and the tidy sweep then ate its own second character
+    /// ("?!" → "?"). Only single marks are sentinel-protected now.
+    func testTwoCharPunctuationOutputSurvivesTidy() {
+        let rules = [["вопрос-восклицание", "?!"]]
+        XCTAssertEqual(Replacements.apply(to: "ну вопрос-восклицание", rules: rules), "ну?!")
+    }
+
+    /// An invalid "re:" pattern must be skipped without crashing or touching
+    /// the text (and the settings footer warns about it separately).
+    func testInvalidRegexRuleIsSkipped() {
+        let rules = [["re:([", "X"]]
+        XCTAssertEqual(Replacements.apply(to: "просто текст", rules: rules), "просто текст")
+    }
+
+    /// Same-length overlapping rules apply in a deterministic order (tie broken
+    /// by the phrase), so results can't differ from run to run.
+    func testSameLengthRulesAreDeterministic() {
+        let rules = [["ab cd", "X"], ["cd ef", "Y"]]
+        for _ in 0..<5 {
+            XCTAssertEqual(Replacements.apply(to: "ab cd ef", rules: rules), "X ef")
+        }
+    }
+}
+
+final class TrimSilenceTests: XCTestCase {
+    private let window = 1600   // 0.1 s at 16 kHz, same as production
+
+    /// Build a signal from per-window amplitudes and its per-window RMS.
+    private func signal(_ amps: [Double]) -> (floats: [Float], energies: [Double]) {
+        var floats: [Float] = []
+        for a in amps { floats.append(contentsOf: [Float](repeating: Float(a), count: window)) }
+        return (floats, amps)
+    }
+
+    func testTrimsLeadingAndTrailingSilenceKeepingMargin() {
+        // 6 silent windows, 4 voiced, 6 silent → keep voiced ± 2-window margin.
+        let (floats, energies) = signal([0.001, 0.001, 0.001, 0.001, 0.001, 0.001,
+                                         0.5, 0.5, 0.5, 0.5,
+                                         0.001, 0.001, 0.001, 0.001, 0.001, 0.001])
+        let out = AudioRecorder.trimSilence(floats, energies: energies, window: window, p90: 0.5)
+        XCTAssertEqual(out.count, (4 + 2 + 2) * window)
+    }
+
+    func testNoClearSilenceReturnsUnchanged() {
+        let (floats, energies) = signal([0.4, 0.5, 0.45, 0.5, 0.4, 0.5])
+        let out = AudioRecorder.trimSilence(floats, energies: energies, window: window, p90: 0.5)
+        XCTAssertEqual(out.count, floats.count)
+    }
+
+    func testAllSilenceReturnsUnchanged() {
+        // Nothing voiced at all — nothing to anchor a cut, return as-is.
+        let (floats, energies) = signal([0.0, 0.0, 0.0, 0.0, 0.0])
+        let out = AudioRecorder.trimSilence(floats, energies: energies, window: window, p90: 0)
+        XCTAssertEqual(out.count, floats.count)
+    }
+
+    func testShortRecordingUntouched() {
+        let floats = [Float](repeating: 0, count: window * 2)   // below the 4-window minimum
+        let out = AudioRecorder.trimSilence(floats, energies: [0, 0], window: window, p90: 0.5)
+        XCTAssertEqual(out.count, floats.count)
+    }
 }

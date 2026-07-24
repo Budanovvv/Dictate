@@ -50,10 +50,31 @@ struct HotkeyKeyboard: View {
     private let unit: CGFloat = 34
     private let gap: CGFloat = 5
 
+    /// With the default macOS setting the top row sends media events (volume,
+    /// brightness), not F-key codes — a bare F5 never reaches the event tap and
+    /// the hotkey looks dead. fn+F5 still works, and so do most external
+    /// keyboards; warn instead of blocking.
+    private static var fKeysAreMediaKeys: Bool {
+        !((CFPreferencesCopyAppValue("com.apple.keyboard.fnState" as CFString,
+                                     kCFPreferencesAnyApplication) as? Bool) ?? false)
+    }
+
+    private var boundFKey: Bool {
+        let fCodes = Set(fRow.map(\.code))
+        return fCodes.contains(dictationCode) || translateCode.map(fCodes.contains) == true
+    }
+
     var body: some View {
         VStack(spacing: gap + 2) {
             row(fRow, height: 26, fontSize: 11)
             row(modRow, height: 42, fontSize: 16)
+            if boundFKey, Self.fKeysAreMediaKeys {
+                Text(L("On this Mac the top row works as media keys — hold fn together with your F-key, or enable “Use F1, F2, etc. keys as standard function keys” in System Settings → Keyboard."))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 14).fill(.quaternary.opacity(0.25)))

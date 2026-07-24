@@ -22,15 +22,17 @@ enum KeyNames {
         105: "F13", 107: "F14", 113: "F15",
     ]
 
-    /// Modifier keys whose events arrive as flagsChanged.
-    static let modifierKeyCodes: Set<Int> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    /// Modifier keys that behave as push-to-talk. Caps Lock (57) is NOT here:
+    /// its flag reflects the lock state, not the physical hold — press starts a
+    /// recording that only a second press (plus a toggled caps state) can end.
+    private static let safeModifierKeyCodes: Set<Int> = [54, 55, 56, 58, 59, 60, 61, 62, 63]
 
     private static let functionKeyCodes: Set<Int> = [
         122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113,
     ]
 
     static func isSafeHotkey(_ code: Int) -> Bool {
-        modifierKeyCodes.contains(code) || functionKeyCodes.contains(code)
+        safeModifierKeyCodes.contains(code) || functionKeyCodes.contains(code)
     }
 
     /// Base (English) name — the form stored in settings.

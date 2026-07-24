@@ -28,6 +28,9 @@ final class KeyCapture: ObservableObject {
             }
 
             if event.type == .flagsChanged {
+                // Caps Lock is a toggle, not a hold — as a push-to-talk key it
+                // would start a recording only a second press can end. Ignore.
+                if code == 57 { return event }
                 // React only to a modifier press (more flags than before);
                 // 0xFFFF0000 = device-independent modifier flags
                 let now = NSEvent.ModifierFlags(rawValue: event.modifierFlags.rawValue & 0xFFFF0000)
@@ -49,6 +52,12 @@ final class KeyCapture: ObservableObject {
 
     func cancel() {
         capturing = false
+        end()
+    }
+
+    deinit {
+        // The window can close mid-capture — without this the local monitor
+        // would stay installed for the life of the process.
         end()
     }
 

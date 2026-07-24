@@ -108,6 +108,10 @@ enum AudioInputDevices {
         all().first { dev in
             dev.id != avoid && !dev.isBluetooth && dev.transport != kAudioDeviceTransportTypeVirtual
                 && dev.transport != kAudioDeviceTransportTypeAggregate
+                // Continuity (iPhone) mics count as input devices but silently
+                // switching a dictation onto the user's phone would be baffling.
+                && dev.transport != kAudioDeviceTransportTypeContinuityCaptureWired
+                && dev.transport != kAudioDeviceTransportTypeContinuityCaptureWireless
                 && !isRunningSomewhere(dev.id)
         }?.id
     }

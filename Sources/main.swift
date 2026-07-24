@@ -45,6 +45,12 @@ appMenu.addItem(withTitle: "Quit Dictate", action: #selector(NSApplication.termi
 appItem.submenu = appMenu
 let editItem = NSMenuItem(); mainMenu.addItem(editItem)
 let editMenu = NSMenu(title: "Edit")
+// Undo/Redo have no NSText selector — they reach the field's undo manager
+// through the responder chain by selector name.
+editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+editMenu.addItem(redoItem)
+editMenu.addItem(.separator())
 editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
 editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
 editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")

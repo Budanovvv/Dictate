@@ -93,7 +93,12 @@ enum Replacements {
             guard !phrase.isEmpty else { continue }
             byPhrase[phrase.lowercased()] = (phrase, rule[1].replacingOccurrences(of: "\\n", with: "\n"))
         }
-        let ordered = byPhrase.values.sorted { $0.0.count > $1.0.count }
+        // Longer phrases first; ties broken by the phrase itself so the order
+        // (and thus the result of overlapping same-length rules) is stable
+        // between runs — Dictionary.values alone has no defined order.
+        let ordered = byPhrase.values.sorted {
+            $0.0.count != $1.0.count ? $0.0.count > $1.0.count : $0.0 < $1.0
+        }
 
         var result = text
         for (phrase, output) in ordered {
@@ -105,11 +110,18 @@ enum Replacements {
                 ? String(phrase.dropFirst(3))
                 : pattern(for: phrase)
             guard let re = try? NSRegularExpression(pattern: rawPattern,
-                                                    options: [.caseInsensitive]) else { continue }
-            // Marks inserted BY COMMAND get a sentinel: the user's explicit
-            // mark must beat whatever punctuation Whisper guessed around the
-            // spoken phrase ("знак. Восклицательный знак." → "знак!", not "знак.!.")
-            let isMark = output.count <= 2 && output.rangeOfCharacter(from: .punctuationCharacters) != nil
+                                                    options: [.caseInsensitive]) else {
+                // A typo in a user "re:" pattern otherwise looks like "the rule
+                // just doesn't work" — leave the one breadcrumb.
+                Log.d("replacements: invalid pattern skipped: \(rawPattern)")
+                continue
+            }
+            // Single marks inserted BY COMMAND get a sentinel: the user's
+            // explicit mark must beat whatever punctuation Whisper guessed
+            // around the spoken phrase ("знак. Восклицательный знак." →
+            // "знак!", not "знак.!."). Only single characters — for a longer
+            // output like "?!" the tidy sweep would eat its own tail.
+            let isMark = output.count == 1 && output.rangeOfCharacter(from: .punctuationCharacters) != nil
                 && !output.contains("\n")
             let template = isMark ? sentinel + output : output
             result = re.stringByReplacingMatches(
