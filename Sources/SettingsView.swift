@@ -20,8 +20,11 @@ struct SettingsView: View {
     @State private var modelReady = WhisperEngine.shared.isModelDownloaded(tier: Settings.shared.modelTier)
     @State private var downloadingModel = false
     @State private var modelProgress = 0.0
+    @State private var downloadError: String?
     @State private var micUID = Settings.shared.micUID
     @State private var micDevices = AudioInputDevices.all()
+    @State private var micGranted = Permissions.microphone == .granted
+    @State private var axGranted = Permissions.accessibility == .granted
     @State private var replacements = Settings.shared.replacements
     @State private var removeFillers = Settings.shared.removeFillers
     @State private var autoStopOnSilence = Settings.shared.autoStopOnSilence
@@ -58,11 +61,10 @@ struct SettingsView: View {
         Form {
             // — Languages: spoken and interface, side by side —
             Section {
-                Picker(L("Spoken language"), selection: $language) {
-                    Text(L("Automatic (detect any language)")).tag("")
-                    ForEach(languageOptions, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
-                    }
+                // Same searchable picker as onboarding — a flat 112-row Picker
+                // fails every large-list UX guideline (see LanguagePicker).
+                LabeledContent(L("Spoken language")) {
+                    LanguagePicker(selection: $language)
                 }
                 .onChange(of: language) { Settings.shared.language = $0 }
 
@@ -127,7 +129,10 @@ struct SettingsView: View {
                     onHotkeyChanged()
                 }
 
-                if language != "en" {
+                // Visible also when language == "en" but a key is still bound:
+                // the binding keeps working regardless of language, so the UI
+                // to remove it must not disappear.
+                if language != "en" || translateSet {
                     LabeledContent {
                         KeyRecorder(keyName: translateSet ? KeyNames.displayName(translateName) : "",
                                     placeholder: L("Not set"),
@@ -139,8 +144,8 @@ struct SettingsView: View {
                                         onHotkeyChanged()
                                     } : nil)
                     } label: {
-                        rowLabel(L("Translation key"),
-                                 L("Hold this instead of the dictation key — your speech comes out in English."))
+                        rowLabel(L("Translate key"),
+                                 L("Hold to talk in your language, release to insert it in English."))
                     }
                     .onReceive(captureTranslate.$capturedKeyCode) { code in
                         guard let code, let name = captureTranslate.capturedName,
@@ -196,7 +201,16 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
             } header: { Text(L("Replacements")) } footer: {
-                Text(L("Exact fixes applied to the recognized text: names, brands, acronyms."))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L("Exact fixes applied to the recognized text: names, brands, acronyms."))
+                    // A typo in a "re:" pattern otherwise fails silently — the
+                    // rule just "doesn't work" with no hint why.
+                    if let bad = invalidRegexRules.first {
+                        Label(Lf("Invalid “re:” pattern — the rule is ignored: %@", bad),
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange).font(.caption)
+                    }
+                }
             }
 
             // — Voice commands (read-only showcase). You SPEAK the commands,
@@ -237,7 +251,8 @@ struct SettingsView: View {
                         statusBadge(ok: true, text: L("Ready"))
                     } else if downloadingModel {
                         if modelProgress < 0.999 {
-                            Text(Lf("Downloaded %d of %d MB", Int(modelProgress * 950), 950))
+                            let total = Settings.shared.modelTier.sizeMB
+                            Text(Lf("Downloaded %d of %d MB", Int(modelProgress * Double(total)), total))
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         } else {
                             ProgressView().controlSize(.small)
@@ -247,19 +262,54 @@ struct SettingsView: View {
                     }
                 }
                 LabeledContent(L("Microphone")) {
-                    statusBadge(ok: Permissions.microphone == .granted,
-                                text: Permissions.microphone == .granted ? L("Granted") : L("No"))
+                    statusBadge(ok: micGranted, text: micGranted ? L("Granted") : L("No"))
                 }
                 LabeledContent(L("Accessibility")) {
-                    statusBadge(ok: Permissions.accessibility == .granted,
-                                text: Permissions.accessibility == .granted ? L("Granted") : L("No"))
+                    statusBadge(ok: axGranted, text: axGranted ? L("Granted") : L("No"))
                 }
             } header: { Text(L("Status")) } footer: {
-                Text(L("Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate."))
+                VStack(alignment: .leading, spacing: 4) {
+                    if downloadError != nil {
+                        Label(L("Download failed. Check your connection and retry."),
+                              systemImage: "wifi.exclamationmark")
+                            .foregroundStyle(.orange).font(.caption)
+                    }
+                    Text(L("Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate."))
+                }
             }
         }
         .formStyle(.grouped)
         .frame(width: 460, height: 580)
+        // The window is cached and lives for the whole session: statuses read
+        // once at creation would show stale permissions and miss new mics.
+        // Re-read whenever the user comes back to the app.
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification)) { _ in
+            micDevices = AudioInputDevices.all()
+            micGranted = Permissions.microphone == .granted
+            axGranted = Permissions.accessibility == .granted
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            if !downloadingModel {
+                modelReady = WhisperEngine.shared.isModelDownloaded(tier: Settings.shared.modelTier)
+            }
+        }
+        .onDisappear {
+            captureMain.cancel()
+            captureTranslate.cancel()
+        }
+    }
+
+    /// User "re:" rules whose pattern doesn't compile (surfaced in the footer).
+    private var invalidRegexRules: [String] {
+        replacements.compactMap { rule in
+            guard rule.count == 2 else { return nil }
+            let phrase = rule[0].trimmingCharacters(in: .whitespaces)
+            guard phrase.hasPrefix("re:") else { return nil }
+            let pattern = String(phrase.dropFirst(3))
+            let compiles = (try? NSRegularExpression(pattern: pattern,
+                                                     options: [.caseInsensitive])) != nil
+            return compiles ? nil : phrase
+        }
     }
 
     @ViewBuilder
@@ -280,10 +330,17 @@ struct SettingsView: View {
 
     private func downloadModel() {
         downloadingModel = true
+        downloadError = nil
         let tier = Settings.shared.modelTier
         Task {
-            try? await WhisperEngine.shared.prepare(tier: tier) { p in
-                DispatchQueue.main.async { modelProgress = p }
+            do {
+                try await WhisperEngine.shared.prepare(tier: tier) { p in
+                    DispatchQueue.main.async { modelProgress = p }
+                }
+            } catch {
+                // A ~1 GB download can genuinely break mid-way — never fail
+                // silently back to the "Download model" button.
+                await MainActor.run { downloadError = error.localizedDescription }
             }
             await MainActor.run {
                 downloadingModel = false

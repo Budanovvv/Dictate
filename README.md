@@ -2,7 +2,9 @@
 
 **Hold a key. Speak. Release — your words appear right where your cursor is, in any app.**
 
-One key. Zero subscriptions. Zero dollars.
+**Hold a second key and speak your own language — the words appear in English.**
+
+One key types what you say. The other types it in English. Zero dollars.
 
 ### [⬇︎ Download the latest release](https://github.com/Budanovvv/Dictate/releases/latest)
 

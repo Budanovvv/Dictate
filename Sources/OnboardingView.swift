@@ -14,6 +14,11 @@ struct OnboardingView: View {
     enum ModelState: Equatable { case notReady, downloading(Double), ready }
     @State private var modelState: ModelState =
         WhisperEngine.shared.isModelDownloaded(tier: Settings.shared.modelTier) ? .ready : .notReady
+    @State private var downloadFailed = false
+    /// At least one try-out task completed — only then Return triggers Finish,
+    /// so the aha-moment can't be skipped by a reflexive Enter (the button
+    /// itself stays clickable always: no hard gate).
+    @State private var tryTaskDone = false
 
     private let totalSteps = 5
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -38,8 +43,11 @@ struct OnboardingView: View {
         .frame(width: 560, height: 540)
         .tint(Brand.indigo)
         .animation(.easeInOut(duration: 0.28), value: step)
-        .onReceive(timer) { _ in allGranted = Permissions.allGranted }
+        // Only the permissions step's Next button needs the poll (the step
+        // view itself has its own timer for the badges).
+        .onReceive(timer) { _ in if step == 3 { allGranted = Permissions.allGranted } }
         .onChange(of: step) { s in
+            if s == 3 { allGranted = Permissions.allGranted }
             // Once past the model step, load it into memory in the background
             // so the "try it" dictation is instant — no visible warm-up.
             if s >= 2 { dictation.preloadModel() }
@@ -50,10 +58,10 @@ struct OnboardingView: View {
     private var content: some View {
         switch step {
         case 0: WelcomeStep()
-        case 1: ModelStep(state: $modelState)
+        case 1: ModelStep(state: $modelState, failed: downloadFailed)
         case 2: HotkeyStep()
         case 3: PermissionsStep()
-        default: TryItStep(dictation: dictation)
+        default: TryItStep(dictation: dictation, taskDone: $tryTaskDone)
         }
     }
 
@@ -90,7 +98,11 @@ struct OnboardingView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!allGranted)
         case totalSteps - 1:
-            Button(L("Finish")) { finish() }.keyboardShortcut(.defaultAction)
+            if tryTaskDone {
+                Button(L("Finish")) { finish() }.keyboardShortcut(.defaultAction)
+            } else {
+                Button(L("Finish")) { finish() }
+            }
         default:
             Button(L("Next")) { step += 1 }.keyboardShortcut(.defaultAction)
         }
@@ -99,6 +111,7 @@ struct OnboardingView: View {
     private func startDownload() {
         let tier = Settings.shared.modelTier
         modelState = .downloading(0)
+        downloadFailed = false
         Task {
             do {
                 try await WhisperEngine.shared.prepare(tier: tier) { p in
@@ -106,7 +119,9 @@ struct OnboardingView: View {
                 }
                 await MainActor.run { modelState = .ready; step += 1 }
             } catch {
-                await MainActor.run { modelState = .notReady }
+                // Say WHY the button is suddenly back — a ~1 GB download
+                // failing without a word looks like the app is broken.
+                await MainActor.run { modelState = .notReady; downloadFailed = true }
             }
         }
     }
@@ -164,6 +179,17 @@ private struct WelcomeStep: View {
                 Label(L("Hold the chosen key — recording starts"), systemImage: "hand.point.down.fill")
                 Label(L("Speak while holding it"), systemImage: "waveform")
                 Label(L("Release — the text is typed where your cursor is"), systemImage: "text.cursor")
+                // The second half of the product, named on the very first
+                // screen: without it the mental model locks onto "one key,
+                // plain dictation" and the translate card on the keys step
+                // reads as a setting, not a feature (seen in a live user test).
+                // Cyan = the translate color throughout the app.
+                Label {
+                    Text(L("And there's a second key: speak your own language — it types English."))
+                } icon: {
+                    Image(systemName: "globe").foregroundStyle(Brand.cyan)
+                }
+                .padding(.top, 2)
             }
             .padding(.top, 8)
             Text(L("Everything runs on your Mac — no cloud, no account, no subscription. Turn Wi-Fi off: it still works."))
@@ -176,11 +202,12 @@ private struct WelcomeStep: View {
 
 private struct ModelStep: View {
     @Binding var state: OnboardingView.ModelState
+    var failed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("On-device recognition")).font(.title.bold())
-            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3, the best open model there is, 112 languages. Your voice never leaves this computer."))
+            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3, the best open model there is, 112 languages, and it can translate any of them into English. Your voice never leaves this computer."))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
             if case .downloading(let p) = state {
@@ -207,6 +234,11 @@ private struct ModelStep: View {
             } else {
                 Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", L(Settings.shared.modelTier.sizeHint)))
                     .font(.headline)
+                if failed {
+                    Label(L("Download failed. Check your connection and retry."),
+                          systemImage: "wifi.exclamationmark")
+                        .foregroundStyle(.orange)
+                }
             }
             Spacer()
         }
@@ -227,6 +259,10 @@ private struct HotkeyStep: View {
     @State private var unsafeKey = !KeyNames.isSafeHotkey(Settings.shared.hotkeyKeyCode)
     @State private var language = Settings.shared.language
     @State private var armed = Target.dictation
+    /// One-shot cyan ring on the Translate card when it first appears — the
+    /// card materializes while the user's eyes are on the language picker,
+    /// so its arrival needs a beat of motion to be seen at all.
+    @State private var translateCardPulsed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -257,8 +293,19 @@ private struct HotkeyStep: View {
                                keyName: translateSet ? KeyNames.displayName(translateName) : L("Not set"),
                                tint: Brand.cyan,
                                armed: armed == .translate) { armed = .translate }
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Brand.cyan.opacity(translateCardPulsed ? 0 : 0.8), lineWidth: 2.5)
+                            .scaleEffect(translateCardPulsed ? 1.07 : 1)
+                            .allowsHitTesting(false))
+                        .onAppear {
+                            withAnimation(.easeOut(duration: 1.1).delay(0.35)) {
+                                translateCardPulsed = true
+                            }
+                        }
                 }
             }
+            .animation(.spring(duration: 0.35), value: language == "en")
 
             // Safe-key schematic — click a key to bind it to the armed target.
             HotkeyKeyboard(
@@ -290,6 +337,7 @@ private struct HotkeyStep: View {
             Spacer()
         }
         .onAppear { assignDefaultTranslateKeyIfNeeded() }
+        .onDisappear { capture.cancel() }   // don't leave a live key monitor behind
         .onReceive(capture.$capturedKeyCode) { code in
             guard let code, let name = capture.capturedName else { return }
             assign(code, name)
@@ -365,21 +413,6 @@ private struct TargetChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(armed ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
-struct KeyCap: View {
-    let name: String
-    var muted: Bool = false
-    var body: some View {
-        Text(name)
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
-            .foregroundStyle(muted ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-            .padding(.vertical, 4).padding(.horizontal, 10)
-            .background(RoundedRectangle(cornerRadius: 7)
-                .fill(muted ? AnyShapeStyle(.quaternary.opacity(0.5)) : AnyShapeStyle(Color.accentColor.opacity(0.15))))
-            .overlay(RoundedRectangle(cornerRadius: 7)
-                .strokeBorder(muted ? AnyShapeStyle(.clear) : AnyShapeStyle(Color.accentColor.opacity(0.35)), lineWidth: 1))
     }
 }
 
@@ -467,11 +500,15 @@ private struct PermissionRow: View {
 
 private struct TryItStep: View {
     let dictation: DictationController
+    @Binding var taskDone: Bool
     @State private var text = ""
-    @State private var listening = false
     @State private var stats: (words: Int, seconds: Double)?
     @State private var didPlain = false
     @State private var didTranslate = false
+    /// One short spring on the translate task right after the plain task
+    /// succeeds — steers the eye to "same phrase, other key" at the exact
+    /// moment of the first success.
+    @State private var nudgeTranslate = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private var mainKey: String { KeyNames.displayName(Settings.shared.hotkeyName) }
@@ -487,7 +524,9 @@ private struct TryItStep: View {
                     text: Lf("Hold %@ and say something — the recognized text shows up below.", mainKey))
             if let tk = translateKey {
                 TryTask(done: didTranslate,
-                        text: Lf("Hold %@ instead to get it in English.", tk))
+                        text: Lf("Hold %@ and say it again — this time it's typed in English.", tk))
+                    .scaleEffect(nudgeTranslate ? 1.05 : 1, anchor: .leading)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.45), value: nudgeTranslate)
             }
 
             ZStack(alignment: .topLeading) {
@@ -528,13 +567,24 @@ private struct TryItStep: View {
                     if !t.isEmpty {
                         text = t
                         stats = dictation?.lastStats
-                        if dictation?.lastWasTranslate == true { didTranslate = true }
-                        else { didPlain = true }
+                        if dictation?.lastWasTranslate == true {
+                            didTranslate = true
+                        } else {
+                            let firstPlain = !didPlain
+                            didPlain = true
+                            // First success + translate untried → nudge task 2.
+                            if firstPlain, !didTranslate, translateKey != nil {
+                                nudgeTranslate = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    nudgeTranslate = false
+                                }
+                            }
+                        }
+                        taskDone = true
                     }
                 }
             }
             dictation.restart()          // restart key capture with the current keys
-            listening = true
         }
         .onDisappear {
             dictation.suppressInsertion = false

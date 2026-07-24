@@ -4,12 +4,18 @@ import SwiftUI
 /// Floating status panel at the bottom of the screen. Never takes focus or mouse events.
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
-        case recording, transcribing, empty, downloading, warming, cancelled, copied, micBusy, tooQuiet, tooLoud
+        case recording, transcribing, empty, downloading, cancelled, copied, micBusy, tooQuiet, tooLoud, translateTip
     }
 
     @Published var mode: Mode = .recording
+    /// The current dictation runs on the translate key — the pill confirms the
+    /// mode (cyan accent + its own texts), so "did I hold the right key?" is
+    /// answered while speaking, and the feature stays visible in daily use.
+    @Published var translate = false
     /// Name of the app holding the mic, for the .micBusy message (nil = generic).
     @Published var busyApp: String?
+    /// Display name of the translate key, for the .translateTip message.
+    @Published var tipKeyName = ""
     @Published var level: Double = 0
     @Published var elapsed: Int = 0
     @Published var downloadProgress: Double = 0
@@ -34,8 +40,9 @@ final class RecordingHUD {
     /// ordered it out. This explicit intent flag decides it deterministically.
     private var wantsVisible = false
 
-    func showRecording() {
+    func showRecording(translate: Bool = false) {
         cancelHide()
+        model.translate = translate
         model.mode = .recording
         model.level = 0
         model.elapsed = 0
@@ -43,15 +50,27 @@ final class RecordingHUD {
         show()
     }
 
-    func showTranscribing() {
+    func showTranscribing(translate: Bool = false) {
         cancelHide()
         stopElapsed()
         if model.mode != .transcribing {
             model.transcribeFraction = 0
             model.transcribeWords = 0
         }
+        model.translate = translate
         model.mode = .transcribing
         show()
+    }
+
+    /// One-time discovery nudge: the user has a translate key configured but
+    /// has never used it (see AppDelegate.maybeShowTranslateTip for the gates).
+    func showTranslateTip(keyName: String) {
+        cancelHide()
+        stopElapsed()
+        model.tipKeyName = keyName
+        model.mode = .translateTip
+        show()
+        scheduleHide(after: 5.0)
     }
 
     /// Progress from the recognizer. The bar only moves forward: chunks finish
@@ -71,14 +90,6 @@ final class RecordingHUD {
         stopElapsed()
         model.downloadProgress = progress
         model.mode = .downloading
-        show()
-    }
-
-    /// Model is downloaded but still loading into memory — first dictation after launch.
-    func showWarming() {
-        cancelHide()
-        stopElapsed()
-        model.mode = .warming
         show()
     }
 
@@ -128,7 +139,7 @@ final class RecordingHUD {
     /// the confirmation — the strip just tops up and the pill slips away.
     /// success=false shows the "empty" state (there reality shows nothing,
     /// so the pill is the only messenger).
-    func showResult(success: Bool, words: Int = 0, seconds: Double = 0) {
+    func showResult(success: Bool) {
         cancelHide()
         stopElapsed()
         if success {
@@ -205,8 +216,14 @@ final class RecordingHUD {
     private func show() {
         let panel = ensurePanel()
         wantsVisible = true
-        position(panel)
-        panel.alphaValue = 0
+        // Reset position and alpha only when the pill is actually off screen.
+        // A state change on a visible pill (recording → transcribing) must not
+        // drop it to alpha 0 and fade back in — that reads as a flash, the
+        // opposite of the "one object changing shape" design.
+        if !panel.isVisible {
+            position(panel)
+            panel.alphaValue = 0
+        }
         panel.orderFrontRegardless()
         Log.d("hud: show \(model.mode) visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) origin=\(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y))")
         NSAnimationContext.runAnimationGroup { ctx in
@@ -282,11 +299,16 @@ private struct HUDView: View {
     @ViewBuilder
     private var icon: some View {
         switch model.mode {
-        case .recording, .transcribing, .warming:
-            // one structural branch → stable identity: the dot recolors in place
+        case .recording, .transcribing:
+            // one structural branch → stable identity: the dot recolors in place.
+            // Translate mode is cyan — the color bound to "→ English" since the
+            // onboarding key cards, kept consistent through daily use.
             PulsingDot(fill: model.mode == .recording
-                       ? AnyShapeStyle(Color.red)
+                       ? (model.translate ? AnyShapeStyle(Brand.cyan) : AnyShapeStyle(Color.red))
                        : AnyShapeStyle(Brand.gradientDiagonal))
+        case .translateTip:
+            Image(systemName: "globe")
+                .font(.system(size: 17)).foregroundStyle(Brand.cyan)
         case .empty:
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18)).foregroundStyle(.secondary)
@@ -348,8 +370,10 @@ private struct HUDView: View {
 
     private var title: String {
         switch model.mode {
-        case .recording: return L("Recording…")
-        case .transcribing: return L("Recognizing…")
+        case .recording: return model.translate ? L("Recording → English…") : L("Recording…")
+        case .transcribing: return model.translate ? L("Translating…") : L("Recognizing…")
+        case .translateTip:
+            return Lf("Tip: hold %@ instead — your speech comes out in English.", model.tipKeyName)
         case .empty: return L("Sorry, I didn't catch that — could you say it again?")
         case .micBusy:
             if let app = model.busyApp, !app.isEmpty {
@@ -359,10 +383,10 @@ private struct HUDView: View {
         case .tooQuiet: return L("That was very quiet — move closer to the microphone")
         case .tooLoud: return L("That was too loud — move back a little from the microphone")
         case .downloading:
+            let total = Settings.shared.modelTier.sizeMB
             return model.downloadProgress < 0.999
-                ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * 950), 950)
+                ? Lf("Downloaded %d of %d MB", Int(model.downloadProgress * Double(total)), total)
                 : L("Warming up the model…")
-        case .warming: return L("Warming up the model…")
         case .cancelled: return L("Cancelled")
         case .copied: return L("Not inserted — text copied, press ⌘V to paste")
         }
@@ -370,7 +394,7 @@ private struct HUDView: View {
 
     private var titleFont: Font {
         switch model.mode {
-        case .empty, .copied, .micBusy, .tooQuiet, .tooLoud: return .system(size: 11, weight: .medium)
+        case .empty, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip: return .system(size: 11, weight: .medium)
         case .downloading: return .system(size: 12, weight: .medium).monospacedDigit()
         default: return .system(size: 13, weight: .medium)
         }
@@ -395,8 +419,8 @@ private struct HUDView: View {
     private var stripPhase: WaveStrip.Phase? {
         switch model.mode {
         case .recording: return .voice
-        case .transcribing, .downloading, .warming: return .progress
-        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud: return nil
+        case .transcribing, .downloading: return .progress
+        case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip: return nil
         }
     }
 

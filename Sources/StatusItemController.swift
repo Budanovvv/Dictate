@@ -28,6 +28,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func applyState(_ state: DictationController.State) {
+        // A new dictation makes the stored error stale — without this the
+        // "⚠️ …" menu line from one long-fixed failure sticks around forever.
+        if state == .recording { lastError = nil }
         updateIcon(for: state)
     }
 
@@ -135,7 +138,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         if Settings.shared.translateKeyCode != nil {
             let tr = NSMenuItem(
-                title: Lf("Translate key: %@", KeyNames.displayName(Settings.shared.translateKeyName)),
+                title: Lf("Translate to English: %@", KeyNames.displayName(Settings.shared.translateKeyName)),
                 action: nil, keyEquivalent: ""
             )
             tr.isEnabled = false

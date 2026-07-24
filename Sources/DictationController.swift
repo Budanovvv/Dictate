@@ -16,6 +16,30 @@ final class DictationController {
         case idle, recording, transcribing
     }
 
+    /// One-shot outcomes that end a dictation without a normal result — the
+    /// HUD shows exactly one pill per notice. A single callback (instead of a
+    /// callback per case) so adding a notice can't silently miss a subscriber.
+    enum Notice {
+        /// Recording cancelled via Esc.
+        case cancelled
+        /// No text cursor — the result went to the clipboard instead of being pasted.
+        case copiedInstead
+        /// The key was held but the mic delivered no audio because another app
+        /// holds it in voice-processing mode (Google Meet, Zoom, FaceTime…).
+        /// The payload is that app's name when known, for a specific message.
+        case micBusy(String?)
+        /// The key was held but nothing was captured (mic still waking from
+        /// sleep, device not ready) — tell the user instead of failing silently.
+        case nothingHeard
+        /// Audio was captured but far too quiet for any speech — suggest moving
+        /// closer to the mic instead of the generic "didn't catch that".
+        case tooQuiet
+        /// Audio was captured but heavily clipped (input gain too high / too
+        /// loud) — suggest backing off, so the distortion that defeats
+        /// recognition is named.
+        case tooLoud
+    }
+
     private let monitor = HotkeyMonitor()
     private let recorder = AudioRecorder()
     private(set) var state: State = .idle {
@@ -37,27 +61,8 @@ final class DictationController {
     var onResultText: ((String) -> Void)?
     /// Model download progress 0…1.
     var onModelDownload: ((Double) -> Void)?
-    /// Model downloaded but still loading into memory.
-    var onWarmup: (() -> Void)?
-    var onWarmupDone: (() -> Void)?
-    /// Recording cancelled via Esc.
-    var onCancelled: (() -> Void)?
-    /// No text cursor — the result went to the clipboard instead of being pasted.
-    var onCopiedInstead: (() -> Void)?
-    /// The key was held but the mic delivered no audio because another app
-    /// holds it in voice-processing mode (Google Meet, Zoom, FaceTime…). The
-    /// argument is that app's name when known, for a specific message.
-    var onMicBusy: ((String?) -> Void)?
-    /// The key was held but nothing was captured (mic still waking from sleep,
-    /// device not ready) — tell the user instead of failing silently.
-    var onNothingHeard: (() -> Void)?
-    /// Audio was captured but far too quiet for any speech — suggest moving
-    /// closer to the mic instead of the generic "didn't catch that".
-    var onTooQuiet: (() -> Void)?
-    /// Audio was captured but heavily clipped (input gain too high / too loud) —
-    /// suggest backing off, so the distortion that defeats recognition is named.
-    var onTooLoud: (() -> Void)?
-    private(set) var lastResult: String?
+    /// A dictation ended without a normal result — see Notice.
+    var onNotice: ((Notice) -> Void)?
     /// Recent results, newest first (in memory only — never written to disk).
     private(set) var history: [String] = []
     private(set) var lastStats: (words: Int, seconds: Double)?
@@ -65,8 +70,10 @@ final class DictationController {
     private(set) var lastWasTranslate = false
     private var tapRetryTimer: Timer?
     private var tapFailureReported = false
-    /// Current recording was started by the translate key.
-    private var activeTranslate = false
+    /// Current recording was started by the translate key. Read by the HUD
+    /// (via AppDelegate) to show the translate variant of the pill; set BEFORE
+    /// state changes to .recording, so onStateChange reads the correct value.
+    private(set) var activeTranslate = false
     /// When the current recording's key went down — used to tell an accidental
     /// tap (released almost immediately) from a real attempt that captured no
     /// audio, so only the latter gets a "didn't hear you" message.
@@ -76,11 +83,10 @@ final class DictationController {
     /// target field, speak" stays legal; the guard covers only the recognition
     /// window, where an app switch would send ⌘V to the wrong place.
     private var targetAppPID: pid_t?
-    /// Cancels the in-flight recognition. Held so Esc (or a superseding
-    /// dictation) can flip it: the WhisperKit decode callback reads it from a
-    /// background thread to stop early, and finish() reads it to discard a
-    /// partial result. Thread-safe because both sides touch it off the main
-    /// actor.
+    /// Cancels the in-flight recognition. Held so Esc can flip it: the
+    /// WhisperKit decode callback reads it from a background thread to stop
+    /// early, and finish() reads it to discard a partial result. Thread-safe
+    /// because both sides touch it off the main actor.
     private var activeCancel: CancelToken?
     /// The recognition Task, so cancel() can tear it down.
     private var transcribeTask: Task<Void, Never>?
@@ -120,7 +126,7 @@ final class DictationController {
             let app = self.recorder.busyAppName
             _ = self.recorder.stop()
             Log.d("mic busy detected early -> stop + notify")
-            self.onMicBusy?(app)   // before .idle so the idle transition can't hide it
+            self.onNotice?(.micBusy(app))   // before .idle so the idle transition can't hide it
             self.state = .idle
         }
         recorder.onRecoveryFailed = { [weak self] nothingRecorded in
@@ -133,28 +139,30 @@ final class DictationController {
         }
         let ok = monitor.start()
         if ok {
-            tapRetryTimer?.invalidate()
-            tapRetryTimer = nil
             tapFailureReported = false
-        } else {
-            if !tapFailureReported {
-                tapFailureReported = true
-                onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
-            }
-            scheduleTapRetry()
+        } else if !tapFailureReported {
+            tapFailureReported = true
+            onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
         }
+        scheduleTapHealthCheck()
         return ok
     }
 
-    /// Retry tap creation every 3 s so granting permission doesn't require a restart.
-    private func scheduleTapRetry() {
+    /// Permanent 3 s health check. Covers both directions without a restart:
+    /// permission granted later → the failed tap gets created; permission
+    /// REVOKED later → the tap silently stops receiving events (no
+    /// tapDisabled* arrives for that) and only recreating it can tell — so a
+    /// live-looking tap is re-verified too, and the warning fires once.
+    private func scheduleTapHealthCheck() {
         guard tapRetryTimer == nil else { return }
         tapRetryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
+            if self.monitor.isAlive { return }
             if self.monitor.start() {
-                self.tapRetryTimer?.invalidate()
-                self.tapRetryTimer = nil
                 self.tapFailureReported = false
+            } else if !self.tapFailureReported {
+                self.tapFailureReported = true
+                self.onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
             }
         }
     }
@@ -240,12 +248,12 @@ final class DictationController {
         case .recording:
             _ = recorder.stop()
             state = .idle
-            onCancelled?()
+            onNotice?(.cancelled)
         case .transcribing:
             activeCancel?.cancel()
             transcribeTask?.cancel()
             state = .idle
-            onCancelled?()   // before nothing else can hide it
+            onNotice?(.cancelled)   // before nothing else can hide it
         case .idle:
             break
         }
@@ -289,10 +297,10 @@ final class DictationController {
             if held >= 0.5 {
                 if recorder.sawForeignFormat {
                     Log.d("empty after \(String(format: "%.1f", held))s hold -> mic busy")
-                    onMicBusy?(recorder.busyAppName)
+                    onNotice?(.micBusy(recorder.busyAppName))
                 } else {
                     Log.d("empty after \(String(format: "%.1f", held))s hold -> nothing heard")
-                    onNothingHeard?()
+                    onNotice?(.nothingHeard)
                 }
             }
             state = .idle
@@ -315,32 +323,6 @@ final class DictationController {
             fullPCM = pcm
         }
         prerollPCM = nil
-        let floats = AudioRecorder.floatSamples(fromPCM: fullPCM)
-
-        // Per-0.1s-window energy, in temporal order (bounds are read from it
-        // before it's sorted for the p90/mean summary).
-        let window = AudioRecorder.sampleRate / 10
-        var energies: [Double] = []
-        var i = 0
-        while i < floats.count {
-            let end = min(i + window, floats.count)
-            var e: Double = 0
-            for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
-            energies.append((e / Double(end - i)).squareRoot())
-            i = end
-        }
-        let windowRMS = energies.sorted()
-        let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
-        let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
-        Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90)) peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip))")
-
-        // Trim leading/trailing silence before Whisper: windows well below the
-        // speech level (< 8% of p90) at the very edges are dropped, keeping a
-        // 150 ms margin so a quiet word onset is never clipped. Conservative on
-        // purpose — a low threshold plus the margin can only shorten pure
-        // silence, and it never touches audio between the first and last voiced
-        // window. Speeds recognition and cuts edge hallucinations.
-        let speechFloats = Self.trimSilence(floats, energies: energies, window: window, p90: p90)
 
         state = .transcribing
         let language = Settings.shared.language
@@ -349,6 +331,37 @@ final class DictationController {
         let token = CancelToken()
         activeCancel = token
         transcribeTask = Task {
+            // Sample conversion, per-window RMS and silence trimming are three
+            // full passes over up to ~5M samples — kept off the main thread so
+            // the UI can't hitch between key release and "Recognizing…".
+            let floats = AudioRecorder.floatSamples(fromPCM: fullPCM)
+
+            // Per-0.1s-window energy, in temporal order (bounds are read from it
+            // before it's sorted for the p90/mean summary).
+            let window = AudioRecorder.sampleRate / 10
+            var energies: [Double] = []
+            var i = 0
+            while i < floats.count {
+                let end = min(i + window, floats.count)
+                var e: Double = 0
+                for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
+                energies.append((e / Double(end - i)).squareRoot())
+                i = end
+            }
+            let windowRMS = energies.sorted()
+            let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
+            let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
+            Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90)) peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip))")
+
+            // Trim leading/trailing silence before Whisper: windows well below the
+            // speech level (< 8% of p90) at the very edges are dropped, keeping a
+            // ~200 ms margin so a quiet word onset is never clipped. Conservative
+            // on purpose — a low threshold plus the margin can only shorten pure
+            // silence, and it never touches audio between the first and last
+            // voiced window. Speeds recognition and cuts edge hallucinations.
+            let speechFloats = AudioRecorder.trimSilence(floats, energies: energies,
+                                                         window: window, p90: p90)
+
             // Speech gate: Silero VAD decides whether anyone actually spoke —
             // it detects speech-ness, not loudness, so quiet voices pass while
             // speech-free audio never reaches Whisper (which hallucinates
@@ -375,31 +388,13 @@ final class DictationController {
         guard !token.isCancelled else { return }
         onResultText?("")
         if clip > 0.02 {
-            onTooLoud?()
+            onNotice?(.tooLoud)
         } else if peak < 0.02 {
-            onTooQuiet?()
+            onNotice?(.tooQuiet)
         } else {
-            onNothingHeard?()
+            onNotice?(.nothingHeard)
         }
         state = .idle
-    }
-
-    /// Drops pure-silence windows from the head and tail, keeping a margin so a
-    /// quiet onset/offset survives. Returns the original array unchanged when
-    /// there's no clear silence to cut (or nothing voiced at all).
-    private static func trimSilence(_ floats: [Float], energies: [Double],
-                                    window: Int, p90: Double) -> [Float] {
-        guard p90 > 0, !energies.isEmpty, floats.count > window * 4 else { return floats }
-        let threshold = p90 * 0.08
-        guard let firstVoiced = energies.firstIndex(where: { $0 > threshold }),
-              let lastVoiced = energies.lastIndex(where: { $0 > threshold }) else { return floats }
-        let margin = 2   // windows (~200 ms) of padding on each side
-        let startWin = max(0, firstVoiced - margin)
-        let endWin = min(energies.count - 1, lastVoiced + margin)
-        let start = startWin * window
-        let end = min(floats.count, (endWin + 1) * window)
-        guard start < end, end - start < floats.count else { return floats }
-        return Array(floats[start..<end])
     }
 
     private func transcribeLocal(floats: [Float], language: String,
@@ -415,7 +410,9 @@ final class DictationController {
                 // needs downloading (never happens after onboarding).
                 let downloaded = WhisperEngine.shared.isModelDownloaded(tier: tier)
                 try await WhisperEngine.shared.prepare(tier: tier) { [weak self] p in
-                    guard !downloaded else { return }
+                    // token: Esc already showed "Cancelled" — a late progress
+                    // update would flash the download pill over it.
+                    guard !downloaded, !token.isCancelled else { return }
                     DispatchQueue.main.async { self?.onModelDownload?(p) }
                 }
             }
@@ -458,21 +455,25 @@ final class DictationController {
             Log.d("finish: discarded — cancelled by Esc")
             return
         }
-        lastResult = text
         lastWasTranslate = translate
         let words = text.split(whereSeparator: \.isWhitespace).count
         lastStats = text.isEmpty ? nil : (words, seconds)
         if !text.isEmpty {
             history.insert(text, at: 0)
             if history.count > 10 { history.removeLast() }
+            // Translate-tip bookkeeping: a translate result anywhere (incl. the
+            // onboarding try-out) silences the tip forever; the dictation
+            // counter tracks only real usage.
+            if translate { Settings.shared.translateUsedEver = true }
+            if !suppressInsertion { Settings.shared.dictationCount += 1 }
         }
         var copied = false
         if !text.isEmpty, !suppressInsertion {
-            copied = Paster.insert(text, expectedTargetPID: targetAppPID) == .keptInClipboard
+            copied = Paster.paste(text, expectedTargetPID: targetAppPID) == .keptInClipboard
         }
         Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
         if copied {
-            onCopiedInstead?()
+            onNotice?(.copiedInstead)
         } else {
             onResult?(!text.isEmpty, words, seconds)
         }

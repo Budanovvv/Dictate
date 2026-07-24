@@ -106,6 +106,38 @@ final class Settings {
         set { d.set(newValue, forKey: "prerollEnabled") }
     }
 
+    // MARK: Translate-tip bookkeeping (see AppDelegate.maybeShowTranslateTip)
+
+    /// Successful real dictations (onboarding try-outs excluded).
+    var dictationCount: Int {
+        get { d.integer(forKey: "dictationCount") }
+        set { d.set(newValue, forKey: "dictationCount") }
+    }
+
+    /// The translate key produced a result at least once (incl. onboarding) —
+    /// the user knows the feature, the tip stays silent forever.
+    var translateUsedEver: Bool {
+        get { d.bool(forKey: "translateUsedEver") }
+        set { d.set(newValue, forKey: "translateUsedEver") }
+    }
+
+    /// When onboarding finished — starts the tip's one-day grace period.
+    var onboardingDoneAt: Date? {
+        get { d.object(forKey: "onboardingDoneAt") as? Date }
+        set { d.set(newValue, forKey: "onboardingDoneAt") }
+    }
+
+    var translateTipShownAt: Date? {
+        get { d.object(forKey: "translateTipShownAt") as? Date }
+        set { d.set(newValue, forKey: "translateTipShownAt") }
+    }
+
+    /// 0 → never shown; capped at 2 (one showing + one reminder a week later).
+    var translateTipCount: Int {
+        get { d.integer(forKey: "translateTipCount") }
+        set { d.set(newValue, forKey: "translateTipCount") }
+    }
+
     /// Single model, no tier picker — see ModelTier.
     var modelTier: ModelTier { .ultra }
 }
@@ -118,5 +150,8 @@ enum ModelTier: String, CaseIterable, Identifiable {
 
     var variant: String { "openai_whisper-large-v3_947MB" }
 
-    var sizeHint: String { "~950 MB" }
+    /// One source of truth for the download size shown in HUD/onboarding/settings.
+    var sizeMB: Int { 950 }
+
+    var sizeHint: String { "~\(sizeMB) MB" }
 }
