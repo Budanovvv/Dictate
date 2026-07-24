@@ -158,6 +158,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         dictation.shutdown()
+        // llama.framework (AI polish) registers C++ static destructors that
+        // tear its Metal device down inside exit(); they race llama's own
+        // async init worker and ggml_abort — a guaranteed SIGABRT crash
+        // report on EVERY quit once the polish model was ever loaded (crash
+        // seen live 2026-07-24: ggml_metal_rsets_free → abort). Our cleanup
+        // is done and Sparkle's install-on-quit doesn't depend on in-process
+        // teardown (its Autoupdate is a separate process waiting for this
+        // PID to exit) — so skip the destructors entirely.
+        Log.d("terminate: clean _exit(0), bypassing C++ static destructors")
+        _exit(0)
     }
 
     /// One-time catch-up download of the turbo dictation model for installs
