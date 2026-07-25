@@ -148,6 +148,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         panel.ignoresMouseEvents = true
         panel.isExcludedFromWindowsMenu = true
         panel.isReleasedWhenClosed = false
+        // Present on every Space of every display. Without this the panel is
+        // pinned to the Space it was born on, and NSApp.activate() yanks
+        // Mission Control across all screens to fly there — visible as every
+        // desktop "jumping" whenever a real window (Settings) opens.
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary,
+                                    .fullScreenAuxiliary, .ignoresCycle]
         panel.orderBack(nil)
         translatorHostPanel = panel
     }
@@ -340,6 +346,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // .regular while a window is open so Cmd+Tab and focus behave normally;
         // back to .accessory once all our windows close.
         NSApp.setActivationPolicy(.regular)
+        // The window is cached and remembers the display it was last shown on,
+        // which may not be where the user is now. The cursor is the honest
+        // signal — Settings opens from a menu-bar or Dock click — so center on
+        // the screen under it. Same screen → keep the user's manual position.
+        let mouse = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
+           window.screen !== screen {
+            let visible = screen.visibleFrame
+            let size = window.frame.size
+            window.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2,
+                                          y: visible.midY - size.height / 2))
+        }
         // Activate on the next runloop turn: the .accessory→.regular switch must
         // settle first, otherwise Picker/Menu popups can't open (the app isn't
         // truly frontmost yet).
