@@ -50,9 +50,12 @@ final class Settings {
         set { d.set(newValue, forKey: "translateKeyName") }
     }
 
-    /// Recording microphone: "" — built-in (recommended: no Bluetooth
+    /// Recording microphone: "" — built-in (the default: no Bluetooth
     /// negotiation delays, no HFP quality drop), "system" — follow the
     /// system default input, otherwise a specific device UID.
+    /// Hidden, no UI: picking a mic is not a decision we ask for — the
+    /// built-in one is deliberately forced (anti-Bluetooth fix). Still
+    /// readable/writable via `defaults` if someone really needs another input.
     var micUID: String {
         get { d.string(forKey: "micUID") ?? "" }
         set { d.set(newValue, forKey: "micUID") }
@@ -64,10 +67,11 @@ final class Settings {
         set { d.set(newValue, forKey: "prompt") }
     }
 
-    /// Remove filler words ("э-э", "um") from the result. Off by default —
-    /// cleanup is opt-in, the raw text is the honest default.
+    /// Remove filler words ("э-э", "um") from the result. On by default: the
+    /// filler lists are deliberately conservative (only unambiguous hesitation
+    /// sounds), so nobody has to find a switch to get clean text.
     var removeFillers: Bool {
-        get { d.bool(forKey: "removeFillers") }
+        get { d.object(forKey: "removeFillers") as? Bool ?? true }
         set { d.set(newValue, forKey: "removeFillers") }
     }
 
@@ -77,33 +81,6 @@ final class Settings {
     var replacements: [[String]] {
         get { d.array(forKey: "replacements") as? [[String]] ?? [] }
         set { d.set(newValue, forKey: "replacements") }
-    }
-
-    /// Hands-free: end the recording automatically after a pause, instead of
-    /// requiring the key held the whole time. Off by default — push-to-talk is
-    /// the predictable default; this changes the interaction model.
-    var autoStopOnSilence: Bool {
-        get { d.bool(forKey: "autoStopOnSilence") }
-        set { d.set(newValue, forKey: "autoStopOnSilence") }
-    }
-
-    /// Seconds of silence that end a hands-free recording. Clamped to a sane
-    /// range so a stray value can't make it fire instantly or never.
-    var autoStopSilenceSeconds: Double {
-        get {
-            let v = d.object(forKey: "autoStopSilenceSeconds") as? Double ?? 1.5
-            return min(5, max(0.6, v))
-        }
-        set { d.set(newValue, forKey: "autoStopSilenceSeconds") }
-    }
-
-    /// Pre-roll: keep the last moment of audio buffered so speech started a
-    /// hair before the key is pressed isn't clipped. OFF by default and gated
-    /// behind this switch because it keeps the microphone open continuously —
-    /// the macOS privacy indicator stays lit and it uses a little more power.
-    var prerollEnabled: Bool {
-        get { d.bool(forKey: "prerollEnabled") }
-        set { d.set(newValue, forKey: "prerollEnabled") }
     }
 
     // MARK: Translate-tip bookkeeping (see AppDelegate.maybeShowTranslateTip)
@@ -139,7 +116,9 @@ final class Settings {
     }
 
     /// Live transcription preview in the HUD while recording (turbo passes
-    /// over the growing buffer). Costs some battery — can be turned off.
+    /// over the growing buffer). Always on — it is what makes the HUD feel
+    /// alive. Hidden escape hatch, no UI: only `defaults write … livePreview
+    /// -bool NO` turns it off, for the rare battery-sensitive case.
     var livePreview: Bool {
         get { d.object(forKey: "livePreview") as? Bool ?? true }
         set { d.set(newValue, forKey: "livePreview") }

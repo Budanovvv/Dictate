@@ -136,10 +136,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if Settings.shared.polishEnabled, PolishEngine.isModelDownloaded {
             Task { try? await PolishEngine.shared.prepare { _ in } }
         }
-        // Bring the pre-roll ring up if it's enabled (no-op otherwise). Also
-        // called after the settings toggle and after mic permission is granted.
-        PrerollBuffer.shared.refresh()
-
         // Persistent invisible host for Apple Translation: the translationTask
         // modifier needs a live, on-screen view to run in.
         let panel = NSPanel(
@@ -295,7 +291,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             self.onboardingWindow?.close()
             self.onboardingWindow = nil
             self.dictation.restart()
-            PrerollBuffer.shared.refresh()   // mic permission just granted
         }, dictation: dictation)
         let window = makeWindow(title: L("Welcome to Dictate"), content: view)
         onboardingWindow = window

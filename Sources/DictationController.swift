@@ -108,16 +108,6 @@ final class DictationController {
     private var activeCancel: CancelToken?
     /// The recognition Task, so cancel() can tear it down.
     private var transcribeTask: Task<Void, Never>?
-    /// Hands-free auto-stop bookkeeping (only when the setting is on): whether
-    /// this recording has heard speech yet (so a silent lead-in never triggers
-    /// a stop), and when the last above-threshold level arrived.
-    private var autoStopArmed = false
-    private var autoStopHeardSpeech = false
-    private var autoStopLastLoud = Date()
-    /// Pre-roll audio captured at key-press (Int16 PCM), prepended to a real
-    /// dictation so a word begun just before the press isn't lost. nil when the
-    /// pre-roll setting is off.
-    private var prerollPCM: Data?
     /// Live preview machinery: a 1.2 s cadence re-decodes the growing buffer
     /// with the fast model. `previewBusy` keeps one decode in flight at most;
     /// the token early-stops a decode the moment the key is released, so the
@@ -179,7 +169,6 @@ final class DictationController {
             MainActor.assumeIsolated {
                 self.liveLevelTick(level: level)
             }
-            self.autoStopTick(level: level)
         }
         recorder.onMicBusyDetected = { [weak self] in
             guard let self, self.state == .recording else { return }
@@ -277,13 +266,6 @@ final class DictationController {
         guard !paused, state == .idle else { return }
         activeTranslate = translate
         pressedAt = Date()
-        autoStopArmed = Settings.shared.autoStopOnSilence
-        autoStopHeardSpeech = false
-        autoStopLastLoud = Date()
-        // Snapshot the pre-roll ring at press: it holds audio from just before
-        // now, prepended only if this turns into a real dictation (so a stray
-        // tap can't manufacture one out of ambient sound).
-        prerollPCM = Settings.shared.prerollEnabled ? PrerollBuffer.shared.snapshot() : nil
         state = .recording
         Self.soundStart?.play()
         // Wake the target app's accessibility tree now, while the user speaks:
@@ -571,28 +553,8 @@ final class DictationController {
         }
     }
 
-    /// Hands-free: runs on the main thread for every level update. Once speech
-    /// has been heard, a long-enough quiet stretch ends the recording as if the
-    /// key were released. A silent lead-in never triggers it, so nothing stops
-    /// before the user has actually spoken.
-    private func autoStopTick(level: Double) {
-        guard autoStopArmed, state == .recording else { return }
-        if level >= 0.08 {
-            autoStopHeardSpeech = true
-            autoStopLastLoud = Date()
-            return
-        }
-        guard autoStopHeardSpeech else { return }
-        if Date().timeIntervalSince(autoStopLastLoud) >= Settings.shared.autoStopSilenceSeconds {
-            Log.d("hands-free: silence \(String(format: "%.1f", Settings.shared.autoStopSilenceSeconds))s -> auto stop")
-            autoStopArmed = false
-            endRecording()
-        }
-    }
-
     private func endRecording() {
         guard state == .recording else { return }
-        autoStopArmed = false
         stopLivePreview()
         let (pcm, duration) = recorder.stop()
         Self.soundStop?.play()
@@ -627,17 +589,6 @@ final class DictationController {
         let clip = recorder.clippedFraction
 
         let translate = activeTranslate
-        // Prepend the pre-roll to a confirmed dictation (leading silence in it
-        // is trimmed below, so a quiet ring adds nothing but a caught onset).
-        let fullPCM: Data
-        if let pre = prerollPCM, !pre.isEmpty {
-            Log.d("preroll: prepending \(pre.count)B (~\(String(format: "%.2f", Double(pre.count) / Double(AudioRecorder.sampleRate * 2)))s)")
-            fullPCM = pre + pcm
-        } else {
-            fullPCM = pcm
-        }
-        prerollPCM = nil
-
         state = .transcribing
         let language = Settings.shared.language
         let prompt = Settings.shared.prompt
@@ -654,7 +605,7 @@ final class DictationController {
             // Sample conversion, per-window RMS and silence trimming are three
             // full passes over up to ~5M samples — kept off the main thread so
             // the UI can't hitch between key release and "Recognizing…".
-            let floats = AudioRecorder.floatSamples(fromPCM: fullPCM)
+            let floats = AudioRecorder.floatSamples(fromPCM: pcm)
 
             // Per-0.1s-window energy, in temporal order (bounds are read from it
             // before it's sorted for the p90/mean summary).

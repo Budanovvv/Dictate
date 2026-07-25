@@ -17,22 +17,20 @@ struct SettingsView: View {
     @State private var language = Settings.shared.language
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var promptText = Settings.shared.prompt
-    /// Per-model state for the Models section. The downloads are fully
-    /// independent — one row, one decision, one progress line — so they're
-    /// keyed by row id (a ModelTier raw value, or `polishRow`) instead of the
-    /// old single "is everything this configuration needs there?" flag.
-    private static let polishRow = "polish"
-    @State private var modelDownloading: Set<String> = []
-    @State private var modelProgress: [String: Double] = [:]
-    @State private var fastReady = WhisperEngine.shared.isModelDownloaded(tier: .fast)
+    /// The polish model is the only download this window still owns: the
+    /// dictation model is put in place by onboarding (a fact, not a setting),
+    /// and a missing one is re-fetched by AppDelegate.catchUpFastModelDownload.
+    @State private var polishDownloading = false
+    @State private var polishProgress: Double = 0
     @State private var downloadError: String?
-    @State private var livePreview = Settings.shared.livePreview
     @State private var translateTarget = Settings.shared.translateTargetCode
     /// State of the chosen pair's translation data (reported by
     /// TranslatePrepareView): ready / missing / fetching.
     @State private var translateDataState: TranslateDataState = .ready
-    /// Target codes whose English-hub pack is on the Mac (drives the
-    /// "Translation languages" list in the Models section).
+    /// Targets that can be translated into RIGHT NOW from the spoken language
+    /// (all English-hub legs present) — drives the "Translation languages"
+    /// list in Status. Depends on the spoken language, so it is recomputed
+    /// whenever that changes.
     @State private var installedTranslateTargets: Set<String> = []
     @State private var polishEnabled = Settings.shared.polishEnabled
     @State private var polishStyle = Settings.shared.polishStyle
@@ -44,14 +42,10 @@ struct SettingsView: View {
         "en", "es", "pt", "fr", "de", "it", "nl", "pl", "tr", "uk", "ru",
         "ar", "hi", "id", "th", "vi", "zh", "ja", "ko",
     ]
-    @State private var micUID = Settings.shared.micUID
-    @State private var micDevices = AudioInputDevices.all()
     @State private var micGranted = Permissions.microphone == .granted
     @State private var axGranted = Permissions.accessibility == .granted
     @State private var replacements = Settings.shared.replacements
     @State private var removeFillers = Settings.shared.removeFillers
-    @State private var autoStopOnSilence = Settings.shared.autoStopOnSilence
-    @State private var prerollEnabled = Settings.shared.prerollEnabled
 
     private var languageOptions: [(code: String, name: String)] { LanguageList.options }
 
@@ -82,19 +76,18 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            // — Languages: spoken and interface, side by side —
+            // — Language: what you speak, what it turns into, and only then
+            // the language of this window itself —
             Section {
                 // Same searchable picker as onboarding — a flat 112-row Picker
                 // fails every large-list UX guideline (see LanguagePicker).
                 LabeledContent(L("Spoken language")) {
                     LanguagePicker(selection: $language)
                 }
-                .onChange(of: language) { Settings.shared.language = $0 }
-
-                Picker(L("Interface language"), selection: Binding(
-                    get: { loc.language }, set: { loc.setLanguage($0) }
-                )) {
-                    ForEach(AppLanguage.allCases) { lang in Text(lang.label).tag(lang) }
+                .onChange(of: language) {
+                    Settings.shared.language = $0
+                    // Which targets are reachable depends on the source leg.
+                    refreshStatuses()
                 }
 
                 // Target of the translate key. Every target — English included
@@ -125,59 +118,20 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                // Last in the section on purpose: the spoken language and the
+                // translate target get changed far more often than the UI's own
+                // language, which is usually set once and forgotten.
+                Picker(L("Interface language"), selection: Binding(
+                    get: { loc.language }, set: { loc.setLanguage($0) }
+                )) {
+                    ForEach(AppLanguage.allCases) { lang in Text(lang.label).tag(lang) }
+                }
             } header: { Text(L("Language")) } footer: {
                 if language != "en" || translateSet {
                     Text(L("The translate key transcribes your speech, then macOS translates it on this Mac. Picking a language may download its translation data once."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }
-
-            // — Dictation config —
-            Section {
-                Picker(L("Microphone"), selection: $micUID) {
-                    Text(L("Built-in (recommended)")).tag("")
-                    Text(L("System default")).tag("system")
-                    ForEach(micDevices.filter { !$0.isBuiltIn }, id: \.uid) { dev in
-                        Text(dev.isBluetooth ? "⚠️ " + dev.name : dev.name).tag(dev.uid)
-                    }
-                }
-                .onChange(of: micUID) { Settings.shared.micUID = $0 }
-
-                Toggle(L("Remove filler words"), isOn: $removeFillers)
-                    .onChange(of: removeFillers) { Settings.shared.removeFillers = $0 }
-
-                Toggle(L("Live text while recording"), isOn: $livePreview)
-                    .onChange(of: livePreview) { Settings.shared.livePreview = $0 }
-
-                // Live typing at the cursor exists but is a HIDDEN experiment
-                // (defaults write … liveTyping -bool YES): the Whisper
-                // re-decode architecture bottoms out at ~2.5 s of lag in
-                // bursts — honest but not the "it types as I speak" feel.
-                // Roadmap: rebuild on SpeechAnalyzer (macOS 26+), which
-                // streams sub-second partials — the CommitEngine/TypeInjector
-                // core carries over unchanged.
-
-                Toggle(L("Stop automatically after a pause"), isOn: $autoStopOnSilence)
-                    .onChange(of: autoStopOnSilence) { Settings.shared.autoStopOnSilence = $0 }
-
-                Toggle(L("Catch the start of speech (keeps the mic on)"), isOn: $prerollEnabled)
-                    .onChange(of: prerollEnabled) {
-                        Settings.shared.prerollEnabled = $0
-                        PrerollBuffer.shared.refresh()
-                    }
-            } header: { Text(L("Dictation")) } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    if micUID != "" {
-                        Text(L("Bluetooth mics take seconds to start and record in phone-call quality — the built-in mic is faster and more accurate."))
-                    }
-                    if autoStopOnSilence {
-                        Text(L("Instead of holding the key the whole time, the recording ends on its own after a short silence."))
-                    }
-                    if prerollEnabled {
-                        Text(L("Keeps a moment of audio buffered so a word begun just before you press isn't lost. The microphone stays on, so the macOS privacy dot stays lit."))
-                    }
-                }
-                .font(.caption).foregroundStyle(.secondary)
             }
 
             // — Shortcuts —
@@ -239,9 +193,9 @@ struct SettingsView: View {
                         Settings.shared.polishEnabled = on
                         // Deliberately NO silent download here: a toggle must not
                         // start a ~1.9 GB transfer behind the user's back. The
-                        // Models section owns that decision; until the model is
+                        // model row below owns that decision; until the model is
                         // there the pipeline simply skips the polish pass, and the
-                        // footer below says so.
+                        // footer says so.
                         if on, polishReady {
                             Task { try? await PolishEngine.shared.prepare { _ in } }
                         }
@@ -256,16 +210,48 @@ struct SettingsView: View {
                         Text(L("Friendly")).tag("friendly")
                     }
                     .onChange(of: polishStyle) { Settings.shared.polishStyle = $0 }
+
+                    // The model's state belongs next to the switch that needs it,
+                    // and only while something is missing or in flight — a green
+                    // "Ready" line for the normal case is noise (same rule as
+                    // "Translation data" above).
+                    if !polishReady {
+                        LabeledContent(L("AI model")) {
+                            if polishDownloading {
+                                if polishProgress < 0.999 {
+                                    Text(Lf("Downloaded %d of %d MB",
+                                            Int(polishProgress * Double(PolishEngine.sizeMB)),
+                                            PolishEngine.sizeMB))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    // Downloaded; loading ~2 GB into Metal takes
+                                    // seconds and reports no progress at all.
+                                    ProgressView().controlSize(.small)
+                                }
+                            } else {
+                                Button(Lf("Download (%d MB)", PolishEngine.sizeMB),
+                                       action: downloadPolishModel)
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
                 }
             } header: { Text(L("AI polish")) } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    // Turning the switch on without the model used to trigger a
-                    // silent download; now it just does nothing until the model
-                    // is fetched, so the state has to be visible.
-                    if polishEnabled, !polishReady {
-                        Label(L("Model not downloaded — see the Models section below."),
+                    // The switch alone changes nothing until the model lands, so
+                    // the gap between "on" and "working" has to be spelled out.
+                    if polishEnabled, !polishReady, !polishDownloading {
+                        Label(L("Polish is off until the model is downloaded."),
                               systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange).font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                    if downloadError != nil {
+                        // A ~1.9 GB download can genuinely break mid-way — never
+                        // fail silently back to the Download button.
+                        Label(L("Download failed. Check your connection and retry."),
+                              systemImage: "wifi.exclamationmark")
+                            .foregroundStyle(.orange)
                     }
                     Text(L("Fixes grammar and removes filler words with a small language model running entirely on your Mac. Adds a couple of seconds per dictation and ~1.9 GB on disk."))
                         .foregroundStyle(.secondary)
@@ -284,8 +270,25 @@ struct SettingsView: View {
                 Text(L("Names, terms, jargon — comma-separated. Helps recognition spell them right."))
             }
 
-            // — Replacements —
+            // — Replacements: everything that happens TO the recognized text,
+            // the filler-word cleanup included (it used to sit in a section of
+            // its own with nothing to keep it company).
             Section {
+                Toggle(L("Remove filler words"), isOn: $removeFillers)
+                    .onChange(of: removeFillers) { Settings.shared.removeFillers = $0 }
+
+                // Two more knobs live only in `defaults`, deliberately:
+                // livePreview (the live text in the HUD — always on; the
+                // escape hatch is for the rare battery-sensitive case) and
+                // liveTyping (typing at the cursor — a HIDDEN experiment: the
+                // Whisper re-decode architecture bottoms out at ~2.5 s of lag
+                // in bursts, honest but not the "it types as I speak" feel;
+                // roadmap is a rebuild on SpeechAnalyzer, macOS 26+, whose
+                // sub-second partials the CommitEngine/TypeInjector core can
+                // consume unchanged). The microphone is not a choice either:
+                // micUID stays "" (built-in) because Bluetooth mics take
+                // seconds to start and record in phone-call quality.
+
                 ForEach(replacements.indices, id: \.self) { i in
                     HStack(spacing: 8) {
                         LeadingTextField(placeholder: L("Heard"), text: replacementBinding(i, 0))
@@ -325,21 +328,25 @@ struct SettingsView: View {
             // — Voice commands (read-only showcase). You SPEAK the commands,
             // so they follow the spoken language; auto-detect falls back to
             // the interface language, unsupported languages to English.
+            // Collapsed: this is a reference list you consult once, not a knob.
+            // The explanation rides INSIDE the group (as a section footer it
+            // would keep three lines on screen for a folded section).
             Section {
-                ForEach(Replacements.commands(for: commandsLanguageCode), id: \.phrase) { cmd in
-                    LabeledContent {
-                        Text(cmd.output.replacingOccurrences(of: "\n", with: "⏎"))
-                            .font(.body.monospaced())
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Text("«\(cmd.phrase)»")
+                DisclosureGroup(L("Voice commands")) {
+                    ForEach(Replacements.commands(for: commandsLanguageCode), id: \.phrase) { cmd in
+                        LabeledContent {
+                            Text(cmd.output.replacingOccurrences(of: "\n", with: "⏎"))
+                                .font(.body.monospaced())
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Text("«\(cmd.phrase)»")
+                        }
                     }
+                    Text(Lf("Commands for: %@. ", commandsLanguageName)
+                         + L("Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it."))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            } header: {
-                Text(L("Voice commands"))
-            } footer: {
-                Text(Lf("Commands for: %@. ", commandsLanguageName)
-                     + L("Built in and always on — just say the phrase while dictating. A replacement above with the same phrase overrides it."))
             }
 
             // — General —
@@ -353,24 +360,25 @@ struct SettingsView: View {
                     }
             } header: { Text(L("General")) }
 
-            // — Models: every download in one place, one row each. Nothing here
-            // starts on its own; the user sees the size before committing.
+            // — Status (read-only) —
             Section {
-                modelRow(L("Dictation (turbo)"), id: ModelTier.fast.rawValue,
-                         sizeMB: ModelTier.fast.sizeMB, ready: fastReady) {
-                    downloadWhisper(.fast)
+                LabeledContent(L("Microphone")) {
+                    statusBadge(ok: micGranted, text: micGranted ? L("Granted") : L("No"))
                 }
-                modelRow(L("AI polish"), id: Self.polishRow,
-                         sizeMB: PolishEngine.sizeMB, ready: polishReady) {
-                    downloadPolishModel()
+                LabeledContent(L("Accessibility")) {
+                    statusBadge(ok: axGranted, text: axGranted ? L("Granted") : L("No"))
                 }
-                // The macOS translation packs, one status line per language.
+                // The macOS translation packs, one line per target. A row answers
+                // exactly one question: would the translate key work into this
+                // language RIGHT NOW, from the language you speak — so the check
+                // is the composite, leg-by-leg one the runtime uses, not en→X
+                // (for a Russian speaker the ru→en leg matters just as much).
                 // Read-only by necessity: the packs belong to the system —
-                // deleting them is only possible in System Settings, so the
+                // removing them is only possible in System Settings, so the
                 // button leads there instead of pretending we can.
                 DisclosureGroup(L("Translation languages")) {
-                    ForEach(Self.translateTargets.filter { $0 != "en" }, id: \.self) { code in
-                        LabeledContent(LanguageList.endonym(for: code)) {
+                    ForEach(Self.translateTargets, id: \.self) { code in
+                        LabeledContent(code == "en" ? "English" : LanguageList.endonym(for: code)) {
                             if installedTranslateTargets.contains(code) {
                                 statusBadge(ok: true, text: L("Downloaded"))
                             } else {
@@ -383,24 +391,6 @@ struct SettingsView: View {
                             URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!)
                     }
                     .controlSize(.small)
-                }
-            } header: { Text(L("Models")) } footer: {
-                if downloadError != nil {
-                    // A ~1 GB download can genuinely break mid-way — never fail
-                    // silently back to the Download button.
-                    Label(L("Download failed. Check your connection and retry."),
-                          systemImage: "wifi.exclamationmark")
-                        .foregroundStyle(.orange).font(.caption)
-                }
-            }
-
-            // — Status (read-only) —
-            Section {
-                LabeledContent(L("Microphone")) {
-                    statusBadge(ok: micGranted, text: micGranted ? L("Granted") : L("No"))
-                }
-                LabeledContent(L("Accessibility")) {
-                    statusBadge(ok: axGranted, text: axGranted ? L("Granted") : L("No"))
                 }
             } header: { Text(L("Status")) } footer: {
                 Text(L("Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate."))
@@ -421,21 +411,20 @@ struct SettingsView: View {
                                  onState: {
                                      translateDataState = $0
                                      // A finished pack changes the languages list below.
-                                     if $0 == .ready { refreshModelStatuses() }
+                                     if $0 == .ready { refreshStatuses() }
                                  })
         }
         // The window is cached and lives for the whole session: statuses read
-        // once at creation would show stale permissions and miss new mics.
+        // once at creation would show stale permissions.
         // Re-read whenever the user comes back to the app.
         .onReceive(NotificationCenter.default.publisher(
             for: NSApplication.didBecomeActiveNotification)) { _ in
-            micDevices = AudioInputDevices.all()
             micGranted = Permissions.microphone == .granted
             axGranted = Permissions.accessibility == .granted
             launchAtLogin = SMAppService.mainApp.status == .enabled
-            refreshModelStatuses()
+            refreshStatuses()
         }
-        .onAppear { refreshModelStatuses() }
+        .onAppear { refreshStatuses() }
         .onDisappear {
             captureMain.cancel()
             captureTranslate.cancel()
@@ -480,37 +469,15 @@ struct SettingsView: View {
             .font(.callout)
     }
 
-    /// One row of the Models section: Ready badge, live megabytes while it
-    /// downloads, or a Download button that states the size up front.
-    @ViewBuilder
-    private func modelRow(_ title: String, id: String, sizeMB: Int, ready: Bool,
-                          download: @escaping () -> Void) -> some View {
-        LabeledContent(title) {
-            if ready {
-                statusBadge(ok: true, text: L("Ready"))
-            } else if modelDownloading.contains(id) {
-                let p = modelProgress[id] ?? 0
-                if p < 0.999 {
-                    Text(Lf("Downloaded %d of %d MB", Int(p * Double(sizeMB)), sizeMB))
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                } else {
-                    // Downloaded; the model is being loaded and compiled for the
-                    // Neural Engine — no progress callback exists for that phase.
-                    ProgressView().controlSize(.small)
-                }
-            } else {
-                Button(Lf("Download (%d MB)", sizeMB), action: download).controlSize(.small)
-            }
-        }
-    }
-
-    private func refreshModelStatuses() {
-        fastReady = WhisperEngine.shared.isModelDownloaded(tier: .fast)
+    /// Re-reads what the window shows but doesn't own: the polish model on disk
+    /// and the translation packs macOS may have gained (or lost) meanwhile.
+    private func refreshStatuses() {
         polishReady = PolishEngine.isModelDownloaded
+        let source = language.isEmpty ? nil : language
         Task {
             var installed: Set<String> = []
-            for code in Self.translateTargets where code != "en" {
-                if await AppleTranslator.isInstalled(from: "en", to: code) {
+            for code in Self.translateTargets {
+                if await AppleTranslator.isInstalled(target: code, source: source) {
                     installed.insert(code)
                 }
             }
@@ -520,47 +487,22 @@ struct SettingsView: View {
     }
 
     private func downloadPolishModel() {
-        let id = Self.polishRow
-        guard !modelDownloading.contains(id) else { return }
-        modelDownloading.insert(id)
-        modelProgress[id] = 0
+        guard !polishDownloading else { return }
+        polishDownloading = true
+        polishProgress = 0
         downloadError = nil
         Task {
             do {
                 try await PolishEngine.shared.prepare { p in
-                    DispatchQueue.main.async { modelProgress[id] = p }
+                    DispatchQueue.main.async { polishProgress = p }
                 }
             } catch {
                 Log.d("polish: download failed: \(error.localizedDescription)")
                 await MainActor.run { downloadError = error.localizedDescription }
             }
             await MainActor.run {
-                modelDownloading.remove(id)
+                polishDownloading = false
                 polishReady = PolishEngine.isModelDownloaded
-            }
-        }
-    }
-
-    /// Downloads one Whisper tier on demand. prepare() also loads it into
-    /// memory afterwards, so the first dictation doesn't pay for the compile.
-    private func downloadWhisper(_ tier: ModelTier) {
-        let id = tier.rawValue
-        guard !modelDownloading.contains(id) else { return }
-        modelDownloading.insert(id)
-        modelProgress[id] = 0
-        downloadError = nil
-        Task {
-            do {
-                try await WhisperEngine.shared.prepare(tier: tier) { p in
-                    DispatchQueue.main.async { modelProgress[id] = p }
-                }
-            } catch {
-                Log.d("model: \(tier.rawValue) download failed: \(error.localizedDescription)")
-                await MainActor.run { downloadError = error.localizedDescription }
-            }
-            await MainActor.run {
-                modelDownloading.remove(id)
-                refreshModelStatuses()
             }
         }
     }
