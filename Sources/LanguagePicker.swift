@@ -37,6 +37,56 @@ struct LanguagePicker: View {
     }
 }
 
+/// Translate-target chooser: the LanguagePicker's bordered-button-plus-popover
+/// look for the ~19 curated Apple Translation targets (no search — the list
+/// fits on one screen). Cyan, the translate color everywhere in the app.
+struct TranslateTargetPicker: View {
+    @Binding var selection: String
+
+    @State private var open = false
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            HStack(spacing: 6) {
+                Text(selection == "en" ? "English" : LanguageList.endonym(for: selection))
+                    .fontWeight(.medium)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.bordered)
+        .tint(Brand.cyan)
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(SettingsView.translateTargets, id: \.self) { code in
+                        let selected = code == selection
+                        Button {
+                            selection = code
+                            open = false
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(code == "en" ? "English" : LanguageList.endonym(for: code))
+                                Spacer()
+                                if selected {
+                                    Image(systemName: "checkmark").foregroundStyle(Brand.cyan)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.vertical, 5).padding(.horizontal, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .background(selected ? Brand.cyan.opacity(0.12) : .clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+                .padding(6)
+            }
+            .frame(width: 220, height: 340)
+        }
+    }
+}
+
 private struct LanguagePopover: View {
     @Binding var selection: String
     var tint: Color

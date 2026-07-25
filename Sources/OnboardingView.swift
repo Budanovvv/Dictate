@@ -325,33 +325,41 @@ private struct HotkeyStep: View {
             Text(L("Hold a key and speak. The key you hold decides what gets typed."))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
-                Text(L("You'll dictate in:")).foregroundStyle(.secondary)
-                LanguagePicker(selection: $language, tint: Brand.indigo)
-                    .onChange(of: language) { code in
-                        Settings.shared.language = code
-                        assignDefaultTranslateKeyIfNeeded()
-                        if code == "en" { armed = .dictation }
-                    }
-            }
-
-            // The translate key's target, decided here rather than buried in
-            // settings: a non-English speaker who wants, say, German has no
-            // reason to discover it later. Hidden for English speakers — the
-            // translate key itself doesn't exist for them.
-            if language != "en" {
-                HStack(spacing: 8) {
-                    Text(L("Translate to") + ":").foregroundStyle(.secondary)
-                    Picker("", selection: $translateTarget) {
-                        ForEach(SettingsView.translateTargets, id: \.self) { code in
-                            Text(code == "en" ? "English" : LanguageList.endonym(for: code)).tag(code)
+            // Two columns, each language choice sitting exactly above the key
+            // card it belongs to — the indigo picker over the indigo Dictation
+            // card, the cyan target picker over the cyan Translate card. Two
+            // ragged left-aligned rows read as unrelated settings; the columns
+            // make the pairing visible. Both pickers are the same bordered
+            // button + popover control (a system Menu can't be styled: macOS
+            // paints its own gray bezel and ignores custom labels).
+            // The translate column lives here, not buried in Settings: a
+            // non-English speaker who wants, say, German has no reason to
+            // discover it later. Hidden for English speakers — the translate
+            // key itself doesn't exist for them.
+            HStack(spacing: 10) {
+                VStack(spacing: 5) {
+                    Text(L("You'll dictate in:"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    LanguagePicker(selection: $language, tint: Brand.indigo)
+                        .onChange(of: language) { code in
+                            Settings.shared.language = code
+                            assignDefaultTranslateKeyIfNeeded()
+                            if code == "en" { armed = .dictation }
                         }
+                }
+                .frame(maxWidth: .infinity)
+                if language != "en" {
+                    VStack(spacing: 5) {
+                        Text(L("Translate to") + ":")
+                            .font(.caption).foregroundStyle(.secondary)
+                        TranslateTargetPicker(selection: $translateTarget)
+                            .onChange(of: translateTarget) { Settings.shared.translateTargetCode = $0 }
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                    .onChange(of: translateTarget) { Settings.shared.translateTargetCode = $0 }
+                    .frame(maxWidth: .infinity)
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
                 }
             }
+            .animation(.spring(duration: 0.35), value: language == "en")
 
             // Pick which key you're assigning; each chip shows its current binding.
             HStack(spacing: 10) {
