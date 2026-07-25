@@ -271,7 +271,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     // Dock icon click (icon is visible only while a window is open)
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
+        // Never trust `flag`: the invisible 1×1 translator host panel counts
+        // as a visible window, so it is always true and a Dock click / reopen
+        // would silently do nothing. Check OUR windows instead.
+        let ourWindowOpen = [onboardingWindow, settingsWindow]
+            .compactMap { $0 }
+            .contains { $0.isVisible }
+        if !ourWindowOpen {
             if Settings.shared.onboardingDone {
                 showSettings()
             } else if onboardingWindow == nil {
