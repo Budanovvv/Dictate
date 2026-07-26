@@ -155,19 +155,21 @@ enum Paster {
         return (focused as! AXUIElement)
     }
 
-    /// Wakes an app's accessibility tree by setting AXManualAccessibility — the
-    /// same on-demand signal VoiceOver sends. Chromium/Electron and WebKit build
-    /// their AX tree lazily and expose no focused element until an assistive
-    /// client asks; without this the focus probe sees nothing and dictation
-    /// falls back to a manual ⌘V even when a real text cursor is right there.
-    /// Native apps ignore the unknown attribute, so this is safe to call blindly
-    /// and leaves the empty-desktop "no cursor" case (Finder) still blocked.
-    /// Best called at record start, giving Chromium the whole speech +
-    /// recognition window to build the tree before we probe.
+    /// Wakes an app's lazily-built accessibility tree. Two dialects, both set
+    /// blindly: AXManualAccessibility is what Electron listens to, while plain
+    /// Chromium — including the ChatGPT desktop app's "Codex Framework" shell,
+    /// which ignored the Electron spelling and kept dictation on the manual ⌘V
+    /// path (log 2026-07-26 11:08) — only answers to AXEnhancedUserInterface,
+    /// the signal VoiceOver sends. Known Chromium quirk of the latter: it can
+    /// affect window move/resize animation (the Rectangle-vs-Chrome story) —
+    /// acceptable for the app the user is actively dictating into.
+    /// Native apps ignore both unknown attributes, so the empty-desktop "no
+    /// cursor" case (Finder) stays blocked. Best called at record start, giving
+    /// the app the whole speech + recognition window to build the tree.
     static func wakeAccessibility(pid: pid_t) {
-        AXUIElementSetAttributeValue(
-            AXUIElementCreateApplication(pid),
-            "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
     }
 
     private static func sendCmdV() {
