@@ -145,12 +145,6 @@ final class Settings {
         get { d.bool(forKey: "polishEnabled") }
         set { d.set(newValue, forKey: "polishEnabled") }
     }
-
-    /// Polish style: "clean" | "formal" | "friendly".
-    var polishStyle: String {
-        get { d.string(forKey: "polishStyle") ?? "clean" }
-        set { d.set(newValue, forKey: "polishStyle") }
-    }
 }
 
 /// Variant name in argmaxinc/whisperkit-coreml + approximate size.

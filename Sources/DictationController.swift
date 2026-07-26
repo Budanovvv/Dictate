@@ -741,16 +741,19 @@ final class DictationController {
                     Log.d("apple translate failed (\(appleTarget)): \(error.localizedDescription) — inserting native text")
                 }
             }
-            // Optional local-LLM polish (grammar/fillers/tone) — last in the
-            // chain so it sees the final language. Any failure falls back to
-            // the unpolished text: a dictation must never be lost to a
-            // beautifier.
-            if Settings.shared.polishEnabled, !processed.isEmpty, !token.isCancelled,
+            // Optional local-LLM polish (grammar/fillers cleanup) — last in
+            // the chain so it sees the final language. Any failure falls back
+            // to the unpolished text: a dictation must never be lost to a
+            // beautifier. Short dictations are skipped outright: commands like
+            // «сделай погромче» have nothing to clean up, the model only risks
+            // trimming them lossily («Погромче») — and skipping saves the
+            // polish latency on the most frequent kind of insertion.
+            let polishableWords = processed.split(whereSeparator: \.isWhitespace).count
+            if Settings.shared.polishEnabled, polishableWords >= 5, !token.isCancelled,
                PolishEngine.isModelDownloaded {
                 await MainActor.run { self.onPolishing?() }
                 if let polished = try? await PolishEngine.shared.polish(
-                    processed, style: Settings.shared.polishStyle,
-                    isCancelled: { token.isCancelled }),
+                    processed, isCancelled: { token.isCancelled }),
                    !token.isCancelled {
                     processed = polished
                 }

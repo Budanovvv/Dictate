@@ -33,7 +33,6 @@ struct SettingsView: View {
     /// whenever that changes.
     @State private var installedTranslateTargets: Set<String> = []
     @State private var polishEnabled = Settings.shared.polishEnabled
-    @State private var polishStyle = Settings.shared.polishStyle
     @State private var polishReady = PolishEngine.isModelDownloaded
 
     /// Curated translate targets (Apple Translation's supported set, common
@@ -204,13 +203,6 @@ struct SettingsView: View {
                         }
                     }
                 if polishEnabled {
-                    Picker(L("Style"), selection: $polishStyle) {
-                        Text(L("Clean up")).tag("clean")
-                        Text(L("Formal")).tag("formal")
-                        Text(L("Friendly")).tag("friendly")
-                    }
-                    .onChange(of: polishStyle) { Settings.shared.polishStyle = $0 }
-
                     // The model's state belongs next to the switch that needs it,
                     // and only while something is missing or in flight — a green
                     // "Ready" line for the normal case is noise (same rule as

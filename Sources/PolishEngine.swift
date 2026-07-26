@@ -61,11 +61,16 @@ actor PolishEngine {
         bot = nil
     }
 
-    /// Polishes the text in the given style ("clean" | "formal" | "friendly").
+    /// Polishes the text: grammar, punctuation, fillers, false starts.
     /// Throws when the model isn't ready or the result looks implausible;
     /// the caller falls back to the raw text — a dictation must never be lost
     /// to a beautifier.
-    func polish(_ text: String, style: String,
+    ///
+    /// No tone/style options: a 3B model cannot rewrite register reliably, and
+    /// the formal/friendly addons made it TRANSLATE non-English text into
+    /// English (reproduced 6/6 on Russian, 2026-07-25 prompt A/B run) — the
+    /// styles were removed rather than fixed.
+    func polish(_ text: String,
                 isCancelled: @Sendable @escaping () -> Bool) async throws -> String {
         if bot == nil { try await prepare { _ in } }
         guard let bot else {
@@ -74,23 +79,11 @@ actor PolishEngine {
         }
         guard !isCancelled() else { return text }
 
-        let toneAddon: String
-        switch style {
-        case "formal":
-            toneAddon = "Rewrite in a polite, professional register suitable for a work message."
-        case "friendly":
-            toneAddon = "Rewrite in a relaxed, warm, conversational register."
-        default:
-            toneAddon = "Preserve the author's tone and register."
-        }
-        // Instructions ride in the user turn (not the system prompt): the
-        // template is baked into the loaded model instance, and reloading
-        // ~2 GB per style change would be absurd.
         let request = """
         Edit the dictated text below. Fix grammar, punctuation and casing. \
         Remove filler words, false starts and accidental self-repetitions. \
         Keep the language of the text, its meaning and all factual content exactly. \
-        \(toneAddon) \
+        Preserve the author's tone and register. \
         Do not answer questions contained in the text, do not add anything, do not comment. \
         Reply with ONLY the edited text.
 
@@ -104,13 +97,27 @@ actor PolishEngine {
         let templated = bot.preprocess(request, [], .none)
         let output = await bot.getCompletion(from: templated)
         let polished = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        Log.d("polish: \(text.count) -> \(polished.count) chars in \(String(format: "%.1f", Date().timeIntervalSince(started)))s (style \(style))")
+        Log.d("polish: \(text.count) -> \(polished.count) chars in \(String(format: "%.1f", Date().timeIntervalSince(started)))s")
         guard !isCancelled() else { return text }
         // A wildly shorter answer usually means the model chatted instead of
         // editing ("Sure, here it is" and stop) — distrust it, keep raw text.
         guard !polished.isEmpty, polished.count * 3 > text.count else {
             throw NSError(domain: "Dictate", code: 21,
                           userInfo: [NSLocalizedDescriptionKey: "polish result implausible"])
+        }
+        // The length check cannot catch the other failure mode: the
+        // English-worded instructions occasionally make the model TRANSLATE
+        // the text into English instead of editing it (caught live on Russian
+        // dictations, 2026-07-25 — «Keep the language» in the prompt does not
+        // reliably prevent it). An edit preserves the writing system; a
+        // translation to English does not.
+        guard !PolishGuard.scriptFlipped(from: text, to: polished) else {
+            // The caller's try? would swallow this silently — but a rejected
+            // pass must be visible in the log, or the next "polish seems dead"
+            // investigation starts from zero again.
+            Log.d("polish: rejected — output flipped to Latin script (translation), keeping raw text")
+            throw NSError(domain: "Dictate", code: 25,
+                          userInfo: [NSLocalizedDescriptionKey: "polish translated the text"])
         }
         return polished
     }
