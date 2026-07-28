@@ -19,9 +19,6 @@ final class HUDModel: ObservableObject {
     @Published var tipKeyName = ""
     /// Rolling live transcription shown while recording ("" = none yet).
     @Published var liveText = ""
-    /// The transcribing phase entered the LLM polish pass — same pill,
-    /// its title flips to "Polishing…".
-    @Published var polishing = false
     @Published var level: Double = 0
     @Published var elapsed: Int = 0
     @Published var downloadProgress: Double = 0
@@ -73,16 +70,8 @@ final class RecordingHUD {
             model.transcribeWords = 0
         }
         model.translate = translate
-        model.polishing = false
         model.mode = .transcribing
         show()
-    }
-
-    /// Recognition finished, the local LLM polish pass is running.
-    func showPolishing() {
-        guard model.mode == .transcribing else { return }
-        model.polishing = true
-        model.transcribeFraction = max(model.transcribeFraction, 0.97)
     }
 
     /// One-time discovery nudge: the user has a translate key configured but
@@ -424,7 +413,6 @@ private struct HUDView: View {
             return target == "en" ? L("Recording → English…")
                                   : Lf("Recording → %@…", LanguageList.endonym(for: target))
         case .transcribing:
-            if model.polishing { return L("Polishing…") }
             return model.translate ? L("Translating…") : L("Recognizing…")
         case .translateTip:
             return Lf("Tip: hold %@ instead — your speech comes out in English.", model.tipKeyName)

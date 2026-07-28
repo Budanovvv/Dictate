@@ -20,7 +20,6 @@ Dictate is push-to-talk dictation for macOS. Everything runs on your Mac: Whispe
 - **Speak your language, send English** — hold a second key and your speech is typed as English (or another language you pick). Translated on your Mac, like everything else.
 - **Live text** — watch your words appear in the pill while you're still speaking.
 - **Voice snippets** — a replacement rule can insert a whole block: say “my signature” and get your full sign-off.
-- **AI polish (optional)** — a small local language model fixes grammar and removes filler words. On your Mac, like everything else — no cloud, ever.
 - **Private by architecture** — the microphone listens only during a dictation you started; recognition never touches the network. The one-time model download (~630 MB) is the only time Dictate needs the internet.
 - **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.
 - **Honest utility** — no settings maze, no account, no subscription. Auto-updates via Sparkle, cryptographically signed.

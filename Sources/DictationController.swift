@@ -79,8 +79,6 @@ final class DictationController {
     /// Rolling live transcription of the current recording (fast model over
     /// the growing buffer) — the HUD shows it while the user speaks.
     var onLivePreview: ((String) -> Void)?
-    /// The local LLM polish pass started (HUD switches to "Polishing…").
-    var onPolishing: (() -> Void)?
     /// Recent results, newest first (in memory only — never written to disk).
     private(set) var history: [String] = []
     private(set) var lastStats: (words: Int, seconds: Double)?
@@ -398,14 +396,13 @@ final class DictationController {
 
     /// Decides, once per dictation, whether words go into the app while the
     /// user is still speaking. Every condition here is a reason the mode
-    /// cannot work rather than a preference: translation and polish rewrite
-    /// the text as a whole (there is nothing stable to type early), the live
-    /// cycle IS the preview cycle, and typing needs a text cursor that is
-    /// ours to write into.
+    /// cannot work rather than a preference: translation rewrites the text as
+    /// a whole (there is nothing stable to type early), the live cycle IS the
+    /// preview cycle, and typing needs a text cursor that is ours to write into.
     private func armLiveTyping(translate: Bool) {
         resetLiveTyping()
         guard Settings.shared.liveTyping, !translate, !suppressInsertion,
-              !Settings.shared.polishEnabled, Settings.shared.livePreview else { return }
+              Settings.shared.livePreview else { return }
         guard !IsSecureEventInputEnabled() else {
             Log.d("live: secure input is on -> normal mode")
             return
@@ -739,23 +736,6 @@ final class DictationController {
                     // the rest stay in the log.
                     dataMissing = (error as? TranslateError) == .dataMissing
                     Log.d("apple translate failed (\(appleTarget)): \(error.localizedDescription) — inserting native text")
-                }
-            }
-            // Optional local-LLM polish (grammar/fillers cleanup) — last in
-            // the chain so it sees the final language. Any failure falls back
-            // to the unpolished text: a dictation must never be lost to a
-            // beautifier. Short dictations are skipped outright: commands like
-            // «сделай погромче» have nothing to clean up, the model only risks
-            // trimming them lossily («Погромче») — and skipping saves the
-            // polish latency on the most frequent kind of insertion.
-            let polishableWords = processed.split(whereSeparator: \.isWhitespace).count
-            if Settings.shared.polishEnabled, polishableWords >= 5, !token.isCancelled,
-               PolishEngine.isModelDownloaded {
-                await MainActor.run { self.onPolishing?() }
-                if let polished = try? await PolishEngine.shared.polish(
-                    processed, isCancelled: { token.isCancelled }),
-                   !token.isCancelled {
-                    processed = polished
                 }
             }
             await finish(text: processed, rawText: text, seconds: Date().timeIntervalSince(started),

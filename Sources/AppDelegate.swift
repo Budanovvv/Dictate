@@ -104,9 +104,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         dictation.onLivePreview = { [weak self] text in
             self?.hud.setLivePreview(text)
         }
-        dictation.onPolishing = { [weak self] in
-            self?.hud.showPolishing()
-        }
         dictation.onModelDownload = { [weak self] progress, totalMB in
             DispatchQueue.main.async { self?.hud.showDownloading(progress, totalMB: totalMB) }
         }
@@ -132,10 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
            !WhisperEngine.shared.isModelDownloaded(tier: .fast) {
             catchUpFastModelDownload()
         }
-        // Polish is opt-in; whoever opted in expects it fast — warm the LLM.
-        if Settings.shared.polishEnabled, PolishEngine.isModelDownloaded {
-            Task { try? await PolishEngine.shared.prepare { _ in } }
-        }
+        removeRetiredPolishModel()
         // Persistent invisible host for Apple Translation: the translationTask
         // modifier needs a live, on-screen view to run in.
         let panel = NSPanel(
@@ -160,16 +154,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         dictation.shutdown()
-        // llama.framework (AI polish) registers C++ static destructors that
-        // tear its Metal device down inside exit(); they race llama's own
-        // async init worker and ggml_abort — a guaranteed SIGABRT crash
-        // report on EVERY quit once the polish model was ever loaded (crash
-        // seen live 2026-07-24: ggml_metal_rsets_free → abort). Our cleanup
-        // is done and Sparkle's install-on-quit doesn't depend on in-process
-        // teardown (its Autoupdate is a separate process waiting for this
-        // PID to exit) — so skip the destructors entirely.
-        Log.d("terminate: clean _exit(0), bypassing C++ static destructors")
-        _exit(0)
+    }
+
+    /// The AI polish pass was removed after 2.3.1 (it distorted what people
+    /// actually said), so its ~1.9 GB GGUF is now dead weight on the disk of
+    /// everyone who ever turned the feature on. Reclaim it once, quietly.
+    private func removeRetiredPolishModel() {
+        let llmDir = FileManager.default.urls(for: .applicationSupportDirectory,
+                                              in: .userDomainMask)[0]
+            .appendingPathComponent("Dictate", isDirectory: true)
+            .appendingPathComponent("llm", isDirectory: true)
+        UserDefaults.standard.removeObject(forKey: "polishEnabled")
+        guard FileManager.default.fileExists(atPath: llmDir.path) else { return }
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.removeItem(at: llmDir)
+            Log.d("cleanup: removed the retired polish model directory")
+        }
     }
 
     /// One-time catch-up download of the turbo dictation model for installs

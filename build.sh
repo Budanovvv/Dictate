@@ -49,10 +49,8 @@ rm -rf "$APP"
 
 echo "==> xcodebuild (Release), build ${BUILD_NUMBER}"
 set +o pipefail   # grep exiting 1 on "no matching lines" must not kill the build output filter
-# -skipMacroValidation: LLM.swift ships Swift macros; without the flag
-# xcodebuild refuses with "macro must be enabled before it can be used".
 xcodebuild -project Dictate.xcodeproj -scheme Dictate -configuration Release \
-    -destination 'platform=macOS' -derivedDataPath "$DD" -skipMacroValidation \
+    -destination 'platform=macOS' -derivedDataPath "$DD" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" build ${EXTRA[@]+"${EXTRA[@]}"} \
     | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED"
 XC=${PIPESTATUS[0]}

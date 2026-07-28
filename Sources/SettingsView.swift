@@ -17,12 +17,6 @@ struct SettingsView: View {
     @State private var language = Settings.shared.language
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var promptText = Settings.shared.prompt
-    /// The polish model is the only download this window still owns: the
-    /// dictation model is put in place by onboarding (a fact, not a setting),
-    /// and a missing one is re-fetched by AppDelegate.catchUpFastModelDownload.
-    @State private var polishDownloading = false
-    @State private var polishProgress: Double = 0
-    @State private var downloadError: String?
     @State private var translateTarget = Settings.shared.translateTargetCode
     /// State of the chosen pair's translation data (reported by
     /// TranslatePrepareView): ready / missing / fetching.
@@ -32,8 +26,6 @@ struct SettingsView: View {
     /// list in Status. Depends on the spoken language, so it is recomputed
     /// whenever that changes.
     @State private var installedTranslateTargets: Set<String> = []
-    @State private var polishEnabled = Settings.shared.polishEnabled
-    @State private var polishReady = PolishEngine.isModelDownloaded
 
     /// Curated translate targets (Apple Translation's supported set, common
     /// ones). English first — the default. Shared with onboarding.
@@ -183,72 +175,6 @@ struct SettingsView: View {
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange).font(.caption)
                 }
-            }
-
-            // — AI polish (opt-in: costs disk and per-dictation latency) —
-            Section {
-                Toggle(L("Polish results with on-device AI"), isOn: $polishEnabled)
-                    .onChange(of: polishEnabled) { on in
-                        Settings.shared.polishEnabled = on
-                        // Deliberately NO silent download here: a toggle must not
-                        // start a ~1.9 GB transfer behind the user's back. The
-                        // model row below owns that decision; until the model is
-                        // there the pipeline simply skips the polish pass, and the
-                        // footer says so.
-                        if on, polishReady {
-                            Task { try? await PolishEngine.shared.prepare { _ in } }
-                        }
-                        if !on {
-                            Task { await PolishEngine.shared.unload() }   // free ~2 GB of RAM
-                        }
-                    }
-                if polishEnabled {
-                    // The model's state belongs next to the switch that needs it,
-                    // and only while something is missing or in flight — a green
-                    // "Ready" line for the normal case is noise (same rule as
-                    // "Translation data" above).
-                    if !polishReady {
-                        LabeledContent(L("AI model")) {
-                            if polishDownloading {
-                                if polishProgress < 0.999 {
-                                    Text(Lf("Downloaded %d of %d MB",
-                                            Int(polishProgress * Double(PolishEngine.sizeMB)),
-                                            PolishEngine.sizeMB))
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    // Downloaded; loading ~2 GB into Metal takes
-                                    // seconds and reports no progress at all.
-                                    ProgressView().controlSize(.small)
-                                }
-                            } else {
-                                Button(Lf("Download (%d MB)", PolishEngine.sizeMB),
-                                       action: downloadPolishModel)
-                                    .controlSize(.small)
-                            }
-                        }
-                    }
-                }
-            } header: { Text(L("AI polish")) } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    // The switch alone changes nothing until the model lands, so
-                    // the gap between "on" and "working" has to be spelled out.
-                    if polishEnabled, !polishReady, !polishDownloading {
-                        Label(L("Polish is off until the model is downloaded."),
-                              systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    }
-                    if downloadError != nil {
-                        // A ~1.9 GB download can genuinely break mid-way — never
-                        // fail silently back to the Download button.
-                        Label(L("Download failed. Check your connection and retry."),
-                              systemImage: "wifi.exclamationmark")
-                            .foregroundStyle(.orange)
-                    }
-                    Text(L("Fixes grammar and removes filler words with a small language model running entirely on your Mac. Adds a couple of seconds per dictation and ~1.9 GB on disk."))
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption)
             }
 
             // — Vocabulary —
@@ -461,10 +387,9 @@ struct SettingsView: View {
             .font(.callout)
     }
 
-    /// Re-reads what the window shows but doesn't own: the polish model on disk
-    /// and the translation packs macOS may have gained (or lost) meanwhile.
+    /// Re-reads what the window shows but doesn't own: the translation packs
+    /// macOS may have gained (or lost) meanwhile.
     private func refreshStatuses() {
-        polishReady = PolishEngine.isModelDownloaded
         let source = language.isEmpty ? nil : language
         Task {
             var installed: Set<String> = []
@@ -475,27 +400,6 @@ struct SettingsView: View {
             }
             let done = installed
             await MainActor.run { installedTranslateTargets = done }
-        }
-    }
-
-    private func downloadPolishModel() {
-        guard !polishDownloading else { return }
-        polishDownloading = true
-        polishProgress = 0
-        downloadError = nil
-        Task {
-            do {
-                try await PolishEngine.shared.prepare { p in
-                    DispatchQueue.main.async { polishProgress = p }
-                }
-            } catch {
-                Log.d("polish: download failed: \(error.localizedDescription)")
-                await MainActor.run { downloadError = error.localizedDescription }
-            }
-            await MainActor.run {
-                polishDownloading = false
-                polishReady = PolishEngine.isModelDownloaded
-            }
         }
     }
 }

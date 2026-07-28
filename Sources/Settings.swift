@@ -138,13 +138,6 @@ final class Settings {
         get { d.string(forKey: "translateTargetCode") ?? "en" }
         set { d.set(newValue, forKey: "translateTargetCode") }
     }
-
-    /// Post-process dictation with the local LLM (grammar/filler cleanup).
-    /// Off by default: costs seconds of latency and ~2 GB of disk.
-    var polishEnabled: Bool {
-        get { d.bool(forKey: "polishEnabled") }
-        set { d.set(newValue, forKey: "polishEnabled") }
-    }
 }
 
 /// Variant name in argmaxinc/whisperkit-coreml + approximate size.
