@@ -84,10 +84,13 @@ struct SettingsView: View {
                 // Target of the translate key. Every target — English included
                 // — is a transcription plus Apple's on-device Translation.
                 if language != "en" || translateSet {
-                    Picker(L("Translate to"), selection: $translateTarget) {
-                        ForEach(Self.translateTargets, id: \.self) { code in
-                            Text(code == "en" ? "English" : LanguageList.endonym(for: code)).tag(code)
-                        }
+                    // The same chooser onboarding uses, not a bare Picker: in
+                    // this grouped Form a labelled Picker collapses to plain
+                    // text plus a hairline indicator — a different species from
+                    // the Spoken language row right above, and barely readable
+                    // as something clickable.
+                    LabeledContent(L("Translate to")) {
+                        TranslateTargetPicker(selection: $translateTarget)
                     }
                     .onChange(of: translateTarget) { Settings.shared.translateTargetCode = $0 }
 
@@ -113,10 +116,9 @@ struct SettingsView: View {
                 // Last in the section on purpose: the spoken language and the
                 // translate target get changed far more often than the UI's own
                 // language, which is usually set once and forgotten.
-                Picker(L("Interface language"), selection: Binding(
-                    get: { loc.language }, set: { loc.setLanguage($0) }
-                )) {
-                    ForEach(AppLanguage.allCases) { lang in Text(lang.label).tag(lang) }
+                // Same control as the two rows above (see PopupTrigger).
+                LabeledContent(L("Interface language")) {
+                    InterfaceLanguagePicker()
                 }
             } header: { Text(L("Language")) } footer: {
                 if language != "en" || translateSet {

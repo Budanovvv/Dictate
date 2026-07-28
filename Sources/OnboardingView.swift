@@ -191,29 +191,12 @@ private struct StepDots: View {
     }
 }
 
-// MARK: - Interface language picker
-
-struct LanguageMenu: View {
-    @ObservedObject private var loc = Localization.shared
-    var body: some View {
-        Menu {
-            ForEach(AppLanguage.allCases) { lang in
-                Button(lang.label) { loc.setLanguage(lang) }
-            }
-        } label: {
-            Image(systemName: "globe")
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-    }
-}
-
 // MARK: - Step 1: welcome
 
 private struct WelcomeStep: View {
     var body: some View {
         VStack(spacing: 18) {
-            HStack { Spacer(); LanguageMenu() }
+            HStack { Spacer(); InterfaceLanguagePicker(showsGlobe: true) }
             WaveMark(height: 62)
                 .padding(.top, 6)
             Text("Dictate")
@@ -340,7 +323,7 @@ private struct HotkeyStep: View {
                 VStack(spacing: 5) {
                     Text(L("You'll dictate in:"))
                         .font(.caption).foregroundStyle(.secondary)
-                    LanguagePicker(selection: $language, tint: Brand.indigo)
+                    LanguagePicker(selection: $language)
                         .onChange(of: language) { code in
                             Settings.shared.language = code
                             assignDefaultTranslateKeyIfNeeded()
