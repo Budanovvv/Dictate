@@ -224,7 +224,14 @@ final class DictationController {
 
     private func preload(tier: ModelTier) {
         guard WhisperEngine.shared.isModelDownloaded(tier: tier) else { return }
-        Task { try? await WhisperEngine.shared.prepare(tier: tier) { _ in } }
+        Task {
+            // Not fire-and-forget silence: a failed preload (offline tokenizer
+            // fetch on a fresh install, HF hiccup) left the onboarding's
+            // "Preparing the model…" spinning forever with nothing running.
+            // The callers retry; the log names the reason.
+            do { try await WhisperEngine.shared.prepare(tier: tier) { _ in } }
+            catch { Log.d("model: preload failed: \(error.localizedDescription)") }
+        }
     }
 
     /// Restarts key capture (after the hotkey changes in settings).
@@ -584,6 +591,8 @@ final class DictationController {
         // while this one's recognition Task may still be deciding what to show.
         let peak = recorder.peakLevel
         let clip = recorder.clippedFraction
+        let micForeign = recorder.sawForeignFormat
+        let micBusyApp = recorder.busyAppName
 
         let translate = activeTranslate
         state = .transcribing
@@ -638,7 +647,8 @@ final class DictationController {
             guard speech else {
                 Log.d("silence gate -> empty result (peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip)))")
                 await MainActor.run {
-                    self.reportEmptyCapture(peak: peak, clip: clip, token: token)
+                    self.reportEmptyCapture(peak: peak, clip: clip, foreign: micForeign,
+                                            busyApp: micBusyApp, token: token)
                 }
                 return
             }
@@ -649,15 +659,22 @@ final class DictationController {
     }
 
     /// Nothing recognizable was captured though the key was held and audio came
-    /// in. Pick the most useful nudge: heavy clipping → "too loud"; a very low
-    /// peak → "too quiet"; otherwise the generic "didn't catch that". Ordering
-    /// mirrors finish(): fire before state = .idle so nothing hides the pill.
+    /// in. Pick the most useful nudge: a foreign-held mic that delivered only
+    /// digital silence → "mic busy" naming the culprit; heavy clipping → "too
+    /// loud"; a very low peak → "too quiet"; otherwise the generic "didn't
+    /// catch that". Ordering mirrors finish(): fire before state = .idle so
+    /// nothing hides the pill.
     @MainActor
-    private func reportEmptyCapture(peak: Double, clip: Double, token: CancelToken) {
+    private func reportEmptyCapture(peak: Double, clip: Double, foreign: Bool,
+                                    busyApp: String?, token: CancelToken) {
         resetLiveTyping()
         guard !token.isCancelled else { return }
         onResultText?("")
-        if clip > 0.02 {
+        if foreign, peak < 0.001 {
+            // Buffers arrived but were pure zeros while another app held the
+            // mic — that's the starved tap, not a quiet voice.
+            onNotice?(.micBusy(busyApp))
+        } else if clip > 0.02 {
             onNotice?(.tooLoud)
         } else if peak < 0.02 {
             onNotice?(.tooQuiet)

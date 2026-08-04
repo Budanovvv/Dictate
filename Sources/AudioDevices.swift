@@ -80,6 +80,19 @@ enum AudioInputDevices {
         if pid > 0, let app = NSRunningApplication(processIdentifier: pid), let n = app.localizedName {
             return n
         }
+        // Helper processes buried inside an app bundle (ChatGPT voice runs in
+        // "Codex (Service)") aren't NSRunningApplications and expose no bundle
+        // ID through the HAL — but their executable path still names the owning
+        // .app. Skipped for system daemons (no ".app" in their paths).
+        if pid > 0 {
+            var buf = [CChar](repeating: 0, count: 4096)
+            if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 {
+                let path = String(cString: buf)
+                if let bundle = path.split(separator: "/").first(where: { $0.hasSuffix(".app") }) {
+                    return String(bundle.dropLast(4))
+                }
+            }
+        }
         if let bundleID {
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
                let n = app.localizedName {
@@ -114,6 +127,13 @@ enum AudioInputDevices {
                 && dev.transport != kAudioDeviceTransportTypeContinuityCaptureWireless
                 && !isRunningSomewhere(dev.id)
         }?.id
+    }
+
+    /// Whether this device is the built-in microphone. Used to scope the
+    /// raw-array busy fingerprint (built-in reporting >1 channel) — external
+    /// multi-channel interfaces are legitimate and must not match it.
+    static func isBuiltIn(_ id: AudioDeviceID) -> Bool {
+        transport(id) == kAudioDeviceTransportTypeBuiltIn
     }
 
     /// Whether any process is currently running input/output on this device.

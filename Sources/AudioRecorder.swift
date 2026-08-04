@@ -190,19 +190,20 @@ final class AudioRecorder {
     /// `override` forces a specific device (used by the busy-mic fallback);
     /// otherwise the device follows the mic setting.
     private func attachInput(override: AudioDeviceID? = nil) throws {
-        let input = engine.inputNode
+        var input = engine.inputNode
         // Pin the input per the mic setting (default: built-in). Bluetooth
         // mics take seconds of HFP negotiation and record phone-call quality;
         // with the built-in mic pinned the headphones stay in music mode.
-        var pinnedID: AudioDeviceID?
-        if var deviceID = override ?? AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID),
-           let unit = input.audioUnit {
+        let pinnedID = override ?? AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID)
+        func pin(_ id: AudioDeviceID) {
+            var deviceID = id
+            guard let unit = input.audioUnit else { return }
             let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
                                               kAudioUnitScope_Global, 0, &deviceID,
                                               UInt32(MemoryLayout<AudioDeviceID>.size))
             Log.d("audio: pin device id=\(deviceID) status=\(status)")
-            pinnedID = deviceID
         }
+        if let pinnedID { pin(pinnedID) }
         pinnedDeviceID = pinnedID
 
         // Forcing a different device mid-recording (the busy-mic fallback) swaps
@@ -219,28 +220,55 @@ final class AudioRecorder {
             engine.reset()
         }
 
-        // Another app holding the mic in voice-processing mode (Google Meet,
-        // Zoom, FaceTime…) switches the shared device to a reduced rate and
-        // starves a plain tap — the recording comes back empty. A rate that
-        // isn't the device's nominal is that fingerprint; flag it so an empty
-        // result surfaces fast as "mic busy" instead of silent nothing.
-        // (We tried setVoiceProcessingEnabled to join the session and capture
-        // anyway — measured live in Google Meet it cost ~1.1 s and STILL
-        // delivered no audio, so it only delayed the message. Dropped: detect
-        // and tell the user quickly instead.)
+        // Another app holding the mic in a voice-processing session (Google
+        // Meet, Zoom, FaceTime, ChatGPT voice, a Safari tab…) changes what the
+        // shared device hands to a plain tap, which then starves — the recording
+        // comes back empty. Two fingerprints, seen live:
+        //   1) rate ≠ nominal (Meet/Chrome: 24 kHz instead of 48 kHz);
+        //   2) rate nominal but the BUILT-IN mic reports its raw array
+        //      (48 kHz/3ch of digital silence instead of the usual mono —
+        //      ChatGPT voice + Safari, 2026-07-31). Scoped to the built-in
+        //      device: multi-channel USB interfaces are legitimate.
+        // For fingerprint 2, joining the session with setVoiceProcessingEnabled
+        // delivers real audio (measured live: plain tap peak 0.0004, VP tap
+        // 0.011 ambient) — so the user dictates right through the other app.
+        // For fingerprint 1 we deliberately DON'T try VP: measured live in
+        // Google Meet it cost ~1.1 s and still delivered nothing, so there it
+        // only delays the fast "mic busy" message + fallback path.
         if let pinnedID {
-            let reported = input.outputFormat(forBus: 0).sampleRate
+            let format = input.outputFormat(forBus: 0)
+            let reported = format.sampleRate
             let nominal = AudioInputDevices.nominalSampleRate(pinnedID)
-            if reported > 0, nominal > 0 {
-                if abs(reported - nominal) > 1 {
-                    sawForeignFormat = true
-                    // Name the culprit for the "mic busy" message (best-effort).
-                    let ourPID = ProcessInfo.processInfo.processIdentifier
-                    busyAppName = AudioInputDevices.appsRunningInput(excluding: ourPID).first
-                    Log.d("audio: mic mode=BUSY (\(Int(reported))Hz ≠ nominal \(Int(nominal))Hz — another app holds the mic, voice-processing)\(busyAppName.map { " app=\($0)" } ?? "")")
-                } else {
-                    Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal — free to record)")
+            let rateForeign = reported > 0 && nominal > 0 && abs(reported - nominal) > 1
+            let rawArrayForeign = !rateForeign && format.channelCount > 1
+                && AudioInputDevices.isBuiltIn(pinnedID)
+            if rateForeign || rawArrayForeign {
+                sawForeignFormat = true
+                // Name the culprit for the "mic busy" message (best-effort).
+                let ourPID = ProcessInfo.processInfo.processIdentifier
+                busyAppName = AudioInputDevices.appsRunningInput(excluding: ourPID).first
+                let detail = rateForeign
+                    ? "\(Int(reported))Hz ≠ nominal \(Int(nominal))Hz"
+                    : "raw \(format.channelCount)ch array at nominal rate"
+                Log.d("audio: mic mode=BUSY (\(detail) — another app holds the mic, voice-processing)\(busyAppName.map { " app=\($0)" } ?? "")")
+                if rawArrayForeign {
+                    var vpError: Error?
+                    do {
+                        try catchingObjCException {
+                            do { try input.setVoiceProcessingEnabled(true) } catch { vpError = error }
+                        }
+                    } catch { vpError = error }
+                    if let vpError {
+                        Log.d("audio: VP join failed: \(vpError.localizedDescription)")
+                    } else {
+                        // Enabling VP rebuilds the underlying IO unit — re-pin.
+                        input = engine.inputNode
+                        pin(pinnedID)
+                        Log.d("audio: joined foreign voice-processing session")
+                    }
                 }
+            } else if reported > 0 {
+                Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal — free to record)")
             }
         }
 
@@ -325,11 +353,11 @@ final class AudioRecorder {
     /// speak a whole sentence into the void first. Only for the foreign-format
     /// case — a normal mic waking from sleep legitimately takes a second or two,
     /// and its empty result is still handled at release.
-    private func scheduleMicBusyWatchdog(generation gen: Int) {
+    private func scheduleMicBusyWatchdog(generation gen: Int, recheck: Bool = false) {
         guard sawForeignFormat, !micBusyReported else { return }
         // Short grace in case the device recovers to its real rate and audio
         // starts flowing; if it's still empty, the mic really is held elsewhere.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + (recheck ? 0.5 : 0.4)) { [weak self] in
             // Generation check: this block can outlive its recording (short
             // busy tap → immediate re-press). Without it, a leftover watchdog
             // would see the NEXT recording — empty because its engine is still
@@ -337,7 +365,17 @@ final class AudioRecorder {
             guard let self, gen == self.currentGeneration,
                   self.isRecording, !self.micBusyReported else { return }
             let empty = self.withLock { self.samples.isEmpty }
-            guard empty else { return }   // audio arrived — the mic is ours
+            // A starved raw-array tap isn't empty — it delivers buffers of
+            // digital silence (measured peak 0.0004 vs ≥0.005 ambient on a
+            // live mic). Treat that as "no audio" too, but give it one extra
+            // beat first: a freshly joined VP session may need a moment before
+            // real samples flow.
+            let dead = !empty && self.peakLevel < 0.001
+            guard empty || dead else { return }   // audio arrived — the mic is ours
+            if dead, !recheck {
+                self.scheduleMicBusyWatchdog(generation: gen, recheck: true)
+                return
+            }
             // Before declaring the mic busy, try one switch to a separate
             // physical input (e.g. a USB mic) — the call app may hold only the
             // built-in device while another mic is free. Only if one exists;
