@@ -60,6 +60,44 @@ enum Permissions {
         _ = AXIsProcessTrusted()
     }
 
+    /// The app is running from macOS App Translocation (launched straight from
+    /// the DMG or a quarantined Downloads copy): the process lives at a random
+    /// read-only path, so TCC grants land on a copy that won't exist next
+    /// launch — the permissions step can never go green. Detected precisely by
+    /// the path marker; dev builds and normal installs never match.
+    static var isTranslocated: Bool {
+        Bundle.main.bundlePath.contains("/AppTranslocation/")
+    }
+
+    /// Clears this app's own Accessibility record via `tccutil` — the one
+    /// sanctioned escape from the stale-entry dead end (switch ON in System
+    /// Settings yet "not trusted" here, or an old Deny suppressing the prompt).
+    /// Needs no admin rights for our own bundle id; verified to reach tccd from
+    /// a hardened-runtime app. After the reset the fresh system prompt fires.
+    static func resetAccessibility() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            p.arguments = ["reset", "Accessibility",
+                           Bundle.main.bundleIdentifier ?? "com.valentynbudanov.Dictate"]
+            let out = Pipe()
+            p.standardOutput = out
+            p.standardError = out
+            do {
+                try p.run()
+                p.waitUntilExit()
+                let msg = String(data: out.fileHandleForReading.readDataToEndOfFile(),
+                                 encoding: .utf8) ?? ""
+                // exit 64 ("No such bundle identifier") just means no record
+                // existed — harmless, the prompt below still re-registers us.
+                Log.d("permissions: tccutil reset exit=\(p.terminationStatus) \(msg.trimmingCharacters(in: .whitespacesAndNewlines))")
+            } catch {
+                Log.d("permissions: tccutil spawn failed: \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async { promptAccessibility() }
+        }
+    }
+
     // MARK: Opening the relevant System Settings pane
 
     static func openSettingsPane(_ pane: String) {

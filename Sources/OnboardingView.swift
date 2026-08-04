@@ -43,6 +43,19 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Launched straight from the DMG / quarantined Downloads: TCC
+            // grants would land on the translocated throwaway copy and the
+            // permissions step could never go green — say so on every step,
+            // before the user invests in walking them.
+            if Permissions.isTranslocated {
+                Label(L("Dictate is running from the downloaded image — drag it into Applications, eject the image, and launch it from there. Permissions granted to this temporary copy won't stick."),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 16)
+            }
             StepDots(current: step, total: totalSteps)
                 .padding(.top, 18)
             content
@@ -499,6 +512,10 @@ private struct TargetChip: View {
 private struct PermissionsStep: View {
     @State private var mic = Permissions.microphone
     @State private var ax = Permissions.accessibility
+    /// Seconds spent on this step without Accessibility going green. After a
+    /// while the toggle dance has clearly failed — offer the automatic reset
+    /// (the industry answer is "run tccutil in Terminal"; here it's a button).
+    @State private var stuckSeconds = 0
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -535,11 +552,24 @@ private struct PermissionsStep: View {
                     Permissions.openSettingsPane("Privacy_Accessibility")
                 }
                 .buttonStyle(.link).font(.caption)
+                // The stale record survives the toggle dance in the worst
+                // cases (deleted-and-reinstalled app, old Deny suppressing the
+                // prompt). Resetting our own TCC record is the sanctioned fix
+                // everyone else sends users to Terminal for — one click here.
+                if ax != .granted, stuckSeconds >= 15 || Settings.shared.onboardingDone {
+                    Button(L("Still stuck? Reset the permission — this clears the broken macOS record, then grant the fresh request.")) {
+                        Permissions.resetAccessibility()
+                    }
+                    .buttonStyle(.link).font(.caption)
+                }
             }
             .font(.caption).foregroundStyle(.secondary)
             Spacer()
         }
-        .onReceive(timer) { _ in refresh() }
+        .onReceive(timer) { _ in
+            refresh()
+            if ax != .granted { stuckSeconds += 1 }
+        }
         .onAppear { Permissions.registerAccessibilityQuietly(); refresh() }
     }
 
@@ -601,6 +631,13 @@ private struct TryItStep: View {
     /// try-out must SAY it's still preparing — a silent "Warming up" pill only
     /// after a keypress reads as a hang (the warm-up rake, round two).
     @State private var engineReady = false
+    /// Ticks of the 1 s poll below — every 5th re-kicks the warm-up. The single
+    /// preload fired on entering step 2 could die silently (tokenizer fetch on
+    /// a fresh install needs the network) and nothing retried: the "Preparing
+    /// the model…" banner then spun forever over stopped work. Re-kicking is
+    /// free while a prepare is genuinely running (in-flight calls coalesce) and
+    /// self-heals after a failure.
+    @State private var readyTicks = 0
     private let readyTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var mainKey: String { KeyNames.displayName(Settings.shared.hotkeyName) }
@@ -676,6 +713,8 @@ private struct TryItStep: View {
         }
         .onReceive(readyTimer) { _ in
             guard !engineReady else { return }
+            readyTicks += 1
+            if readyTicks % 5 == 0 { dictation.preloadModel() }
             Task {
                 let ready = await WhisperEngine.shared.isReady(for: .fast)
                 await MainActor.run { engineReady = ready }
