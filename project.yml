@@ -88,6 +88,7 @@ targets:
       - path: Sources/CommitEngine.swift
       - path: Sources/AudioRecorder.swift
       - path: Sources/AudioDevices.swift
+      - path: Sources/DictationPolicy.swift
       - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift
       - path: Sources/RecordingHUD.swift

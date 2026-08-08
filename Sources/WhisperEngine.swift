@@ -41,7 +41,13 @@ actor WhisperEngine {
     }
 
     private nonisolated static func isModelComplete(_ variant: String) -> Bool {
-        let dir = variantDir(variant)
+        isModelComplete(inDirectory: variantDir(variant))
+    }
+
+    /// Core of the completeness check, directory-injectable for tests: this
+    /// verdict decides offline load vs a network re-sync that can invalidate
+    /// a working model (see the offline-first comment in performPrepare).
+    nonisolated static func isModelComplete(inDirectory dir: URL) -> Bool {
         let fm = FileManager.default
         for required in ["AudioEncoder.mlmodelc/weights/weight.bin",
                          "TextDecoder.mlmodelc/weights/weight.bin",

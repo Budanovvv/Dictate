@@ -50,7 +50,10 @@ if [ "$MODE" != "--quick" ]; then
         2>&1 | tee /tmp/dictate-tests.log | grep -E "Test Suite|error:" | tail -5
     then
         if grep -qF "** TEST SUCCEEDED **" /tmp/dictate-tests.log; then
-            echo "  ✅ unit tests"; PASS=$((PASS+1))
+            # The whole XCTest run is one line of this checklist — surface the
+            # real test count so "PASSED: 20" isn't mistaken for it.
+            UNIT_COUNT=$(grep -oE "Executed [0-9]+ tests" /tmp/dictate-tests.log | grep -oE "[0-9]+" | sort -n | tail -1)
+            echo "  ✅ unit tests (${UNIT_COUNT:-?} tests, all passed)"; PASS=$((PASS+1))
         else
             echo "  ❌ unit tests (see /tmp/dictate-tests.log)"; FAIL=$((FAIL+1))
         fi

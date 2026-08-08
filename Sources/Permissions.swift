@@ -66,7 +66,7 @@ enum Permissions {
     /// launch — the permissions step can never go green. Detected precisely by
     /// the path marker; dev builds and normal installs never match.
     static var isTranslocated: Bool {
-        Bundle.main.bundlePath.contains("/AppTranslocation/")
+        DictationPolicy.isTranslocatedPath(Bundle.main.bundlePath)
     }
 
     /// Clears this app's own Accessibility record via `tccutil` — the one
