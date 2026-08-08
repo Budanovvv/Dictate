@@ -86,11 +86,9 @@ enum AudioInputDevices {
         // .app. Skipped for system daemons (no ".app" in their paths).
         if pid > 0 {
             var buf = [CChar](repeating: 0, count: 4096)
-            if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 {
-                let path = String(cString: buf)
-                if let bundle = path.split(separator: "/").first(where: { $0.hasSuffix(".app") }) {
-                    return String(bundle.dropLast(4))
-                }
+            if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0,
+               let name = appBundleName(fromPath: String(cString: buf)) {
+                return name
             }
         }
         if let bundleID {
@@ -101,6 +99,17 @@ enum AudioInputDevices {
             return bundleID.split(separator: ".").last.map(String.init)
         }
         return nil
+    }
+
+    /// Owning app name from an executable path: the FIRST ".app" component
+    /// from the root, so a helper nested inside another bundle ("Codex
+    /// (Service).app" inside ChatGPT.app) resolves to the outer, user-facing
+    /// app. nil for anything outside an app bundle (system daemons, XPC
+    /// services in frameworks). Pure for testability.
+    static func appBundleName(fromPath path: String) -> String? {
+        guard let bundle = path.split(separator: "/").first(where: { $0.hasSuffix(".app") })
+        else { return nil }
+        return String(bundle.dropLast(4))
     }
 
     /// A different input device to fall back to when the current one (`avoid`)
@@ -127,6 +136,13 @@ enum AudioInputDevices {
                 && dev.transport != kAudioDeviceTransportTypeContinuityCaptureWireless
                 && !isRunningSomewhere(dev.id)
         }?.id
+    }
+
+    /// HAL device UID — the same string AVCaptureDevice uses as uniqueID, so
+    /// the busy-mic fallback can open the very device we pinned through the
+    /// CoreMedia capture path.
+    static func uid(_ id: AudioDeviceID) -> String? {
+        string(id, kAudioDevicePropertyDeviceUID)
     }
 
     /// Whether this device is the built-in microphone. Used to scope the

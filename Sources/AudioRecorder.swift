@@ -1,5 +1,6 @@
 import AudioToolbox
 import AVFoundation
+import CoreMedia
 
 /// Microphone recording: any input format → 16 kHz mono Int16.
 /// Hard duration limit — 300 seconds.
@@ -30,6 +31,19 @@ final class AudioRecorder {
 
     private var samples = Data()
     private var converter: AVAudioConverter?
+    /// CoreMedia fallback capture for a mic held by another app's
+    /// voice-processing session. The AUHAL tap starves in that state, but
+    /// AVCaptureSession (the QuickTime capture path) is not subject to the
+    /// starvation — measured live against Chrome's 24 kHz hold: the tap got
+    /// ZERO frames while the session delivered full 48 kHz audio from the
+    /// same built-in mic. Both fields are ioQueue-confined (created in
+    /// attachInput, torn down in stop) — no lock needed.
+    private var captureSession: AVCaptureSession?
+    private var captureDelegate: SessionTapDelegate?
+    /// Converter for session buffers (their format differs from the engine's);
+    /// under `lock` — it's touched from the session delegate queue and stop().
+    private var sessionConverter: AVAudioConverter?
+    private let sessionQueue = DispatchQueue(label: "com.valentynbudanov.Dictate.audioSession")
     /// Generation of the current recording: bumped by every start() and stop().
     /// Deferred blocks (mic-busy watchdog, rebuild retries, config-change hops)
     /// capture the value they were scheduled under and bail if it moved — so a
@@ -176,6 +190,17 @@ final class AudioRecorder {
                     Log.d("audio: config change ignored (engine still running)")
                     return
                 }
+                // On the capture-session path the engine is deliberately not
+                // running, so the guard above can never swallow the spurious
+                // notification that pinning fires — without this check every
+                // busy-mic recording would tear its session down and rebuild
+                // it right after start (found by review, 2026-08-06). The
+                // session rides CoreMedia and doesn't care about HAL config
+                // wobbles; a genuinely dead session is the watchdog's job.
+                if self.captureSession != nil {
+                    Log.d("audio: config change ignored (capture session active)")
+                    return
+                }
                 Log.d("audio: config change -> rebuild")
                 self.rebuildInputChain(generation: gen)
             }
@@ -189,7 +214,14 @@ final class AudioRecorder {
     /// Installs the tap and starts the engine for the current input device.
     /// `override` forces a specific device (used by the busy-mic fallback);
     /// otherwise the device follows the mic setting.
-    private func attachInput(override: AudioDeviceID? = nil) throws {
+    private func attachInput(generation gen: Int, override: AudioDeviceID? = nil) throws {
+        // The blocking work below (HAL reads, VP enable, session start) can
+        // outlive its recording during a rapid stop→start; a stale attach must
+        // not write foreign/busy flags into the NEXT recording's fresh state.
+        guard gen == currentGeneration else {
+            throw NSError(domain: "Dictate", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "stale attach"])
+        }
         var input = engine.inputNode
         // Pin the input per the mic setting (default: built-in). Bluetooth
         // mics take seconds of HFP negotiation and record phone-call quality;
@@ -239,9 +271,17 @@ final class AudioRecorder {
             let format = input.outputFormat(forBus: 0)
             let reported = format.sampleRate
             let nominal = AudioInputDevices.nominalSampleRate(pinnedID)
-            let rateForeign = reported > 0 && nominal > 0 && abs(reported - nominal) > 1
-            let rawArrayForeign = !rateForeign && format.channelCount > 1
-                && AudioInputDevices.isBuiltIn(pinnedID)
+            let fp = Self.foreignFingerprint(reportedRate: reported, nominalRate: nominal,
+                                             channelCount: Int(format.channelCount),
+                                             isBuiltIn: AudioInputDevices.isBuiltIn(pinnedID))
+            let rateForeign = fp.rate
+            let rawArrayForeign = fp.rawArray
+            // Re-check after the HAL reads above — same stale-attach guard as
+            // at entry, now protecting the flag writes below.
+            guard gen == currentGeneration else {
+                throw NSError(domain: "Dictate", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "stale attach"])
+            }
             if rateForeign || rawArrayForeign {
                 sawForeignFormat = true
                 // Name the culprit for the "mic busy" message (best-effort).
@@ -251,6 +291,7 @@ final class AudioRecorder {
                     ? "\(Int(reported))Hz ≠ nominal \(Int(nominal))Hz"
                     : "raw \(format.channelCount)ch array at nominal rate"
                 Log.d("audio: mic mode=BUSY (\(detail) — another app holds the mic, voice-processing)\(busyAppName.map { " app=\($0)" } ?? "")")
+                var joinedVP = false
                 if rawArrayForeign {
                     var vpError: Error?
                     do {
@@ -265,7 +306,16 @@ final class AudioRecorder {
                         input = engine.inputNode
                         pin(pinnedID)
                         Log.d("audio: joined foreign voice-processing session")
+                        joinedVP = true
                     }
+                }
+                // The 24 kHz class (and a failed VP join): the engine tap gets
+                // nothing at all there — VP can't even start (-10875 measured
+                // live). Capture through AVCaptureSession instead; it rides the
+                // CoreMedia path and receives real audio from the held mic.
+                if !joinedVP, startCaptureSession(device: pinnedID, generation: gen) {
+                    Log.d("audio: capturing via AVCaptureSession (foreign-hold bypass)")
+                    return   // no tap, no engine — the session feeds append()
                 }
             } else if reported > 0 {
                 Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal — free to record)")
@@ -320,12 +370,17 @@ final class AudioRecorder {
         }
 
         setConverter(nil)
+        // The fallback capture session must die with the chain it belonged to:
+        // left running, it would keep feeding samples alongside whatever this
+        // rebuild brings up (USB fallback tap, recovered normal tap) — two
+        // producers interleaving into one buffer (found by review, 2026-08-06).
+        stopCaptureSession()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         engine.reset()
 
         do {
-            try attachInput(override: override)
+            try attachInput(generation: gen, override: override)
             rebuilding = false
             Log.d("audio: input attached (attempt \(attempt))")
             scheduleMicBusyWatchdog(generation: gen)
@@ -365,16 +420,16 @@ final class AudioRecorder {
             guard let self, gen == self.currentGeneration,
                   self.isRecording, !self.micBusyReported else { return }
             let empty = self.withLock { self.samples.isEmpty }
-            // A starved raw-array tap isn't empty — it delivers buffers of
-            // digital silence (measured peak 0.0004 vs ≥0.005 ambient on a
-            // live mic). Treat that as "no audio" too, but give it one extra
-            // beat first: a freshly joined VP session may need a moment before
-            // real samples flow.
-            let dead = !empty && self.peakLevel < 0.001
-            guard empty || dead else { return }   // audio arrived — the mic is ours
-            if dead, !recheck {
+            switch Self.busyWatchdogVerdict(samplesEmpty: empty,
+                                            peakLevel: self.peakLevel,
+                                            isRecheck: recheck) {
+            case .audioFlowing:
+                return   // audio arrived — the mic is ours
+            case .recheck:
                 self.scheduleMicBusyWatchdog(generation: gen, recheck: true)
                 return
+            case .act:
+                break
             }
             // Before declaring the mic busy, try one switch to a separate
             // physical input (e.g. a USB mic) — the call app may hold only the
@@ -394,6 +449,36 @@ final class AudioRecorder {
             Log.d("audio: foreign format + no audio after 0.4s -> mic busy (early)")
             self.onMicBusyDetected?()
         }
+    }
+
+    /// The two fingerprints of "another app holds this mic in voice
+    /// processing", pure for testability. `rate`: the device runs off its
+    /// nominal rate (Meet/Zoom/Chrome, typically 24 kHz — the tap starves,
+    /// VP can't even start; capture goes through AVCaptureSession). `rawArray`:
+    /// nominal rate but the BUILT-IN mic exposes its raw multi-mic array
+    /// (ChatGPT voice / Safari — joining VP delivers audio). Scoped to the
+    /// built-in device: multi-channel USB interfaces are legitimate. A
+    /// non-nominal rate wins over the channel signal — VP was measured dead
+    /// there, the session path must be taken instead.
+    static func foreignFingerprint(reportedRate: Double, nominalRate: Double,
+                                   channelCount: Int, isBuiltIn: Bool)
+        -> (rate: Bool, rawArray: Bool) {
+        let rate = reportedRate > 0 && nominalRate > 0 && abs(reportedRate - nominalRate) > 1
+        let rawArray = !rate && channelCount > 1 && isBuiltIn
+        return (rate, rawArray)
+    }
+
+    /// Busy-watchdog decision, pure for testability. "Dead" is a stream of
+    /// digital zeros (starved tap measured at peak 0.0004; live ambient is
+    /// ≥0.005). BOTH shapes of "no audio yet" get exactly one recheck before
+    /// acting — the first buffer of a freshly joined VP session or capture
+    /// session routinely lands after the 0.4 s mark.
+    enum BusyWatchdogVerdict { case audioFlowing, recheck, act }
+    static func busyWatchdogVerdict(samplesEmpty: Bool, peakLevel: Double,
+                                    isRecheck: Bool) -> BusyWatchdogVerdict {
+        let dead = !samplesEmpty && peakLevel < 0.001
+        guard samplesEmpty || dead else { return .audioFlowing }
+        return isRecheck ? .act : .recheck
     }
 
     /// Runs body, converting a raised NSException into a thrown Swift error.
@@ -439,13 +524,104 @@ final class AudioRecorder {
             }
             self.engine.inputNode.removeTap(onBus: 0)
             self.engine.stop()
+            self.stopCaptureSession()
         }
         return (pcm, duration)
     }
 
+    /// Brings up the fallback AVCaptureSession on the given device. Called on
+    /// ioQueue only. Returns false when the device can't be opened this way —
+    /// the caller then falls through to the plain tap + busy watchdog.
+    private func startCaptureSession(device id: AudioDeviceID, generation gen: Int) -> Bool {
+        stopCaptureSession()
+        guard let uid = AudioInputDevices.uid(id),
+              let dev = AVCaptureDevice(uniqueID: uid),
+              let input = try? AVCaptureDeviceInput(device: dev) else { return false }
+        let session = AVCaptureSession()
+        let out = AVCaptureAudioDataOutput()
+        // Pin the delivery format to mono float LPCM at the device rate:
+        // without it the output hands over the device-native format, and a
+        // >2-channel ASBD (the raw mic array) has no channel layout, which
+        // makes AVAudioFormat(streamDescription:) return nil and every buffer
+        // silently drop (found by review, 2026-08-06).
+        out.audioSettings = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsNonInterleaved: false,
+            AVNumberOfChannelsKey: 1,
+        ]
+        // The delegate carries the generation of the rebuild that created it —
+        // NOT currentGeneration read at some later moment — so buffers from a
+        // session that outlived its recording are always rejected.
+        let delegate = SessionTapDelegate(recorder: self, generation: gen)
+        out.setSampleBufferDelegate(delegate, queue: sessionQueue)
+        // AVCaptureSession mutation on a device in a contested state is AV
+        // plumbing like any other here — route NSExceptions through the shim
+        // (project rule after four installTap crashes).
+        var ok = false
+        try? catchingObjCException {
+            guard session.canAddInput(input) else { return }
+            session.addInput(input)
+            guard session.canAddOutput(out) else { return }
+            session.addOutput(out)
+            session.startRunning()
+            ok = true
+        }
+        guard ok else { return false }
+        captureSession = session
+        captureDelegate = delegate
+        return true
+    }
+
+    /// Tears down the fallback session (ioQueue only). Every path that changes
+    /// the capture topology must call this — a leftover session is a second
+    /// producer feeding the same buffer.
+    private func stopCaptureSession() {
+        captureSession?.stopRunning()
+        captureSession = nil
+        captureDelegate = nil
+        withLock { sessionConverter = nil }
+    }
+
+    /// Session buffers arrive on sessionQueue; convert with a converter of
+    /// their own (the format differs from the engine tap's) and feed the same
+    /// accumulation path as the tap — levels, peaks and limits included.
+    fileprivate func appendFromSession(_ sampleBuffer: CMSampleBuffer, generation gen: Int) {
+        guard gen == currentGeneration, isRecording else { return }
+        guard let buffer = Self.pcmBuffer(from: sampleBuffer) else { return }
+        let conv: AVAudioConverter? = withLock {
+            if sessionConverter == nil || sessionConverter?.inputFormat != buffer.format {
+                sessionConverter = AVAudioConverter(from: buffer.format, to: targetFormat)
+            }
+            return sessionConverter
+        }
+        guard let conv else { return }
+        append(buffer, via: conv)
+    }
+
+    /// CMSampleBuffer → AVAudioPCMBuffer in the buffer's native format.
+    private static func pcmBuffer(from sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+        guard let fd = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(fd) else { return nil }
+        var asbd = asbdPtr.pointee
+        let frames = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
+        guard frames > 0,
+              let format = AVAudioFormat(streamDescription: &asbd),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return nil }
+        buffer.frameLength = frames
+        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+            sampleBuffer, at: 0, frameCount: Int32(frames),
+            into: buffer.mutableAudioBufferList)
+        return status == noErr ? buffer : nil
+    }
+
     private func append(_ buffer: AVAudioPCMBuffer) {
         guard let converter = withLock({ converter }) else { return }
+        append(buffer, via: converter)
+    }
 
+    private func append(_ buffer: AVAudioPCMBuffer, via converter: AVAudioConverter) {
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
         guard let out = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
@@ -516,6 +692,25 @@ final class AudioRecorder {
         let end = min(floats.count, (endWin + 1) * window)
         guard start < end, end - start < floats.count else { return floats }
         return Array(floats[start..<end])
+    }
+
+    /// Delegate for the fallback AVCaptureSession — a tiny bridge that hands
+    /// sample buffers back to the recorder with the generation they belong to,
+    /// so buffers from a torn-down session can never leak into the next
+    /// recording.
+    private final class SessionTapDelegate: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+        private weak var recorder: AudioRecorder?
+        private let generation: Int
+
+        init(recorder: AudioRecorder, generation: Int) {
+            self.recorder = recorder
+            self.generation = generation
+        }
+
+        func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+                           from connection: AVCaptureConnection) {
+            recorder?.appendFromSession(sampleBuffer, generation: generation)
+        }
     }
 
     /// Converts raw Int16 PCM to normalized Float [-1…1] for WhisperKit.
