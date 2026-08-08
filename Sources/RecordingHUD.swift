@@ -9,11 +9,6 @@ final class HUDModel: ObservableObject {
     }
 
     @Published var mode: Mode = .recording
-    /// True from show-recording until the first audio buffer arrives. A mic
-    /// asleep after idle takes 1–2 s to wake (macOS physics, see GRABLI) and
-    /// nothing is captured meanwhile — the pill says so instead of standing
-    /// with a dead equalizer that reads as "recording but frozen".
-    @Published var micWaking = false
     /// The current dictation runs on the translate key — the pill confirms the
     /// mode (cyan accent + its own texts), so "did I hold the right key?" is
     /// answered while speaking, and the feature stays visible in daily use.
@@ -41,10 +36,6 @@ final class RecordingHUD {
     private var panel: NSPanel?
     private var elapsedTimer: Timer?
     private var hideWork: DispatchWorkItem?
-    /// True from show-recording until the first audio buffer; arms the delayed
-    /// switch to the "waking up the microphone" presentation (see showRecording).
-    private var awaitingAudio = false
-    private var wakingWork: DispatchWorkItem?
     /// True between show() and hide(): the pill is meant to be on screen. A
     /// hide() fade that finishes AFTER a new show() must not order the panel
     /// out. Reading panel.alphaValue in the completion proved unreliable — the
@@ -58,22 +49,9 @@ final class RecordingHUD {
         cancelHide()
         model.translate = translate
         model.mode = .recording
-        model.micWaking = false
         model.level = 0
         model.elapsed = 0
         model.liveText = ""
-        // The first audio buffer normally lands ~0.2 s after the press — only
-        // when it hasn't by then is the mic genuinely waking (1–2 s after
-        // idle), and only then does the pill say so. The grace keeps fast
-        // starts pixel-identical to before instead of flashing gray each time.
-        awaitingAudio = true
-        wakingWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.awaitingAudio, self.model.mode == .recording else { return }
-            self.model.micWaking = true
-        }
-        wakingWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
         startElapsed()
         show()
     }
@@ -233,15 +211,8 @@ final class RecordingHUD {
     /// longer orders a freshly shown pill out.
     var pillIsOnScreen: Bool { panel?.isVisible ?? false }
 
+
     func setLevel(_ level: Double) {
-        // First level callback = first audio buffer: the mic is awake and
-        // capture is real — flip the pill from "waking" to the live equalizer.
-        if awaitingAudio {
-            awaitingAudio = false
-            wakingWork?.cancel()
-            wakingWork = nil
-            if model.micWaking { model.micWaking = false }
-        }
         // Weighted toward the new sample so the bars track speech peaks snappily
         // instead of averaging them into a gentle breathing motion.
         model.level = model.level * 0.35 + level * 0.65
@@ -343,7 +314,6 @@ private struct HUDView: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         )
         .animation(.easeInOut(duration: 0.2), value: model.mode)
-        .animation(.easeInOut(duration: 0.2), value: model.micWaking)
     }
 
     // One accent (the brand gradient) plus a single earned semantic color —
@@ -357,10 +327,10 @@ private struct HUDView: View {
         case .recording, .transcribing:
             // one structural branch → stable identity: the dot recolors in place.
             // Translate mode is cyan — the color bound to "→ English" since the
-            // onboarding key cards, kept consistent through daily use. While the
-            // mic is still waking the dot is gray: red REC is earned by actual
-            // capture, and the recolor is the "start speaking" cue.
-            PulsingDot(fill: recordingDotStyle)
+            // onboarding key cards, kept consistent through daily use.
+            PulsingDot(fill: model.mode == .recording
+                       ? (model.translate ? AnyShapeStyle(Brand.cyan) : AnyShapeStyle(Color.red))
+                       : AnyShapeStyle(Brand.gradientDiagonal))
         case .translateTip:
             Image(systemName: "globe")
                 .font(.system(size: 17)).foregroundStyle(Brand.cyan)
@@ -391,12 +361,6 @@ private struct HUDView: View {
             Image(systemName: "doc.on.clipboard")
                 .font(.system(size: 17)).foregroundStyle(.secondary)
         }
-    }
-
-    private var recordingDotStyle: AnyShapeStyle {
-        guard model.mode == .recording else { return AnyShapeStyle(Brand.gradientDiagonal) }
-        if model.micWaking { return AnyShapeStyle(Color.secondary) }
-        return model.translate ? AnyShapeStyle(Brand.cyan) : AnyShapeStyle(Color.red)
     }
 
     private var content: some View {
@@ -445,7 +409,6 @@ private struct HUDView: View {
     private var title: String {
         switch model.mode {
         case .recording:
-            if model.micWaking { return L("Waking up the microphone…") }
             guard model.translate else { return L("Recording…") }
             let target = Settings.shared.translateTargetCode
             return target == "en" ? L("Recording → English…")
@@ -502,9 +465,7 @@ private struct HUDView: View {
     /// nil hides the strip (terminal informational flashes).
     private var stripPhase: WaveStrip.Phase? {
         switch model.mode {
-        // While waking, the strip sits flat and unlit (.progress at 0) — the
-        // equalizer starting to dance is the honest "audio is flowing" signal.
-        case .recording: return model.micWaking ? .progress : .voice
+        case .recording: return .voice
         case .transcribing, .downloading: return .progress
         case .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip,
              .translateDataMissing: return nil
