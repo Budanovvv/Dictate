@@ -74,12 +74,16 @@ final class HotkeyMonitor {
 
         // The system disables the tap on timeout — re-enable it
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            // Every disable is a window where a release can be lost (seen live
+            // 2026-08-06: a stuck 42 s recording) — leave a trace so the next
+            // stuck-key report is diagnosable from the log.
+            Log.d("tap: disabled by \(type == .tapDisabledByTimeout ? "timeout" : "user input") -> re-enabling")
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             // Events during the disabled window are gone. A missed keyUp would
             // leave the recording running to the 300 s limit and eat the next
             // press — re-sync held state from the hardware instead.
-            for code in pressedCodes
-            where !CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(code)) {
+            for code in pressedCodes where !Self.isKeyPhysicallyDown(code) {
+                Log.d("tap: resync — key \(code) is physically up, forcing release")
                 setPressed(code, false)
             }
             return
@@ -99,7 +103,7 @@ final class HotkeyMonitor {
             setPressed(code, false)
         case .flagsChanged:
             // For a modifier: flag set → held, cleared → released
-            setPressed(code, isModifierFlagActive(event.flags, keyCode: code))
+            setPressed(code, Self.isModifierFlagActive(event.flags, keyCode: code))
         default:
             break
         }
@@ -113,7 +117,23 @@ final class HotkeyMonitor {
         DispatchQueue.main.async { cb?(code) }
     }
 
-    private func isModifierFlagActive(_ flags: CGEventFlags, keyCode: Int64) -> Bool {
+    /// Physical "is this key held right now", readable without a tap. CRITICAL:
+    /// `CGEventSource.keyState` does NOT track modifier keys — they live in the
+    /// flags state, not the key table, and keyState returns false for a
+    /// physically held Option/Command (measured live 2026-08-06: the first
+    /// lost-release watchdog cut every recording at 2 s because of exactly
+    /// this). Modifiers must be read via flagsState + the same per-side bit
+    /// logic the tap uses; keyState is correct only for regular keys.
+    static func isKeyPhysicallyDown(_ code: Int64) -> Bool {
+        switch code {
+        case 54...63:   // both ⌘⌥⇧⌃ sides, caps lock, fn
+            return isModifierFlagActive(CGEventSource.flagsState(.combinedSessionState), keyCode: code)
+        default:
+            return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(code))
+        }
+    }
+
+    private static func isModifierFlagActive(_ flags: CGEventFlags, keyCode: Int64) -> Bool {
         // The shared masks (.maskAlternate…) cover BOTH keys of a pair: with
         // left and right Option held together, releasing one keeps the flag set
         // and the release would be lost (the code sticks in pressedCodes, the

@@ -205,7 +205,9 @@ final class DictationController {
         tapRetryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
             if self.monitor.isAlive { return }
+            Log.d("tap: dead at health check -> recreating")
             if self.monitor.start() {
+                Log.d("tap: recreated")
                 self.tapFailureReported = false
             } else if !self.tapFailureReported {
                 self.tapFailureReported = true
@@ -243,6 +245,8 @@ final class DictationController {
     func shutdown() {
         tapRetryTimer?.invalidate()
         tapRetryTimer = nil
+        keyStateTimer?.invalidate()
+        keyStateTimer = nil
         monitor.stop()
         stopLivePreview()
         resetLiveTyping()
@@ -257,7 +261,7 @@ final class DictationController {
     // Push-to-talk: press starts, release stops.
     private func handlePress(_ code: Int64) {
         Log.d("press code=\(code) state=\(state) paused=\(paused)")
-        beginRecording(translate: isTranslateKey(code))
+        beginRecording(key: code, translate: isTranslateKey(code))
     }
 
     private func handleRelease(_ code: Int64) {
@@ -267,11 +271,12 @@ final class DictationController {
         endRecording()
     }
 
-    private func beginRecording(translate: Bool) {
+    private func beginRecording(key code: Int64, translate: Bool) {
         guard !paused, state == .idle else { return }
         activeTranslate = translate
         pressedAt = Date()
         state = .recording
+        startKeyStateWatchdog(key: code)
         Self.soundStart?.play()
         // Wake the target app's accessibility tree now, while the user speaks:
         // Chromium/Electron/WebKit build it lazily and otherwise expose no
@@ -294,6 +299,40 @@ final class DictationController {
         // reports via onRecoveryFailed.
         recorder.start()
         startLivePreview()
+    }
+
+    // MARK: - Lost-release safety net
+
+    /// A release lost by the event tap (disabled at the wrong moment) used to
+    /// leave a push-to-talk recording running until the user pressed again —
+    /// seen live 2026-08-06: a 42 s stuck recording pasted garbage. The tap
+    /// can't be made lossless, but the PHYSICAL key state can always be read
+    /// (CGEventSource.keyState — the same source the tap resync trusts). While
+    /// recording, poll it: the key up for two consecutive ticks while we still
+    /// think it's held means the release never reached us — stop the recording
+    /// as if it had. Costs a lost release at most ~2 s of tail, not 42.
+    private var keyStateTimer: Timer?
+    private var keyUpTicks = 0
+
+    private func startKeyStateWatchdog(key code: Int64) {
+        keyUpTicks = 0
+        keyStateTimer?.invalidate()
+        keyStateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard state == .recording else {
+                keyStateTimer?.invalidate()
+                keyStateTimer = nil
+                return
+            }
+            if HotkeyMonitor.isKeyPhysicallyDown(code) {
+                keyUpTicks = 0
+                return
+            }
+            keyUpTicks += 1
+            guard keyUpTicks >= 2 else { return }
+            Log.d("hotkey: key \(code) physically up \(keyUpTicks)s into recording — release was lost, forcing stop")
+            endRecording()
+        }
     }
 
     // MARK: - Live preview
@@ -559,6 +598,8 @@ final class DictationController {
 
     private func endRecording() {
         guard state == .recording else { return }
+        keyStateTimer?.invalidate()
+        keyStateTimer = nil
         stopLivePreview()
         let (pcm, duration) = recorder.stop()
         Self.soundStop?.play()
@@ -670,16 +711,11 @@ final class DictationController {
         resetLiveTyping()
         guard !token.isCancelled else { return }
         onResultText?("")
-        if foreign, peak < 0.001 {
-            // Buffers arrived but were pure zeros while another app held the
-            // mic — that's the starved tap, not a quiet voice.
-            onNotice?(.micBusy(busyApp))
-        } else if clip > 0.02 {
-            onNotice?(.tooLoud)
-        } else if peak < 0.02 {
-            onNotice?(.tooQuiet)
-        } else {
-            onNotice?(.nothingHeard)
+        switch DictationPolicy.emptyCaptureVerdict(peak: peak, clip: clip, foreignHeld: foreign) {
+        case .micBusy: onNotice?(.micBusy(busyApp))
+        case .tooLoud: onNotice?(.tooLoud)
+        case .tooQuiet: onNotice?(.tooQuiet)
+        case .nothingHeard: onNotice?(.nothingHeard)
         }
         state = .idle
     }
