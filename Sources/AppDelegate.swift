@@ -23,6 +23,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var translatorHostPanel: NSPanel?
     /// Local meeting transcription (mic = You, system audio tap = Them).
     private let meeting = MeetingSession()
+    private var meetingWindow: NSPanel?
+
+    /// The live transcript window: floating, NON-ACTIVATING (glancing at it
+    /// must not steal focus from the call), visible over fullscreen Spaces —
+    /// the same combination the HUD and translator panels learned the hard
+    /// way (GRABLI).
+    private func showMeetingWindow() {
+        if meetingWindow == nil {
+            let panel = NSPanel(
+                contentRect: NSRect(x: 0, y: 0, width: 380, height: 460),
+                styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .utilityWindow],
+                backing: .buffered, defer: false
+            )
+            panel.title = L("Meeting transcript")
+            panel.level = .floating
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.isReleasedWhenClosed = false
+            panel.minSize = NSSize(width: 320, height: 260)
+            panel.contentView = NSHostingView(rootView: MeetingTranscriptView(
+                session: meeting,
+                onStop: { [weak self] in self?.meeting.stop() }))
+            panel.center()
+            meetingWindow = panel
+        }
+        meetingWindow?.orderFront(nil)
+    }
 
     /// Menu toggle for the meeting transcript. The first start of every
     /// session shows a consent reminder: recording call participants without
@@ -44,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         do {
             try meeting.start()
             statusController.applyState(dictation.state)   // show the red dot
+            showMeetingWindow()
         } catch {
             statusController.showError(Lf("Couldn't start the meeting transcript: %@",
                                           error.localizedDescription))
@@ -77,11 +104,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 self?.updater.checkForUpdates(nil)
             },
             meetingActive: { [weak self] in self?.meeting.isActive ?? false },
-            toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() }
+            toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() },
+            showMeetingTranscript: { [weak self] in self?.showMeetingWindow() }
         )
         meeting.onFinished = { [weak self] url in
             // The finished transcript opens itself — the payoff moment; no
-            // extra pill or dialog needed.
+            // extra pill or dialog needed. The live window bows out to it.
+            self?.meetingWindow?.orderOut(nil)
             NSWorkspace.shared.open(url)
             // Drop the red recording dot from the menu bar.
             if let self { self.statusController.applyState(self.dictation.state) }

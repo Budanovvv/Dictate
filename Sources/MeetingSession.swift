@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Combine
 
 /// One recorded meeting: two audio channels — You (the microphone, through
 /// the same battle-tested AudioRecorder the dictation uses, so a mic held by
@@ -7,7 +8,7 @@ import AppKit
 /// else, through the global process tap) — cut into utterance windows at
 /// natural pauses, transcribed locally, and appended to a live Markdown file
 /// the user can watch grow. Everything stays on this Mac.
-final class MeetingSession {
+final class MeetingSession: ObservableObject {
 
     private(set) var isActive = false
     /// The transcript file of the running (or last) session.
@@ -15,6 +16,22 @@ final class MeetingSession {
     /// Fired on main when the session has fully finished (tail transcribed,
     /// file closed).
     var onFinished: ((URL) -> Void)?
+
+    /// Mirror of the transcript for the live window, in the exact order the
+    /// file gets the lines. Capped so an hours-long session can't grow an
+    /// unbounded array — the file remains the full record.
+    struct DisplayEntry: Identifiable {
+        let id = UUID()
+        let time: String
+        let speaker: String
+        let text: String
+        let isYou: Bool
+    }
+    @Published private(set) var displayEntries: [DisplayEntry] = []
+    /// Windows currently being recognized — the window shows a subtle
+    /// "Recognizing…" row while any are in flight.
+    @Published private(set) var inflightCount = 0
+    var startedAt: Date { sessionStart }
 
     private let tap = MeetingTap()
     private let mic = AudioRecorder()
@@ -42,7 +59,12 @@ final class MeetingSession {
     private var statEntries = 0
     private var ticksSinceHeartbeat = 0
 
-    private struct Entry { let start: TimeInterval; let speaker: String; let text: String }
+    private struct Entry {
+        let start: TimeInterval
+        let speaker: String
+        let text: String
+        let you: Bool
+    }
     private var pending: [Entry] = []
     private var inflight: [String: TimeInterval] = [:]   // key → window start
     private var inflightSeq = 0
@@ -61,6 +83,8 @@ final class MeetingSession {
         themWindowStart = 0; themLastLoud = nil
         youWindowStart = 0; youLastLoud = nil
 
+        displayEntries = []
+        inflightCount = 0
         try openTranscriptFile()
         // Voice separation warms up in parallel (first ever run downloads its
         // CoreML models); until it's ready Them-entries just stay collective.
@@ -203,6 +227,7 @@ final class MeetingSession {
         statWindows += 1
         let key = "\(channel)#\(inflightSeq)"
         inflight[key] = start
+        inflightCount = inflight.count
         // Meetings auto-detect the language PER UTTERANCE, ignoring the
         // dictation language setting: a meeting is often not in the user's
         // dictation language (English standup, mixed-language calls), and a
@@ -231,6 +256,7 @@ final class MeetingSession {
             }
             await MainActor.run {
                 self.inflight.removeValue(forKey: key)
+                self.inflightCount = self.inflight.count
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
                     let speaker: String
@@ -238,7 +264,8 @@ final class MeetingSession {
                     case .you: speaker = L("You")
                     case .them: speaker = ordinal.map { Lf("Speaker %d", $0) } ?? L("Them")
                     }
-                    self.pending.append(Entry(start: start, speaker: speaker, text: trimmed))
+                    self.pending.append(Entry(start: start, speaker: speaker,
+                                              text: trimmed, you: channel == .you))
                 }
                 self.flushReadyEntries()
                 self.finalizeIfDrained()
@@ -259,6 +286,13 @@ final class MeetingSession {
         guard n > 0 else { return }
         for entry in pending.prefix(n) {
             write("**[\(clock(entry.start))] \(entry.speaker):** \(entry.text)\n\n")
+            displayEntries.append(DisplayEntry(time: clock(entry.start),
+                                               speaker: entry.speaker,
+                                               text: entry.text,
+                                               isYou: entry.you))
+        }
+        if displayEntries.count > 500 {
+            displayEntries.removeFirst(displayEntries.count - 500)
         }
         statEntries += n
         pending.removeFirst(n)

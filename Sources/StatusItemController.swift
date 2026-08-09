@@ -9,19 +9,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let checkForUpdates: () -> Void
     private let meetingActive: () -> Bool
     private let toggleMeeting: () -> Void
+    private let showMeetingTranscript: () -> Void
     private var lastError: String?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
          checkForUpdates: @escaping () -> Void,
          meetingActive: @escaping () -> Bool,
-         toggleMeeting: @escaping () -> Void) {
+         toggleMeeting: @escaping () -> Void,
+         showMeetingTranscript: @escaping () -> Void) {
         self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.dictation = dictation
         self.openSettings = openSettings
         self.checkForUpdates = checkForUpdates
         self.meetingActive = meetingActive
         self.toggleMeeting = toggleMeeting
+        self.showMeetingTranscript = showMeetingTranscript
         super.init()
 
         item.button?.toolTip = L("Dictate — voice dictation")
@@ -213,6 +216,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         meeting.target = self
         menu.addItem(meeting)
+        if meetingActive() {
+            let show = NSMenuItem(title: L("Show Meeting Transcript"),
+                                  action: #selector(showMeetingClicked), keyEquivalent: "")
+            show.target = self
+            menu.addItem(show)
+        }
 
         let settings = NSMenuItem(title: L("Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
         settings.target = self
@@ -251,6 +260,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func meetingClicked() {
         toggleMeeting()
+    }
+
+    @objc private func showMeetingClicked() {
+        showMeetingTranscript()
     }
 
     @objc private func updatesClicked() {
