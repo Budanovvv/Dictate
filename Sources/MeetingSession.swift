@@ -399,6 +399,13 @@ final class MeetingSession: ObservableObject {
     /// recognition queue) is busy — the preview must never delay a final.
     private func updateLivePreview(_ t: TimeInterval) {
         guard !previewBusy else { return }
+        // Yield to finals — the dictation preview's lesson, relearned here in
+        // the field: previews and final recognitions share one Whisper actor,
+        // and at a 1 s cadence during nonstop speech the previews queued the
+        // finals into visible lag (passes degraded 1.2s → 5.8s, run
+        // 2026-08-09 17:16). The transcript IS the finals; the live line
+        // gets the leftover cycles.
+        guard inflightCount == 0 else { return }
         let youActive = (youLastSpeechAt ?? -1) >= youWindowStart
         let themActive = (themLastSpeechAt ?? -1) >= themWindowStart
         guard youActive || themActive else {
