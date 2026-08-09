@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         do {
             try meeting.start()
+            statusController.applyState(dictation.state)   // show the red dot
         } catch {
             statusController.showError(Lf("Couldn't start the meeting transcript: %@",
                                           error.localizedDescription))
@@ -78,10 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             meetingActive: { [weak self] in self?.meeting.isActive ?? false },
             toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() }
         )
-        meeting.onFinished = { url in
+        meeting.onFinished = { [weak self] url in
             // The finished transcript opens itself — the payoff moment; no
             // extra pill or dialog needed.
             NSWorkspace.shared.open(url)
+            // Drop the red recording dot from the menu bar.
+            if let self { self.statusController.applyState(self.dictation.state) }
         }
         dictation.onError = { [weak self] message in
             DispatchQueue.main.async { self?.statusController.showError(message) }
@@ -294,7 +297,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// clipboard restore or an about-to-start dictation can't be caught mid-air.
     private func installPendingUpdateIfSafe() {
         guard let install = pendingUpdateInstall else { return }
+        // A meeting counts as busy even though dictation is idle: the user
+        // sits still while LISTENING, which reads as "inactive" to the input
+        // check below — a silent relaunch would kill the live transcript.
         guard dictation.state == .idle,
+              !meeting.isActive,
               onboardingWindow == nil,
               settingsWindow?.isVisible != true else { return }
         let idle = [CGEventType.keyDown, .flagsChanged, .leftMouseDown, .mouseMoved]

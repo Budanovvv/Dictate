@@ -32,6 +32,15 @@ final class MeetingSession {
     // You: audio lives in the recorder (hot rollover cuts it); we track time.
     private var youWindowStart: TimeInterval = 0
     private var youLastLoud: TimeInterval?
+    // Tap health: the tap delivers buffers CONTINUOUSLY (zeros when the
+    // system is silent), so a stalled buffer flow means the tap died (e.g.
+    // an output-device change mid-meeting) — never mere silence.
+    private var lastTapBufferAt = Date()
+    private var lastTapRestartAt = Date.distantPast
+    // Diagnostics for the field test: windows cut / entries written.
+    private var statWindows = 0
+    private var statEntries = 0
+    private var ticksSinceHeartbeat = 0
 
     private struct Entry { let start: TimeInterval; let speaker: String; let text: String }
     private var pending: [Entry] = []
@@ -64,6 +73,25 @@ final class MeetingSession {
             guard let self, level >= 0.08 else { return }
             self.youLastLoud = self.now
         }
+        // The recorder retries a failing input for ~4.5 s on its own; this
+        // fires only when it truly gave up (device vanished). One delayed
+        // restart attempt — a meeting must not lose its You channel to a
+        // transient device hiccup, and must not spin on a permanent one.
+        mic.onRecoveryFailed = { [weak self] _ in
+            guard let self, self.isActive else { return }
+            Log.d("meeting: mic channel failed — retrying in 3s")
+            _ = self.mic.stop()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                guard let self, self.isActive else { return }
+                self.youWindowStart = self.now
+                self.mic.start()
+            }
+        }
+        lastTapBufferAt = Date()
+        lastTapRestartAt = .distantPast
+        statWindows = 0
+        statEntries = 0
+        ticksSinceHeartbeat = 0
         mic.start()
         isActive = true
         // 0.5 s cadence is the window-cut resolution — half the shortest
@@ -95,6 +123,7 @@ final class MeetingSession {
 
     private func appendThem(_ pcm: Data, peak: Double) {
         guard isActive, !stopping else { return }
+        lastTapBufferAt = Date()
         themPCM.append(pcm)
         if peak >= 0.02 { themLastLoud = now }
     }
@@ -102,6 +131,28 @@ final class MeetingSession {
     private func evaluateWindows() {
         guard isActive, !stopping else { return }
         let t = now
+
+        // Dead-tap self-healing: no buffers at all for 5 s = the tap is gone
+        // (an output-device change can kill the aggregate). Restart it, at
+        // most once per 30 s so a permanently broken tap doesn't thrash.
+        if Date().timeIntervalSince(lastTapBufferAt) > 5,
+           Date().timeIntervalSince(lastTapRestartAt) > 30 {
+            lastTapRestartAt = Date()
+            Log.d("meeting: tap buffer flow stalled — recreating the tap")
+            tap.stop()
+            do { try tap.start() } catch {
+                Log.d("meeting: tap restart failed: \(error.localizedDescription)")
+            }
+            lastTapBufferAt = Date()   // fresh grace for the restarted tap
+        }
+
+        // Once a minute: a heartbeat for the field-test log.
+        ticksSinceHeartbeat += 1
+        if ticksSinceHeartbeat >= 120 {
+            ticksSinceHeartbeat = 0
+            Log.d(String(format: "meeting: %.0f min, windows=%d entries=%d pending=%d inflight=%d",
+                         t / 60, statWindows, statEntries, pending.count, inflight.count))
+        }
 
         let youVerdict = MeetingPolicy.windowVerdict(
             accumulated: t - youWindowStart,
@@ -149,9 +200,14 @@ final class MeetingSession {
 
     private func transcribeWindow(pcm: Data, start: TimeInterval, channel: Channel) {
         inflightSeq += 1
+        statWindows += 1
         let key = "\(channel)#\(inflightSeq)"
         inflight[key] = start
-        let language = Settings.shared.language
+        // Meetings auto-detect the language PER UTTERANCE, ignoring the
+        // dictation language setting: a meeting is often not in the user's
+        // dictation language (English standup, mixed-language calls), and a
+        // pinned wrong language makes Whisper mangle the text.
+        let language = ""
         Task {
             let floats = AudioRecorder.floatSamples(fromPCM: pcm)
             // Silero gate: a window can pass the level heuristic on a cough
@@ -204,6 +260,7 @@ final class MeetingSession {
         for entry in pending.prefix(n) {
             write("**[\(clock(entry.start))] \(entry.speaker):** \(entry.text)\n\n")
         }
+        statEntries += n
         pending.removeFirst(n)
     }
 

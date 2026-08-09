@@ -63,9 +63,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         stopRipple()
         switch state {
         case .idle:
+            // A live meeting transcript shows as a red dot the whole time —
+            // an armed recording must never be invisible, and it doubles as
+            // the "don't forget to stop" reminder. Dictation states (below)
+            // still take over while a dictation is actually running.
             button.image = dictation.paused
                 ? coloredSymbol("mic.slash.fill", color: .systemGray)
-                : Self.waveIcon
+                : meetingActive()
+                    ? coloredSymbol("record.circle.fill", color: .systemRed)
+                    : Self.waveIcon
         case .recording:
             smoothedLevel = 0
             button.image = Self.waveImage(scale: { _ in 0.3 })
