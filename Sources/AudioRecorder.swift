@@ -515,6 +515,31 @@ final class AudioRecorder {
         withLock { samples }
     }
 
+    /// Hot capture switch for a dictation-key rollover: hands back everything
+    /// captured so far and KEEPS RECORDING into a fresh buffer on the same
+    /// live chain. No teardown, no attach, no generation bump. This is not an
+    /// optimization: rebuilding the engine at rollover pace (~every 2 s)
+    /// wedged coreaudiod in the field — first garbage full-scale buffers,
+    /// then pin status 'nope', then a HAL call that never returned and a
+    /// permanently stuck ioQueue, every capture 0 bytes until relaunch
+    /// (log 2026-08-09 12:02). The chain is healthy by definition here — it
+    /// was delivering audio a moment ago; the ONLY thing the next capture
+    /// needs is an empty buffer. Callers must read the level stats BEFORE
+    /// this call — they are reset for the next capture.
+    func rollover() -> (pcm: Data, duration: Double) {
+        let pcm: Data = withLock {
+            let p = samples
+            samples = Data()
+            _peakLevel = 0
+            clippedSamples = 0
+            totalSamples = 0
+            return p
+        }
+        let duration = Double(pcm.count) / Double(AudioRecorder.sampleRate * 2)
+        Log.d("audio: rollover captured=\(pcm.count)B (\(String(format: "%.2f", duration))s) foreign=\(sawForeignFormat) — chain stays hot")
+        return (pcm, duration)
+    }
+
     /// Stops recording. Returns (raw Int16 PCM, duration in seconds).
     func stop() -> (pcm: Data, duration: Double) {
         // Stop capturing and hand back the audio immediately (the caller needs

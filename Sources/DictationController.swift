@@ -349,9 +349,14 @@ final class DictationController {
         // while one is held can only mean "switch": finish the current
         // capture now and start the new one in its place. The old key's late
         // release is already filtered by handleRelease's translate-kind guard.
+        // The switch keeps the audio chain HOT (recorder.rollover): tearing
+        // down and rebuilding the engine at rollover pace wedged coreaudiod
+        // in the field (log 2026-08-09 12:02).
+        var hotChain = false
         if capturing, translate != activeTranslate {
-            Log.d("hotkey: key rollover — ending current capture to switch (translate \(activeTranslate) -> \(translate))")
-            endRecording()
+            Log.d("hotkey: key rollover — switching capture (translate \(activeTranslate) -> \(translate))")
+            endRecording(rollover: true)
+            hotChain = true
         }
         // The pipeline makes a press during recognition START RECORDING — the
         // mic is free the moment the previous capture stopped, and swallowing
@@ -363,6 +368,9 @@ final class DictationController {
                                               liveDelivering: liveEngine != nil,
                                               queuedJobs: jobQueue.count,
                                               maxQueued: Self.maxQueuedJobs) else {
+            // The rolled-over chain was kept hot for a capture that now can't
+            // start — nothing is consuming it, so actually stop it.
+            if hotChain { _ = recorder.stop() }
             Log.d("press ignored: capturing=\(capturing) live=\(liveEngine != nil) queued=\(jobQueue.count)")
             return
         }
@@ -386,12 +394,18 @@ final class DictationController {
         // Load the model while the user is speaking, so it's warm by the
         // time they release — hides the one-time warm-up behind the speech.
         preloadModel()
-        // start() returns immediately now: it hands the blocking input bring-up
-        // (which can take seconds on a cold/Bluetooth mic) to a background
-        // queue, so the pill renders and the UI stays responsive. It never
-        // fails synchronously — the recorder retries a not-yet-ready device and
-        // reports via onRecoveryFailed.
-        recorder.start()
+        if hotChain {
+            // The rolled-over chain never stopped delivering — the new capture
+            // is already recording into the freshly cleared buffer.
+            Log.d("audio: rolled-over capture rides the hot chain")
+        } else {
+            // start() returns immediately now: it hands the blocking input
+            // bring-up (which can take seconds on a cold/Bluetooth mic) to a
+            // background queue, so the pill renders and the UI stays
+            // responsive. It never fails synchronously — the recorder retries
+            // a not-yet-ready device and reports via onRecoveryFailed.
+            recorder.start()
+        }
         startLivePreview()
     }
 
@@ -724,7 +738,10 @@ final class DictationController {
         }
     }
 
-    private func endRecording() {
+    /// - Parameter rollover: the capture ends because the OTHER dictation key
+    ///   took over (key rollover). The audio chain is handed to the next
+    ///   capture hot instead of being torn down — see recorder.rollover().
+    private func endRecording(rollover: Bool = false) {
         guard capturing else { return }
         // Hold length = press→release, measured BEFORE anything that can
         // block: soundStop and the frontmostApplication XPC below stalled
@@ -736,7 +753,14 @@ final class DictationController {
         keyStateTimer?.invalidate()
         keyStateTimer = nil
         stopLivePreview()
-        let (pcm, duration) = recorder.stop()
+        // Level stats must be read BEFORE the buffer handoff: rollover()
+        // resets them for the next capture riding the same chain (stop()
+        // leaves them until the next start(), but one order serves both).
+        let peak = recorder.peakLevel
+        let clip = recorder.clippedFraction
+        let micForeign = recorder.sawForeignFormat
+        let micBusyApp = recorder.busyAppName
+        let (pcm, duration) = rollover ? recorder.rollover() : recorder.stop()
         Self.soundStop?.play()
         // App that was frontmost at the RELEASE — the intended paste target.
         // Captured at release, not press, so "hold key, click into the target
@@ -755,10 +779,10 @@ final class DictationController {
             // The message fires before the state change so an idle transition
             // doesn't hide it (same ordering as finish()).
             switch DictationPolicy.zeroCaptureVerdict(held: held,
-                                                      foreignHeld: recorder.sawForeignFormat) {
+                                                      foreignHeld: micForeign) {
             case .micBusy:
                 Log.d("empty after \(String(format: "%.1f", held))s hold -> mic busy")
-                onNotice?(.micBusy(recorder.busyAppName))
+                onNotice?(.micBusy(micBusyApp))
             case .none:
                 break
             default:
@@ -781,10 +805,10 @@ final class DictationController {
         let job = Job(pcm: pcm, duration: duration,
                       translate: activeTranslate,
                       targetPID: targetPID,
-                      peak: recorder.peakLevel,
-                      clip: recorder.clippedFraction,
-                      micForeign: recorder.sawForeignFormat,
-                      micBusyApp: recorder.busyAppName,
+                      peak: peak,
+                      clip: clip,
+                      micForeign: micForeign,
+                      micBusyApp: micBusyApp,
                       language: Settings.shared.language,
                       prompt: Settings.shared.prompt,
                       appleTarget: activeTranslate ? Settings.shared.translateTargetCode : nil,
