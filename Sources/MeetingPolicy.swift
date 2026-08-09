@@ -69,6 +69,20 @@ enum MeetingPolicy {
         }?.key
     }
 
+    /// What a channel contributes to the flush frontier. A window WITH
+    /// speech pins it at the first speech moment — that is the start its
+    /// eventual entry will carry. A silent window must NOT pin anything to
+    /// its (possibly ancient) window start: entries were held hostage for up
+    /// to the 10 s silent-reset and then dumped in a batch (field feedback
+    /// 2026-08-09 17:25 — "накапливает и вываливает кучей"). It only vouches
+    /// for the recent past: speech the VAD hasn't noticed yet can be at most
+    /// vadLag old, so anything older is safe to flush.
+    static func channelFrontier(windowStart: TimeInterval, firstSpeechAt: TimeInterval?,
+                                now: TimeInterval, vadLag: TimeInterval = 2.5) -> TimeInterval {
+        if let first = firstSpeechAt, first >= windowStart { return first }
+        return now - vadLag
+    }
+
     /// How many of the pending entries (sorted by window start) may be
     /// written out now. An entry is final only when no channel can still
     /// produce an EARLIER entry: both channels' current windows started after

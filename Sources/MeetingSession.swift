@@ -78,6 +78,12 @@ final class MeetingSession: ObservableObject {
     // a stale value ≥ silenceCut cuts the window.
     private var youLastSpeechAt: TimeInterval?
     private var themLastSpeechAt: TimeInterval?
+    /// When speech FIRST appeared in the current window — the entry's honest
+    /// timestamp (a window can start with seconds of silence) and the
+    /// channel's flush-frontier pin. Estimated as the VAD hit time minus the
+    /// tail length it inspected.
+    private var youFirstSpeechAt: TimeInterval?
+    private var themFirstSpeechAt: TimeInterval?
     private var youTailBusy = false
     private var themTailBusy = false
     // Tap health: the tap delivers buffers CONTINUOUSLY (zeros when the
@@ -132,8 +138,8 @@ final class MeetingSession: ObservableObject {
         pending = []
         inflight = [:]
         stopping = false
-        themWindowStart = 0; themLastSpeechAt = nil; themTailBusy = false
-        youWindowStart = 0; youLastSpeechAt = nil; youTailBusy = false
+        themWindowStart = 0; themLastSpeechAt = nil; themFirstSpeechAt = nil; themTailBusy = false
+        youWindowStart = 0; youLastSpeechAt = nil; youFirstSpeechAt = nil; youTailBusy = false
 
         displayEntries = []
         inflightCount = 0
@@ -376,7 +382,11 @@ final class MeetingSession: ObservableObject {
                     AudioRecorder.floatSamples(fromPCM: tail)) ?? true
                 await MainActor.run {
                     self.youTailBusy = false
-                    if speech, t >= self.youWindowStart { self.youLastSpeechAt = t }
+                    guard speech, t >= self.youWindowStart else { return }
+                    self.youLastSpeechAt = t
+                    if (self.youFirstSpeechAt ?? -1) < self.youWindowStart {
+                        self.youFirstSpeechAt = max(self.youWindowStart, t - 1.5)
+                    }
                 }
             }
         }
@@ -388,7 +398,11 @@ final class MeetingSession: ObservableObject {
                     AudioRecorder.floatSamples(fromPCM: tail)) ?? true
                 await MainActor.run {
                     self.themTailBusy = false
-                    if speech, t >= self.themWindowStart { self.themLastSpeechAt = t }
+                    guard speech, t >= self.themWindowStart else { return }
+                    self.themLastSpeechAt = t
+                    if (self.themFirstSpeechAt ?? -1) < self.themWindowStart {
+                        self.themFirstSpeechAt = max(self.themWindowStart, t - 1.5)
+                    }
                 }
             }
         }
@@ -446,11 +460,15 @@ final class MeetingSession: ObservableObject {
     private enum Channel { case you, them }
 
     private func cutYouWindow(transcribe shouldTranscribe: Bool) {
-        let start = youWindowStart
+        // The entry carries the moment speech STARTED, not the window's
+        // (possibly silence-padded) start — honest timestamps, free-flowing
+        // flush frontier.
+        let start = youFirstSpeechAt ?? youWindowStart
         // Hot rollover: hands back the window and keeps recording — the same
         // no-teardown path the dictation key rollover uses.
         let (pcm, duration) = mic.rollover()
         youWindowStart = now
+        youFirstSpeechAt = nil
         livePreview = nil   // the final entry supersedes the hypothesis
         Log.d(String(format: "meeting: cut you %.1fs %@", duration,
                      shouldTranscribe ? "speech" : "silence"))
@@ -459,10 +477,11 @@ final class MeetingSession: ObservableObject {
     }
 
     private func cutThemWindow(transcribe shouldTranscribe: Bool) {
-        let start = themWindowStart
+        let start = themFirstSpeechAt ?? themWindowStart
         let pcm = themPCM
         themPCM = Data()
         themWindowStart = now
+        themFirstSpeechAt = nil
         livePreview = nil   // the final entry supersedes the hypothesis
         let duration = Double(pcm.count) / Double(AudioRecorder.sampleRate * 2)
         Log.d(String(format: "meeting: cut them %.1fs %@", duration,
@@ -539,8 +558,16 @@ final class MeetingSession: ObservableObject {
     private func flushReadyEntries() {
         pending.sort { $0.start < $1.start }
         // While stopping there are no live windows — only in-flight
-        // recognitions gate the flush.
-        let frontiers = stopping ? [] : [youWindowStart, themWindowStart]
+        // recognitions gate the flush. Live frontiers pin only where speech
+        // actually is; a silent channel vouches for all but the last ~2.5 s
+        // (see MeetingPolicy.channelFrontier — the batched-dump fix).
+        let t = now
+        let frontiers = stopping ? [] : [
+            MeetingPolicy.channelFrontier(windowStart: youWindowStart,
+                                          firstSpeechAt: youFirstSpeechAt, now: t),
+            MeetingPolicy.channelFrontier(windowStart: themWindowStart,
+                                          firstSpeechAt: themFirstSpeechAt, now: t),
+        ]
         let n = MeetingPolicy.flushableCount(sortedStarts: pending.map(\.start),
                                              channelFrontiers: frontiers,
                                              inflightStarts: Array(inflight.values))

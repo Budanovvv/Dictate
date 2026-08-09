@@ -43,6 +43,31 @@ final class MeetingWindowVerdictTests: XCTestCase {
     }
 }
 
+/// The flush frontier per channel: speech pins it, silence must not — a
+/// silent channel's ancient window start once held finished entries hostage
+/// for up to 10 s and dumped them in a batch (field run 2026-08-09 17:25).
+final class ChannelFrontierTests: XCTestCase {
+
+    func testSpeechWindowPinsAtFirstSpeech() {
+        XCTAssertEqual(MeetingPolicy.channelFrontier(windowStart: 10, firstSpeechAt: 14, now: 20),
+                       14)
+    }
+
+    func testSilentWindowOnlyVouchesForTheRecentPast() {
+        // Window started at 10, silent for 10 s: entries older than now−2.5
+        // must flow — the frontier trails now, not the stale window start.
+        XCTAssertEqual(MeetingPolicy.channelFrontier(windowStart: 10, firstSpeechAt: nil, now: 20),
+                       17.5)
+    }
+
+    func testStaleFirstSpeechFromPreviousWindowIgnored() {
+        // firstSpeech belongs to an already-cut window (before windowStart):
+        // treat as silent.
+        XCTAssertEqual(MeetingPolicy.channelFrontier(windowStart: 10, firstSpeechAt: 4, now: 20),
+                       17.5)
+    }
+}
+
 /// Auto-stop when the call ends: both signals must hold, and a session whose
 /// mic was NEVER held by another app (a room recording, no browser call)
 /// never auto-stops — "mic free" proves nothing there.
