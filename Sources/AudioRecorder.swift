@@ -717,6 +717,25 @@ final class AudioRecorder {
         }
     }
 
+    /// Convenience for callers without precomputed energies (meeting
+    /// windows): computes the per-100ms RMS profile and trims with it.
+    static func trimSilence(_ floats: [Float]) -> [Float] {
+        let window = sampleRate / 10
+        var energies: [Double] = []
+        var i = 0
+        while i < floats.count {
+            let end = min(i + window, floats.count)
+            var e: Double = 0
+            for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
+            energies.append((e / Double(end - i)).squareRoot())
+            i = end
+        }
+        let sorted = energies.sorted()
+        guard !sorted.isEmpty else { return floats }
+        let p90 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.9))]
+        return trimSilence(floats, energies: energies, window: window, p90: p90)
+    }
+
     /// Drops pure-silence windows from the head and tail, keeping a margin so a
     /// quiet onset/offset survives. `energies` is the per-`window` RMS in
     /// temporal order; `p90` its 90th percentile. Returns the original array

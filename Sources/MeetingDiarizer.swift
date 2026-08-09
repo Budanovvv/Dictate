@@ -32,7 +32,20 @@ actor MeetingDiarizer {
                 .appendingPathComponent("Dictate", isDirectory: true)
                 .appendingPathComponent("models", isDirectory: true)
                 .appendingPathComponent("diarizer", isDirectory: true)
+            // Incomplete-download marker, the Whisper-model lesson: a crash
+            // mid-download must not leave half-models that fail every later
+            // prepare. Marker present = last attempt never finished — wipe
+            // and re-download cleanly.
+            let fm = FileManager.default
+            let marker = dir.appendingPathComponent(".incomplete")
+            if fm.fileExists(atPath: marker.path) {
+                Log.d("meeting: diarizer models incomplete — clean re-download")
+                try? fm.removeItem(at: dir)
+            }
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            fm.createFile(atPath: marker.path, contents: nil)
             let models = try await DiarizerModels.downloadIfNeeded(to: dir)
+            try? fm.removeItem(at: marker)
             manager.initialize(models: models)
             ready = true
             Log.d("meeting: diarizer ready")

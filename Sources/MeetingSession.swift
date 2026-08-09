@@ -85,6 +85,19 @@ final class MeetingSession: ObservableObject {
         let text: String
         let you: Bool
     }
+
+    /// Keeps the Mac awake while a session runs: the browser usually holds
+    /// its own assertion during a call, but the recording must survive the
+    /// call tab closing early or a meeting happening outside the browser —
+    /// system sleep would silently kill both capture chains (the sleep
+    /// grabla, meeting edition).
+    private var powerActivity: NSObjectProtocol?
+    /// Recognition backpressure: with this many windows already in the
+    /// Whisper queue, speech cuts are held (windows keep accumulating and
+    /// merge) — the dictation pipeline's maxQueuedJobs lesson. Unbounded
+    /// growth here would eat memory and make Stop "drain" for minutes.
+    private static let maxInflightWindows = 4
+    private var backpressureLogged = false
     private var pending: [Entry] = []
     private var inflight: [String: TimeInterval] = [:]   // key → window start
     private var inflightSeq = 0
@@ -113,6 +126,17 @@ final class MeetingSession: ObservableObject {
         // Voice separation warms up in parallel (first ever run downloads its
         // CoreML models); until it's ready Them-entries just stay collective.
         Task { await diarizer.startSession(); await diarizer.prepare() }
+        // Whisper warms up too: a meeting started right after app launch
+        // would otherwise lose its first windows to a not-yet-loaded model
+        // (the "warm-up fired once and died silently" onboarding grabla).
+        Task {
+            do { try await WhisperEngine.shared.prepare(tier: .fast) { _ in } }
+            catch { Log.d("meeting: whisper prepare failed: \(error.localizedDescription)") }
+        }
+        powerActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.idleSystemSleepDisabled, .userInitiated],
+            reason: "Meeting transcript recording")
+        backpressureLogged = false
         try tap.start()   // first run triggers the system-audio TCC prompt
         tap.onBuffer = { [weak self] pcm, peak in
             DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
@@ -163,6 +187,10 @@ final class MeetingSession: ObservableObject {
         isActive = false
         listeningFor = nil
         livePreview = nil
+        if let activity = powerActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            powerActivity = nil
+        }
         Log.d("meeting: session stopping, \(inflight.count) window(s) still recognizing")
         finalizeIfDrained()
     }
@@ -217,13 +245,25 @@ final class MeetingSession: ObservableObject {
         let newListening = oldestSpeech.map { Int(t - $0) }
         if newListening != listeningFor { listeningFor = newListening }
 
+        // Backpressure: a saturated recognition queue holds speech cuts —
+        // the windows keep accumulating and merge into one bigger utterance
+        // instead of growing an unbounded backlog. Silence drops still run
+        // (they cost no recognition).
+        let saturated = inflight.count >= Self.maxInflightWindows
+        if saturated != backpressureLogged {
+            backpressureLogged = saturated
+            Log.d(saturated
+                ? "meeting: recognition backlog (\(inflight.count)) — holding window cuts"
+                : "meeting: recognition backlog cleared")
+        }
+
         let youVerdict = MeetingPolicy.windowVerdict(
             accumulated: t - youWindowStart,
             hadSpeech: (youLastSpeechAt ?? -1) >= youWindowStart,
             sinceLoud: t - (youLastSpeechAt ?? -.infinity))
         switch youVerdict {
         case .keep: break
-        case .cutTranscribe: cutYouWindow(transcribe: true)
+        case .cutTranscribe: if !saturated { cutYouWindow(transcribe: true) }
         case .dropSilence: cutYouWindow(transcribe: false)
         }
 
@@ -233,7 +273,7 @@ final class MeetingSession: ObservableObject {
             sinceLoud: t - (themLastSpeechAt ?? -.infinity))
         switch themVerdict {
         case .keep: break
-        case .cutTranscribe: cutThemWindow(transcribe: true)
+        case .cutTranscribe: if !saturated { cutThemWindow(transcribe: true) }
         case .dropSilence: cutThemWindow(transcribe: false)
         }
 
@@ -371,10 +411,20 @@ final class MeetingSession: ObservableObject {
                 if channel == .them {
                     ordinal = await self.diarizer.speakerOrdinal(floats: floats, atTime: start)
                 }
+                // Late-start safety: if the model still isn't loaded (meeting
+                // started seconds after app launch), load it now instead of
+                // silently losing this window.
+                if !(await WhisperEngine.shared.isReady(for: .fast)) {
+                    try? await WhisperEngine.shared.prepare(tier: .fast) { _ in }
+                }
+                // Edge silence is trimmed exactly like a dictation's (edge
+                // hallucinations, speed); the VAD gate above saw the FULL
+                // window, and the diarizer did too (its offsets stay honest).
+                let speechFloats = AudioRecorder.trimSilence(floats)
                 // No user prompt and no replacements: a meeting transcript is
                 // a verbatim record, not a dictation being typed.
                 text = (try? await WhisperEngine.shared.transcribe(
-                    floats: floats, tier: .fast, language: language, prompt: "",
+                    floats: speechFloats, tier: .fast, language: language, prompt: "",
                     isCancelled: { self.cancelled.isCancelled }))?.0 ?? ""
             }
             await MainActor.run {

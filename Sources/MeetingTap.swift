@@ -30,11 +30,19 @@ final class MeetingTap {
 
     enum TapError: Error, LocalizedError {
         case coreAudio(String, OSStatus)
+        /// Creating the tap is the permission-gated step: a refusal here is
+        /// almost always the denied "system audio recording" TCC — say where
+        /// to fix it instead of showing a bare OSStatus (the Accessibility
+        /// dead-end grabla taught what a mute permission failure costs).
+        case permissionLikely(OSStatus)
         var errorDescription: String? {
-            if case let .coreAudio(what, st) = self {
+            switch self {
+            case let .coreAudio(what, st):
                 return "\(what) failed (\(st))"
+            case let .permissionLikely(st):
+                return L("System audio recording is not allowed. Enable Dictate in System Settings → Privacy & Security → Screen & System Audio Recording, then try again.")
+                    + " (\(st))"
             }
-            return nil
         }
     }
 
@@ -66,7 +74,11 @@ final class MeetingTap {
         let desc = CATapDescription(monoGlobalTapButExcludeProcesses: excluded)
         desc.name = "Dictate meeting tap"
         desc.isPrivate = true
-        try require(AudioHardwareCreateProcessTap(desc, &tapID), "create process tap")
+        let createStatus = AudioHardwareCreateProcessTap(desc, &tapID)
+        guard createStatus == noErr else {
+            Log.d("meeting: create process tap failed status=\(createStatus)")
+            throw TapError.permissionLikely(createStatus)
+        }
 
         var fmtAddr = AudioObjectPropertyAddress(
             mSelector: kAudioTapPropertyFormat,
