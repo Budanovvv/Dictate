@@ -34,6 +34,21 @@ enum MeetingPolicy {
         return sinceLoud >= silenceCut ? .cutTranscribe : .keep
     }
 
+    /// Whether the call this session was recording has most likely ended —
+    /// the auto-stop rule. Two independent signals must BOTH hold for the
+    /// threshold: no other app has held the mic (the meeting app releases it
+    /// when the call ends) and the remote channel has heard no speech. The
+    /// sawForeignHold gate keeps a room recording (no browser call — the mic
+    /// was never held by anyone else) on manual stop only: for it, "mic
+    /// free" proves nothing. Privacy rationale: silently recording the room
+    /// AFTER a call is the worst failure mode; a false stop costs one click.
+    static func callLikelyOver(sawForeignHold: Bool,
+                               micFreeFor: TimeInterval,
+                               remoteQuietFor: TimeInterval,
+                               threshold: TimeInterval = 60) -> Bool {
+        sawForeignHold && micFreeFor >= threshold && remoteQuietFor >= threshold
+    }
+
     // NOTE: pause detection deliberately has NO energy-threshold helpers
     // here. Fixed 0.08 failed on the no-AEC busy-mic path, and an adaptive
     // noise floor failed the same afternoon (the owner out-talked it) —

@@ -106,6 +106,14 @@ final class MeetingSession: ObservableObject {
     /// growth here would eat memory and make Stop "drain" for minutes.
     private static let maxInflightWindows = 4
     private var backpressureLogged = false
+
+    // Auto-stop when the call ends: while a call runs, the meeting app holds
+    // the mic (the busy-mic detector's own machinery says who); when it
+    // releases AND the remote channel stays speechless, the call is over —
+    // keeping the room recording after that is a privacy failure.
+    private var sawForeignMicHold = false
+    private var lastOtherMicUserAt: TimeInterval = 0
+    private var micPollTicks = 0
     private var pending: [Entry] = []
     private var inflight: [String: TimeInterval] = [:]   // key → window start
     private var inflightSeq = 0
@@ -175,6 +183,9 @@ final class MeetingSession: ObservableObject {
         statWindows = 0
         statEntries = 0
         ticksSinceHeartbeat = 0
+        sawForeignMicHold = false
+        lastOtherMicUserAt = 0
+        micPollTicks = 0
         // The window's equalizer: mic level drives it directly (delivered on
         // main by AudioRecorder); the tap side feeds it from appendThem.
         mic.onLevel = { [weak self] level in
@@ -246,6 +257,31 @@ final class MeetingSession: ObservableObject {
                 Log.d("meeting: tap restart failed: \(error.localizedDescription)")
             }
             lastTapBufferAt = Date()   // fresh grace for the restarted tap
+        }
+
+        // Call-end detection, every ~5 s: does any OTHER app still hold the
+        // mic? (Our own recorder is excluded.) The enumeration is the same
+        // Core Audio process walk the busy-mic culprit naming uses.
+        micPollTicks += 1
+        if micPollTicks >= 10 {
+            micPollTicks = 0
+            let ourPID = ProcessInfo.processInfo.processIdentifier
+            if !AudioInputDevices.appsRunningInput(excluding: ourPID).isEmpty {
+                if !sawForeignMicHold {
+                    sawForeignMicHold = true
+                    Log.d("meeting: call detected (another app holds the mic)")
+                }
+                lastOtherMicUserAt = t
+            }
+            let remoteQuietFor = t - (themLastSpeechAt ?? 0)
+            if MeetingPolicy.callLikelyOver(sawForeignHold: sawForeignMicHold,
+                                            micFreeFor: t - lastOtherMicUserAt,
+                                            remoteQuietFor: remoteQuietFor) {
+                Log.d(String(format: "meeting: call over (mic free %.0fs, remote quiet %.0fs) — auto-stopping",
+                             t - lastOtherMicUserAt, remoteQuietFor))
+                stop()
+                return
+            }
         }
 
         // Once a minute: a heartbeat for the field-test log.
