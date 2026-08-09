@@ -21,6 +21,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// Invisible 1×1 panel hosting the Apple Translation session (the
     /// framework only works through a SwiftUI view — see AppleTranslator).
     private var translatorHostPanel: NSPanel?
+    /// Local meeting transcription (mic = You, system audio tap = Them).
+    private let meeting = MeetingSession()
+
+    /// Menu toggle for the meeting transcript. The first start of every
+    /// session shows a consent reminder: recording call participants without
+    /// their knowledge is illegal in many jurisdictions, and a menu click
+    /// must not silently become a law problem. Everything is processed
+    /// locally — the dialog says so.
+    private func toggleMeetingTranscript() {
+        if meeting.isActive {
+            meeting.stop()
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = L("Record this meeting?")
+        alert.informativeText = L("Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.")
+        alert.addButton(withTitle: L("Start"))
+        alert.addButton(withTitle: L("Cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try meeting.start()
+        } catch {
+            statusController.showError(Lf("Couldn't start the meeting transcript: %@",
+                                          error.localizedDescription))
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
@@ -47,8 +74,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             checkForUpdates: { [weak self] in
                 NSApp.activate(ignoringOtherApps: true)
                 self?.updater.checkForUpdates(nil)
-            }
+            },
+            meetingActive: { [weak self] in self?.meeting.isActive ?? false },
+            toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() }
         )
+        meeting.onFinished = { url in
+            // The finished transcript opens itself — the payoff moment; no
+            // extra pill or dialog needed.
+            NSWorkspace.shared.open(url)
+        }
         dictation.onError = { [weak self] message in
             DispatchQueue.main.async { self?.statusController.showError(message) }
         }
@@ -153,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if meeting.isActive { meeting.stop() }
         dictation.shutdown()
     }
 

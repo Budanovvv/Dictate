@@ -7,15 +7,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let dictation: DictationController
     private let openSettings: () -> Void
     private let checkForUpdates: () -> Void
+    private let meetingActive: () -> Bool
+    private let toggleMeeting: () -> Void
     private var lastError: String?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
-         checkForUpdates: @escaping () -> Void) {
+         checkForUpdates: @escaping () -> Void,
+         meetingActive: @escaping () -> Bool,
+         toggleMeeting: @escaping () -> Void) {
         self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.dictation = dictation
         self.openSettings = openSettings
         self.checkForUpdates = checkForUpdates
+        self.meetingActive = meetingActive
+        self.toggleMeeting = toggleMeeting
         super.init()
 
         item.button?.toolTip = L("Dictate — voice dictation")
@@ -192,6 +198,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pause.target = self
         menu.addItem(pause)
 
+        // Meeting transcript: local two-channel recording of a browser call
+        // (mic = You, system audio = Them). A red dot marks a live session so
+        // an armed recording is never invisible.
+        let meeting = NSMenuItem(
+            title: meetingActive() ? "🔴 " + L("Stop Meeting Transcript") : L("Start Meeting Transcript"),
+            action: #selector(meetingClicked), keyEquivalent: ""
+        )
+        meeting.target = self
+        menu.addItem(meeting)
+
         let settings = NSMenuItem(title: L("Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -225,6 +241,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func settingsClicked() {
         openSettings()
+    }
+
+    @objc private func meetingClicked() {
+        toggleMeeting()
     }
 
     @objc private func updatesClicked() {

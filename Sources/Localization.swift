@@ -101,6 +101,16 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Start Meeting Transcript": "Начать транскрипт встречи",
+        "Stop Meeting Transcript": "Остановить транскрипт встречи",
+        "You": "Вы",
+        "Them": "Собеседники",
+        "Meeting transcript": "Транскрипт встречи",
+        "Record this meeting?": "Записать эту встречу?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate расшифровывает звонок локально на этом Mac — наружу ничего не уходит. Убедитесь, что собеседники не против записи: во многих странах требуется их согласие.",
+        "Start": "Начать",
+        "Cancel": "Отмена",
+        "Couldn't start the meeting transcript: %@": "Не удалось начать транскрипт встречи: %@",
         "Automatic (any language)": "Автоматически (любой язык)",
         "detect while you speak": "определяется на ходу",
         "Search language…": "Поиск языка…",
@@ -256,6 +266,16 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Start Meeting Transcript": "Почати транскрипт зустрічі",
+        "Stop Meeting Transcript": "Зупинити транскрипт зустрічі",
+        "You": "Ви",
+        "Them": "Співрозмовники",
+        "Meeting transcript": "Транскрипт зустрічі",
+        "Record this meeting?": "Записати цю зустріч?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate розшифровує дзвінок локально на цьому Mac — назовні нічого не йде. Переконайтеся, що співрозмовники не проти запису: у багатьох країнах потрібна їхня згода.",
+        "Start": "Почати",
+        "Cancel": "Скасувати",
+        "Couldn't start the meeting transcript: %@": "Не вдалося почати транскрипт зустрічі: %@",
         "Automatic (any language)": "Автоматично (будь-яка мова)",
         "detect while you speak": "визначається на ходу",
         "Search language…": "Пошук мови…",
@@ -402,6 +422,16 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Start Meeting Transcript": "Iniciar transcripción de la reunión",
+        "Stop Meeting Transcript": "Detener transcripción de la reunión",
+        "You": "Tú",
+        "Them": "Ellos",
+        "Meeting transcript": "Transcripción de la reunión",
+        "Record this meeting?": "¿Grabar esta reunión?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate transcribe la llamada localmente en este Mac: nada sale del equipo. Asegúrate de que los demás participantes estén de acuerdo con la transcripción: en muchos lugares se requiere su consentimiento.",
+        "Start": "Iniciar",
+        "Cancel": "Cancelar",
+        "Couldn't start the meeting transcript: %@": "No se pudo iniciar la transcripción de la reunión: %@",
         "Automatic (any language)": "Automático (cualquier idioma)",
         "detect while you speak": "se detecta al hablar",
         "Search language…": "Buscar idioma…",
@@ -557,6 +587,16 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Start Meeting Transcript": "Iniciar transcrição da reunião",
+        "Stop Meeting Transcript": "Parar transcrição da reunião",
+        "You": "Você",
+        "Them": "Eles",
+        "Meeting transcript": "Transcrição da reunião",
+        "Record this meeting?": "Gravar esta reunião?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "O Dictate transcreve a chamada localmente neste Mac — nada sai do computador. Verifique se os outros participantes concordam com a transcrição: em muitos lugares o consentimento deles é exigido.",
+        "Start": "Iniciar",
+        "Cancel": "Cancelar",
+        "Couldn't start the meeting transcript: %@": "Não foi possível iniciar a transcrição da reunião: %@",
         "Automatic (any language)": "Automático (qualquer idioma)",
         "detect while you speak": "detectado enquanto você fala",
         "Search language…": "Buscar idioma…",
@@ -712,6 +752,16 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Start Meeting Transcript": "Démarrer la transcription de la réunion",
+        "Stop Meeting Transcript": "Arrêter la transcription de la réunion",
+        "You": "Vous",
+        "Them": "Eux",
+        "Meeting transcript": "Transcription de la réunion",
+        "Record this meeting?": "Enregistrer cette réunion ?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate transcrit l’appel localement sur ce Mac — rien ne quitte l’ordinateur. Assurez-vous que les autres participants acceptent la transcription : leur consentement est requis dans de nombreux pays.",
+        "Start": "Démarrer",
+        "Cancel": "Annuler",
+        "Couldn't start the meeting transcript: %@": "Impossible de démarrer la transcription de la réunion : %@",
         "Automatic (any language)": "Automatique (toute langue)",
         "detect while you speak": "détecté pendant que vous parlez",
         "Search language…": "Rechercher une langue…",
@@ -867,6 +917,16 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Start Meeting Transcript": "Meeting-Transkript starten",
+        "Stop Meeting Transcript": "Meeting-Transkript stoppen",
+        "You": "Sie",
+        "Them": "Andere",
+        "Meeting transcript": "Meeting-Transkript",
+        "Record this meeting?": "Dieses Meeting aufzeichnen?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate transkribiert den Anruf lokal auf diesem Mac — nichts verlässt das Gerät. Stellen Sie sicher, dass die anderen Teilnehmer mit der Transkription einverstanden sind: Vielerorts ist ihre Zustimmung erforderlich.",
+        "Start": "Starten",
+        "Cancel": "Abbrechen",
+        "Couldn't start the meeting transcript: %@": "Meeting-Transkript konnte nicht gestartet werden: %@",
         "Automatic (any language)": "Automatisch (jede Sprache)",
         "detect while you speak": "wird beim Sprechen erkannt",
         "Search language…": "Sprache suchen…",
@@ -1022,6 +1082,16 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Start Meeting Transcript": "开始会议转录",
+        "Stop Meeting Transcript": "停止会议转录",
+        "You": "你",
+        "Them": "对方",
+        "Meeting transcript": "会议转录",
+        "Record this meeting?": "录制此会议？",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate 在这台 Mac 上本地转录通话——任何内容都不会离开设备。请确认其他参与者同意转录：许多地区需要征得他们的同意。",
+        "Start": "开始",
+        "Cancel": "取消",
+        "Couldn't start the meeting transcript: %@": "无法开始会议转录：%@",
         "Automatic (any language)": "自动（任何语言）",
         "detect while you speak": "说话时自动识别",
         "Search language…": "搜索语言…",
@@ -1177,6 +1247,16 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Start Meeting Transcript": "会議の文字起こしを開始",
+        "Stop Meeting Transcript": "会議の文字起こしを停止",
+        "You": "あなた",
+        "Them": "相手",
+        "Meeting transcript": "会議の文字起こし",
+        "Record this meeting?": "この会議を記録しますか？",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate はこの Mac 上でローカルに通話を文字起こしします。データが外部に出ることはありません。他の参加者が文字起こしに同意していることを確認してください。多くの地域では同意が必要です。",
+        "Start": "開始",
+        "Cancel": "キャンセル",
+        "Couldn't start the meeting transcript: %@": "会議の文字起こしを開始できませんでした: %@",
         "Automatic (any language)": "自動（すべての言語）",
         "detect while you speak": "話しながら判別",
         "Search language…": "言語を検索…",
@@ -1332,6 +1412,16 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Start Meeting Transcript": "회의 전사 시작",
+        "Stop Meeting Transcript": "회의 전사 중지",
+        "You": "나",
+        "Them": "상대방",
+        "Meeting transcript": "회의 전사",
+        "Record this meeting?": "이 회의를 기록할까요?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate는 이 Mac에서 로컬로 통화를 전사합니다. 어떤 것도 기기를 떠나지 않습니다. 다른 참가자가 전사에 동의하는지 확인하세요. 많은 지역에서 동의가 필요합니다.",
+        "Start": "시작",
+        "Cancel": "취소",
+        "Couldn't start the meeting transcript: %@": "회의 전사를 시작할 수 없습니다: %@",
         "Automatic (any language)": "자동 (모든 언어)",
         "detect while you speak": "말하는 동안 감지",
         "Search language…": "언어 검색…",
@@ -1487,6 +1577,16 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Start Meeting Transcript": "Bắt đầu ghi biên bản cuộc họp",
+        "Stop Meeting Transcript": "Dừng ghi biên bản cuộc họp",
+        "You": "Bạn",
+        "Them": "Họ",
+        "Meeting transcript": "Biên bản cuộc họp",
+        "Record this meeting?": "Ghi lại cuộc họp này?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate ghi biên bản cuộc gọi ngay trên máy Mac này — không có gì rời khỏi máy. Hãy chắc chắn những người tham gia khác đồng ý với việc ghi biên bản: nhiều nơi yêu cầu sự đồng ý của họ.",
+        "Start": "Bắt đầu",
+        "Cancel": "Huỷ",
+        "Couldn't start the meeting transcript: %@": "Không thể bắt đầu biên bản cuộc họp: %@",
         "Automatic (any language)": "Tự động (mọi ngôn ngữ)",
         "detect while you speak": "nhận diện khi bạn nói",
         "Search language…": "Tìm ngôn ngữ…",
@@ -1642,6 +1742,16 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Start Meeting Transcript": "Simulan ang Transcript ng Meeting",
+        "Stop Meeting Transcript": "Ihinto ang Transcript ng Meeting",
+        "You": "Ikaw",
+        "Them": "Sila",
+        "Meeting transcript": "Transcript ng meeting",
+        "Record this meeting?": "I-record ang meeting na ito?",
+        "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Lokal na tina-transcribe ng Dictate ang tawag sa Mac na ito — walang lumalabas sa device. Siguraduhing payag ang ibang kalahok sa transcription: maraming lugar ang nangangailangan ng kanilang pahintulot.",
+        "Start": "Simulan",
+        "Cancel": "Kanselahin",
+        "Couldn't start the meeting transcript: %@": "Hindi masimulan ang transcript ng meeting: %@",
         "Automatic (any language)": "Awtomatiko (anumang wika)",
         "detect while you speak": "natutukoy habang nagsasalita",
         "Search language…": "Maghanap ng wika…",
