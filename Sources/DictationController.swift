@@ -48,17 +48,82 @@ final class DictationController {
 
     private let monitor = HotkeyMonitor()
     private let recorder = AudioRecorder()
+    /// Public state, DERIVED from the pipeline (see updateDerivedState): a
+    /// live capture shows as .recording even while earlier dictations are
+    /// still being recognized behind it. Everything the HUD and menu knew
+    /// about the old linear machine stays true.
     private(set) var state: State = .idle {
         didSet { onStateChange?(state) }
     }
 
+    // MARK: - Dictation pipeline
+    //
+    // Recording, recognizing and pasting overlap: the user can hold the key
+    // for dictation N+1 while N is still recognizing and N−1 is being pasted.
+    // A press during recognition used to be silently swallowed — and the
+    // owner's natural rhythm hit that window three times in two minutes.
+    // Capture stays single (one key, one mic); everything after release is a
+    // Job in a strictly ordered FIFO handled by one processor at a time, so
+    // results can never paste out of order.
+
+    /// Everything one released dictation needs downstream, snapshotted at the
+    /// release — instance state belongs to the CURRENT capture and may be
+    /// overwritten before this job reaches the paster.
+    private struct Job {
+        let pcm: Data
+        let duration: Double
+        let translate: Bool
+        let targetPID: pid_t?
+        let peak: Double
+        let clip: Double
+        let micForeign: Bool
+        let micBusyApp: String?
+        let language: String
+        let prompt: String
+        let appleTarget: String?
+        let token: CancelToken
+    }
+
+    /// True from press to release — the one live capture.
+    private var capturing = false
+    /// Released dictations waiting for recognition, oldest first.
+    private var jobQueue: [Job] = []
+    /// A job is in the processor (transcribe → translate → paste).
+    private var processing = false
+    /// Notices raised for finished jobs while the user was already recording
+    /// the next dictation — held so they can't replace the live recording
+    /// pill, delivered when that capture ends.
+    private var pendingNotices: [Notice] = []
+    private static let maxQueuedJobs = 3
+
+    /// The single place `state` is assigned. Capture outranks the pipeline in
+    /// what the user sees; equal values don't re-fire onStateChange.
+    private func updateDerivedState() {
+        let derived: State = capturing ? .recording
+            : (processing || !jobQueue.isEmpty) ? .transcribing
+            : .idle
+        if derived != state { state = derived }
+    }
+
+    /// Route for job outcomes: shown immediately when the pill is free,
+    /// deferred while a new capture owns it.
+    private func emit(_ notice: Notice) {
+        if capturing { pendingNotices.append(notice) } else { onNotice?(notice) }
+    }
+
+    private func flushPendingNotices() {
+        for notice in pendingNotices { onNotice?(notice) }
+        pendingNotices.removeAll()
+    }
+
     var paused = false {
         didSet {
-            if paused, state == .recording {
+            if paused, capturing {
                 stopLivePreview()
                 resetLiveTyping()
                 _ = recorder.stop()
-                state = .idle
+                capturing = false
+                updateDerivedState()
             }
         }
     }
@@ -94,11 +159,6 @@ final class DictationController {
     /// tap (released almost immediately) from a real attempt that captured no
     /// audio, so only the latter gets a "didn't hear you" message.
     private var pressedAt: Date?
-    /// App that was frontmost when the key was RELEASED — the intended paste
-    /// target. Captured at release, not press, so "hold key, click into the
-    /// target field, speak" stays legal; the guard covers only the recognition
-    /// window, where an app switch would send ⌘V to the wrong place.
-    private var targetAppPID: pid_t?
     /// Cancels the in-flight recognition. Held so Esc can flip it: the
     /// WhisperKit decode callback reads it from a background thread to stop
     /// early, and finish() reads it to discard a partial result. Thread-safe
@@ -169,17 +229,21 @@ final class DictationController {
             }
         }
         recorder.onMicBusyDetected = { [weak self] in
-            guard let self, self.state == .recording else { return }
+            guard let self, self.capturing else { return }
             let app = self.recorder.busyAppName
             _ = self.recorder.stop()
+            self.capturing = false
+            self.flushPendingNotices()
             Log.d("mic busy detected early -> stop + notify")
-            self.onNotice?(.micBusy(app))   // before .idle so the idle transition can't hide it
-            self.state = .idle
+            self.onNotice?(.micBusy(app))   // before the state change so it can't be hidden
+            self.updateDerivedState()
         }
         recorder.onRecoveryFailed = { [weak self] nothingRecorded in
-            guard let self, self.state == .recording else { return }
+            guard let self, self.capturing else { return }
             _ = self.recorder.stop()
-            self.state = .idle
+            self.capturing = false
+            self.flushPendingNotices()
+            self.updateDerivedState()
             self.onError?(nothingRecorded
                 ? Lf("Couldn't start recording: %@", L("Microphone unavailable (no input audio format)"))
                 : L("Audio device changed during recording — recording cancelled, please try again."))
@@ -250,7 +314,12 @@ final class DictationController {
         monitor.stop()
         stopLivePreview()
         resetLiveTyping()
-        if state == .recording { _ = recorder.stop() }
+        if capturing { _ = recorder.stop() }
+        capturing = false
+        activeCancel?.cancel()
+        transcribeTask?.cancel()
+        for job in jobQueue { job.token.cancel() }
+        jobQueue.removeAll()
     }
 
     private func isTranslateKey(_ code: Int64) -> Bool {
@@ -272,10 +341,24 @@ final class DictationController {
     }
 
     private func beginRecording(key code: Int64, translate: Bool) {
-        guard !paused, state == .idle else { return }
+        guard !paused else { return }
+        // The pipeline makes a press during recognition START RECORDING — the
+        // mic is free the moment the previous capture stopped, and swallowing
+        // the press lost the first words of the next thought. Only three
+        // things still block a capture: one is already running, live typing is
+        // still delivering into the document (a second writer would interleave
+        // with it), or the queue is at its cap.
+        guard DictationPolicy.mayBeginCapture(capturing: capturing,
+                                              liveDelivering: liveEngine != nil,
+                                              queuedJobs: jobQueue.count,
+                                              maxQueued: Self.maxQueuedJobs) else {
+            Log.d("press ignored: capturing=\(capturing) live=\(liveEngine != nil) queued=\(jobQueue.count)")
+            return
+        }
         activeTranslate = translate
         pressedAt = Date()
-        state = .recording
+        capturing = true
+        updateDerivedState()
         startKeyStateWatchdog(key: code)
         Self.soundStart?.play()
         // Wake the target app's accessibility tree now, while the user speaks:
@@ -319,7 +402,7 @@ final class DictationController {
         keyStateTimer?.invalidate()
         keyStateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
-            guard state == .recording else {
+            guard capturing else {
                 keyStateTimer?.invalidate()
                 keyStateTimer = nil
                 return
@@ -355,7 +438,11 @@ final class DictationController {
     }
 
     private func previewTick() {
-        guard state == .recording, !previewBusy else { return }
+        guard capturing, !previewBusy else { return }
+        // A final recognition in flight outranks the cosmetic preview — both
+        // run on the same Whisper actor, and a preview pass in front of the
+        // final would delay the previous dictation's paste by up to a second.
+        guard !processing else { return }
         let pcm = recorder.currentPCM()
         // Wait for ≥1 s of audio AND an audible signal — Whisper hallucinates
         // confident phrases on silence, and a phantom preview line is worse
@@ -381,7 +468,7 @@ final class DictationController {
                          Date().timeIntervalSince(started),
                          Double(window.count) / Double(AudioRecorder.sampleRate)))
             await MainActor.run {
-                guard let self, self.state == .recording, !token.isCancelled,
+                guard let self, self.capturing, !token.isCancelled,
                       !text.isEmpty else { return }
                 self.handlePreview(text)
             }
@@ -423,7 +510,7 @@ final class DictationController {
     /// strongest commit signal there is.
     @MainActor
     private func liveLevelTick(level: Double) {
-        guard liveEngine != nil, state == .recording else { return }
+        guard liveEngine != nil, capturing else { return }
         if level >= 0.08 {
             liveLastLoudAt = Date()
             liveSilenceFlushed = false
@@ -449,6 +536,14 @@ final class DictationController {
         resetLiveTyping()
         guard Settings.shared.liveTyping, !translate, !suppressInsertion,
               Settings.shared.livePreview else { return }
+        // Live typing and the pipeline are mutually exclusive: a previous
+        // job's paste landing between live-typed chunks would interleave two
+        // writers in one document. While anything is still recognizing, this
+        // dictation runs in normal (paste-at-the-end) mode.
+        guard !processing, jobQueue.isEmpty else {
+            Log.d("live: pipeline busy -> normal mode")
+            return
+        }
         guard !IsSecureEventInputEnabled() else {
             Log.d("live: secure input is on -> normal mode")
             return
@@ -538,7 +633,7 @@ final class DictationController {
     /// committed raw words, before any replacements — and only the remainder
     /// it hands back is processed and inserted.
     @MainActor
-    private func deliverLive(rawFinal: String) -> Paster.Outcome {
+    private func deliverLive(rawFinal: String, targetPID: pid_t?) -> Paster.Outcome {
         guard let engine = liveEngine else { return .pasted }
         let remainder = liveProcessed(engine.finish(finalText: rawFinal))
         // A line break in the remainder (a trailing "new line" command) can't
@@ -547,7 +642,7 @@ final class DictationController {
         if !liveFrozen, remainder.contains("\n") {
             Log.d("live: final tail has line breaks -> paste path")
             return Paster.paste(remainder.trimmingCharacters(in: .whitespaces),
-                                expectedTargetPID: targetAppPID)
+                                expectedTargetPID: targetPID)
         }
         // typeLive keeps the invariant either way: it types the remainder, or
         // (if the target is gone) adds it to what is still owed.
@@ -566,7 +661,7 @@ final class DictationController {
         liveUntyped = ""
         guard !pending.isEmpty else { return .pasted }
         Log.d("live: frozen -> \(pending.count) chars via the paste path")
-        return Paster.paste(pending, expectedTargetPID: targetAppPID)
+        return Paster.paste(pending, expectedTargetPID: targetPID)
     }
 
     /// Esc: abandon the current dictation, whatever stage it's in. While
@@ -575,41 +670,54 @@ final class DictationController {
     /// finish() throws the partial result away (no insert, no history). Idle is
     /// a no-op.
     private func cancel() {
-        switch state {
-        case .recording:
+        if capturing {
             stopLivePreview()
             // Whatever live typing already committed stays in the document —
             // it cannot be taken back, and it was said. Only the volatile tail
-            // is thrown away, together with the audio.
+            // is thrown away, together with the audio. Dictations already in
+            // the pipeline keep going: they were spoken and released before
+            // this Esc, which targets the live capture.
             resetLiveTyping()
             _ = recorder.stop()
-            state = .idle
-            onNotice?(.cancelled)
-        case .transcribing:
+            capturing = false
+            flushPendingNotices()
+            onNotice?(.cancelled)   // before the state change so nothing hides it
+            updateDerivedState()
+        } else if processing || !jobQueue.isEmpty {
+            // Esc with recognitions in flight abandons ALL of them — a queue
+            // where one survives an explicit cancel would paste text the user
+            // just tried to stop.
             activeCancel?.cancel()
             transcribeTask?.cancel()
+            for job in jobQueue { job.token.cancel() }
+            jobQueue.removeAll()
             resetLiveTyping()
-            state = .idle
             onNotice?(.cancelled)   // before nothing else can hide it
-        case .idle:
-            break
+            updateDerivedState()
         }
     }
 
     private func endRecording() {
-        guard state == .recording else { return }
+        guard capturing else { return }
         // Hold length = press→release, measured BEFORE anything that can
         // block: soundStop and the frontmostApplication XPC below stalled
         // ~0.8 s in the wild, and a Date() taken after them inflated a 0.24 s
         // accidental tap into a "1.0 s hold" that showed a spurious "nothing
         // heard" (live log 2026-08-06 12:24).
         let held = pressedAt.map { -$0.timeIntervalSinceNow } ?? 0
+        capturing = false
         keyStateTimer?.invalidate()
         keyStateTimer = nil
         stopLivePreview()
         let (pcm, duration) = recorder.stop()
         Self.soundStop?.play()
-        targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        // App that was frontmost at the RELEASE — the intended paste target.
+        // Captured at release, not press, so "hold key, click into the target
+        // field, speak" stays legal. Snapshotted into the job: the user may be
+        // three dictations further along by the time this one pastes.
+        let targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        // Job outcomes held back while this capture owned the pill.
+        flushPendingNotices()
 
         guard duration >= 0.3 else {
             // Nothing usable was captured. A quick tap is an accidental
@@ -617,7 +725,7 @@ final class DictationController {
             // held, the mic gave us nothing: say so instead of seeming deaf.
             // A foreign input format means another app owns the mic
             // (Meet/Zoom); otherwise it was likely still waking up.
-            // The message fires before state = .idle so the idle transition
+            // The message fires before the state change so an idle transition
             // doesn't hide it (same ordering as finish()).
             switch DictationPolicy.zeroCaptureVerdict(held: held,
                                                       foreignHeld: recorder.sawForeignFormat) {
@@ -631,105 +739,124 @@ final class DictationController {
                 onNotice?(.nothingHeard)
             }
             resetLiveTyping()
-            state = .idle
+            updateDerivedState()
             return  // accidental short press or unusable capture
         }
 
-        // Snapshot the level stats now — a later dictation resets the recorder
-        // while this one's recognition Task may still be deciding what to show.
-        let peak = recorder.peakLevel
-        let clip = recorder.clippedFraction
-        let micForeign = recorder.sawForeignFormat
-        let micBusyApp = recorder.busyAppName
-
-        let translate = activeTranslate
-        state = .transcribing
-        let language = Settings.shared.language
-        let prompt = Settings.shared.prompt
+        // Snapshot everything downstream needs NOW — the user may press again
+        // before this job reaches the paster, and instance state (recorder
+        // levels, activeTranslate, the frontmost app) will then belong to the
+        // next capture.
         // One route for everything: turbo transcribes, and a translating
         // dictation then hands the text to Apple's on-device Translation —
         // English included. Whisper's own task=translate lost the A/B (it
         // compressed long speech and produced clumsy English) and is gone.
-        let appleTarget: String? = translate ? Settings.shared.translateTargetCode : nil
-        let tier: ModelTier = .fast
-        if translate { Log.d("translate → \(appleTarget ?? "?") via apple") }
-        let token = CancelToken()
-        activeCancel = token
-        transcribeTask = Task {
-            // Sample conversion, per-window RMS and silence trimming are three
-            // full passes over up to ~5M samples — kept off the main thread so
-            // the UI can't hitch between key release and "Recognizing…".
-            let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+        let job = Job(pcm: pcm, duration: duration,
+                      translate: activeTranslate,
+                      targetPID: targetPID,
+                      peak: recorder.peakLevel,
+                      clip: recorder.clippedFraction,
+                      micForeign: recorder.sawForeignFormat,
+                      micBusyApp: recorder.busyAppName,
+                      language: Settings.shared.language,
+                      prompt: Settings.shared.prompt,
+                      appleTarget: activeTranslate ? Settings.shared.translateTargetCode : nil,
+                      token: CancelToken())
+        if job.translate { Log.d("translate → \(job.appleTarget ?? "?") via apple") }
+        jobQueue.append(job)
+        updateDerivedState()
+        processNextJob()
+    }
 
-            // Per-0.1s-window energy, in temporal order (bounds are read from it
-            // before it's sorted for the p90/mean summary).
-            let window = AudioRecorder.sampleRate / 10
-            var energies: [Double] = []
-            var i = 0
-            while i < floats.count {
-                let end = min(i + window, floats.count)
-                var e: Double = 0
-                for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
-                energies.append((e / Double(end - i)).squareRoot())
-                i = end
-            }
-            let windowRMS = energies.sorted()
-            let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
-            let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
-            Log.d("recorded \(String(format: "%.2f", duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90)) peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip))")
-
-            // Trim leading/trailing silence before Whisper: windows well below the
-            // speech level (< 8% of p90) at the very edges are dropped, keeping a
-            // ~200 ms margin so a quiet word onset is never clipped. Conservative
-            // on purpose — a low threshold plus the margin can only shorten pure
-            // silence, and it never touches audio between the first and last
-            // voiced window. Speeds recognition and cuts edge hallucinations.
-            let speechFloats = AudioRecorder.trimSilence(floats, energies: energies,
-                                                         window: window, p90: p90)
-
-            // Speech gate: Silero VAD decides whether anyone actually spoke —
-            // it detects speech-ness, not loudness, so quiet voices pass while
-            // speech-free audio never reaches Whisper (which hallucinates
-            // confident phrases on it). Energy heuristic is the fallback only.
-            let speech = await SpeechGate.shared.hasSpeech(floats) ?? (p90 > 0.012)
-            guard speech else {
-                Log.d("silence gate -> empty result (peak=\(String(format: "%.3f", peak)) clip=\(String(format: "%.3f", clip)))")
-                await MainActor.run {
-                    self.reportEmptyCapture(peak: peak, clip: clip, foreign: micForeign,
-                                            busyApp: micBusyApp, token: token)
-                }
-                return
-            }
-            await self.transcribeLocal(floats: speechFloats, language: language,
-                                       prompt: prompt, tier: tier, translate: translate,
-                                       appleTarget: appleTarget, token: token)
+    /// One job at a time, strictly in release order — recognition may overlap
+    /// the NEXT capture, but never another job, so pastes can't reorder.
+    private func processNextJob() {
+        guard !processing, !jobQueue.isEmpty else {
+            updateDerivedState()
+            return
         }
+        processing = true
+        let job = jobQueue.removeFirst()
+        activeCancel = job.token
+        updateDerivedState()
+        transcribeTask = Task {
+            await self.process(job)
+            await MainActor.run {
+                self.processing = false
+                self.processNextJob()
+            }
+        }
+    }
+
+    private func process(_ job: Job) async {
+        // Sample conversion, per-window RMS and silence trimming are three
+        // full passes over up to ~5M samples — kept off the main thread so
+        // the UI can't hitch between key release and "Recognizing…".
+        let floats = AudioRecorder.floatSamples(fromPCM: job.pcm)
+
+        // Per-0.1s-window energy, in temporal order (bounds are read from it
+        // before it's sorted for the p90/mean summary).
+        let window = AudioRecorder.sampleRate / 10
+        var energies: [Double] = []
+        var i = 0
+        while i < floats.count {
+            let end = min(i + window, floats.count)
+            var e: Double = 0
+            for j in i..<end { e += Double(floats[j]) * Double(floats[j]) }
+            energies.append((e / Double(end - i)).squareRoot())
+            i = end
+        }
+        let windowRMS = energies.sorted()
+        let p90 = windowRMS[min(windowRMS.count - 1, Int(Double(windowRMS.count) * 0.9))]
+        let rms = windowRMS.reduce(0, +) / Double(max(windowRMS.count, 1))
+        Log.d("recorded \(String(format: "%.2f", job.duration))s rms=\(String(format: "%.4f", rms)) p90=\(String(format: "%.4f", p90)) peak=\(String(format: "%.3f", job.peak)) clip=\(String(format: "%.3f", job.clip))")
+
+        // Trim leading/trailing silence before Whisper: windows well below the
+        // speech level (< 8% of p90) at the very edges are dropped, keeping a
+        // ~200 ms margin so a quiet word onset is never clipped. Conservative
+        // on purpose — a low threshold plus the margin can only shorten pure
+        // silence, and it never touches audio between the first and last
+        // voiced window. Speeds recognition and cuts edge hallucinations.
+        let speechFloats = AudioRecorder.trimSilence(floats, energies: energies,
+                                                     window: window, p90: p90)
+
+        // Speech gate: Silero VAD decides whether anyone actually spoke —
+        // it detects speech-ness, not loudness, so quiet voices pass while
+        // speech-free audio never reaches Whisper (which hallucinates
+        // confident phrases on it). Energy heuristic is the fallback only.
+        let speech = await SpeechGate.shared.hasSpeech(floats) ?? (p90 > 0.012)
+        guard speech else {
+            Log.d("silence gate -> empty result (peak=\(String(format: "%.3f", job.peak)) clip=\(String(format: "%.3f", job.clip)))")
+            await MainActor.run { self.reportEmptyCapture(job) }
+            return
+        }
+        await transcribeLocal(job: job, floats: speechFloats)
     }
 
     /// Nothing recognizable was captured though the key was held and audio came
     /// in. Pick the most useful nudge: a foreign-held mic that delivered only
     /// digital silence → "mic busy" naming the culprit; heavy clipping → "too
     /// loud"; a very low peak → "too quiet"; otherwise the generic "didn't
-    /// catch that". Ordering mirrors finish(): fire before state = .idle so
-    /// nothing hides the pill.
+    /// catch that". Deferred while a new capture owns the pill (emit).
     @MainActor
-    private func reportEmptyCapture(peak: Double, clip: Double, foreign: Bool,
-                                    busyApp: String?, token: CancelToken) {
+    private func reportEmptyCapture(_ job: Job) {
         resetLiveTyping()
-        guard !token.isCancelled else { return }
+        guard !job.token.isCancelled else { return }
         onResultText?("")
-        switch DictationPolicy.emptyCaptureVerdict(peak: peak, clip: clip, foreignHeld: foreign) {
-        case .micBusy: onNotice?(.micBusy(busyApp))
-        case .tooLoud: onNotice?(.tooLoud)
-        case .tooQuiet: onNotice?(.tooQuiet)
-        case .nothingHeard: onNotice?(.nothingHeard)
+        switch DictationPolicy.emptyCaptureVerdict(peak: job.peak, clip: job.clip,
+                                                   foreignHeld: job.micForeign) {
+        case .micBusy: emit(.micBusy(job.micBusyApp))
+        case .tooLoud: emit(.tooLoud)
+        case .tooQuiet: emit(.tooQuiet)
+        case .nothingHeard: emit(.nothingHeard)
         }
-        state = .idle
     }
 
-    private func transcribeLocal(floats: [Float], language: String,
-                                 prompt: String, tier: ModelTier, translate: Bool,
-                                 appleTarget: String?, token: CancelToken) async {
+    private func transcribeLocal(job: Job, floats: [Float]) async {
+        let language = job.language
+        let prompt = job.prompt
+        let token = job.token
+        let tier: ModelTier = .fast
         do {
             let ready = await WhisperEngine.shared.isReady(for: tier)
             if !ready {
@@ -786,7 +913,8 @@ final class DictationController {
             // macOS has no such pair — asking would fail the dictation into a
             // "translation data missing" pill over text that is already right.
             let spoken = language.isEmpty ? detected : language
-            if let appleTarget, appleTarget != spoken, !processed.isEmpty, !token.isCancelled {
+            if let appleTarget = job.appleTarget, appleTarget != spoken,
+               !processed.isEmpty, !token.isCancelled {
                 do {
                     processed = try await AppleTranslator.shared.translateSmart(
                         processed, to: appleTarget, source: spoken)
@@ -798,16 +926,17 @@ final class DictationController {
                     Log.d("apple translate failed (\(appleTarget)): \(error.localizedDescription) — inserting native text")
                 }
             }
-            await finish(text: processed, rawText: text, seconds: Date().timeIntervalSince(started),
-                         translate: translate, translateDataMissing: dataMissing, token: token)
+            await finish(job: job, text: processed, rawText: text,
+                         seconds: Date().timeIntervalSince(started),
+                         translateDataMissing: dataMissing)
         } catch {
             await MainActor.run {
                 // A user-cancelled recognition may surface as a thrown error;
-                // cancel() already moved us to idle and showed "Cancelled", so
-                // stay silent instead of flashing a scary error message.
+                // cancel() already showed "Cancelled", so stay silent instead
+                // of flashing a scary error message. The pipeline loop moves
+                // the state on once this job returns.
                 self.resetLiveTyping()
                 guard !token.isCancelled else { return }
-                self.state = .idle
                 self.onError?(error.localizedDescription)
             }
         }
@@ -817,16 +946,16 @@ final class DictationController {
     ///   typing needs it: the engine committed raw words, so the final text has
     ///   to be aligned against the raw form to see what is left to insert.
     @MainActor
-    private func finish(text: String, rawText: String = "", seconds: Double, translate: Bool,
-                        translateDataMissing: Bool = false, token: CancelToken) {
+    private func finish(job: Job, text: String, rawText: String = "", seconds: Double,
+                        translateDataMissing: Bool = false) {
         // Esc arrived while this recognition was finishing: throw the (partial)
-        // result away — no insertion, no history. cancel() already set idle and
-        // showed "Cancelled".
-        guard !token.isCancelled else {
+        // result away — no insertion, no history. cancel() already showed
+        // "Cancelled".
+        guard !job.token.isCancelled else {
             Log.d("finish: discarded — cancelled by Esc")
             return
         }
-        lastWasTranslate = translate
+        lastWasTranslate = job.translate
         let words = text.split(whereSeparator: \.isWhitespace).count
         lastStats = text.isEmpty ? nil : (words, seconds)
         if !text.isEmpty {
@@ -835,30 +964,37 @@ final class DictationController {
             // Translate-tip bookkeeping: a translate result anywhere (incl. the
             // onboarding try-out) silences the tip forever; the dictation
             // counter tracks only real usage.
-            if translate { Settings.shared.translateUsedEver = true }
+            if job.translate { Settings.shared.translateUsedEver = true }
             if !suppressInsertion { Settings.shared.dictationCount += 1 }
         }
         var copied = false
         if !text.isEmpty, !suppressInsertion {
             // Live typing already put most of this in the document — inserting
-            // `text` again would duplicate the whole dictation.
+            // `text` again would duplicate the whole dictation. The paste goes
+            // to the app that was frontmost at THIS job's release, not the
+            // current capture's.
             copied = liveEngine != nil
-                ? deliverLive(rawFinal: rawText) == .keptInClipboard
-                : Paster.paste(text, expectedTargetPID: targetAppPID) == .keptInClipboard
+                ? deliverLive(rawFinal: rawText, targetPID: job.targetPID) == .keptInClipboard
+                : Paster.paste(text, expectedTargetPID: job.targetPID) == .keptInClipboard
         }
         resetLiveTyping()
         Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
         // One pill per dictation. "Copied" wins: without it the text is
         // nowhere the user can see. Untranslated text is at least in place.
+        // While the user is already recording the next dictation, actionable
+        // notices are deferred (emit) and the success flash is skipped
+        // entirely — the words appearing in the document ARE the feedback,
+        // and the recording pill must not be replaced mid-speech.
         if copied {
-            onNotice?(.copiedInstead)
+            emit(.copiedInstead)
         } else if translateDataMissing, !text.isEmpty {
-            onNotice?(.translateDataMissing)
+            emit(.translateDataMissing)
+        } else if capturing {
+            if text.isEmpty { emit(.nothingHeard) }
         } else {
             onResult?(!text.isEmpty, words, seconds)
         }
         onResultText?(text)
-        state = .idle
     }
 
     /// Skip insertion, deliver text via onResultText only (onboarding "try it" box).

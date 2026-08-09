@@ -151,3 +151,30 @@ final class ZeroCaptureVerdictTests: XCTestCase {
         XCTAssertNil(DictationPolicy.zeroCaptureVerdict(held: 0.49, foreignHeld: false))
     }
 }
+
+/// The dictation pipeline's admission rule. The load-bearing case is the
+/// first one: a press while the previous dictation is still recognizing MUST
+/// start recording — swallowing it was the UX gap the pipeline exists to
+/// close (the owner hit it three times in two minutes of normal use).
+final class PipelineAdmissionTests: XCTestCase {
+
+    func testPressDuringRecognitionStartsRecording() {
+        XCTAssertTrue(DictationPolicy.mayBeginCapture(capturing: false, liveDelivering: false,
+                                                      queuedJobs: 1, maxQueued: 3))
+    }
+
+    func testPressWhileAlreadyCapturingIsIgnored() {
+        XCTAssertFalse(DictationPolicy.mayBeginCapture(capturing: true, liveDelivering: false,
+                                                       queuedJobs: 0, maxQueued: 3))
+    }
+
+    func testLiveTypingDeliveryBlocksOverlap() {
+        XCTAssertFalse(DictationPolicy.mayBeginCapture(capturing: false, liveDelivering: true,
+                                                       queuedJobs: 0, maxQueued: 3))
+    }
+
+    func testFullQueueBlocksNewCapture() {
+        XCTAssertFalse(DictationPolicy.mayBeginCapture(capturing: false, liveDelivering: false,
+                                                       queuedJobs: 3, maxQueued: 3))
+    }
+}

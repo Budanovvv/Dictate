@@ -34,6 +34,18 @@ enum DictationPolicy {
         return foreignHeld ? .micBusy : .nothingHeard
     }
 
+    /// Whether a new push-to-talk capture may begin. The dictation pipeline
+    /// exists so that "recognizing" is NOT a blocker: a press during
+    /// recognition used to be silently swallowed, and the user's natural
+    /// rhythm hit that window several times an hour. Only three things block:
+    /// a capture already running (one key, one mic), live typing still
+    /// delivering into the document (a second writer would interleave), and
+    /// a full job queue (runaway-hold protection).
+    static func mayBeginCapture(capturing: Bool, liveDelivering: Bool,
+                                queuedJobs: Int, maxQueued: Int) -> Bool {
+        !capturing && !liveDelivering && queuedJobs < maxQueued
+    }
+
     /// App Translocation: launched from the quarantined DMG/Downloads copy,
     /// the process runs from a random read-only path and TCC grants can never
     /// stick. The marker is precise — dev builds and normal installs never
