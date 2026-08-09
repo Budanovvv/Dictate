@@ -342,6 +342,17 @@ final class DictationController {
 
     private func beginRecording(key code: Int64, translate: Bool) {
         guard !paused else { return }
+        // Key rollover: when alternating between the two dictation keys, the
+        // new key goes DOWN a few ms before the old one comes up (seen live
+        // 2026-08-09 11:57: 8–39 ms overlaps) — the press was swallowed and
+        // the user spoke into a dead key. Pressing the OTHER dictation key
+        // while one is held can only mean "switch": finish the current
+        // capture now and start the new one in its place. The old key's late
+        // release is already filtered by handleRelease's translate-kind guard.
+        if capturing, translate != activeTranslate {
+            Log.d("hotkey: key rollover — ending current capture to switch (translate \(activeTranslate) -> \(translate))")
+            endRecording()
+        }
         // The pipeline makes a press during recognition START RECORDING — the
         // mic is free the moment the previous capture stopped, and swallowing
         // the press lost the first words of the next thought. Only three
