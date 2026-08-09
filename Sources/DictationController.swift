@@ -396,15 +396,31 @@ final class DictationController {
     /// as if it had. Costs a lost release at most ~2 s of tail, not 42.
     private var keyStateTimer: Timer?
     private var keyUpTicks = 0
+    private var keyWatchdogMuteLogged = false
 
     private func startKeyStateWatchdog(key code: Int64) {
         keyUpTicks = 0
+        keyWatchdogMuteLogged = false
         keyStateTimer?.invalidate()
         keyStateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
             guard capturing else {
                 keyStateTimer?.invalidate()
                 keyStateTimer = nil
+                return
+            }
+            // A pipelined paste mid-recording rewrites the session flags
+            // state, and a held modifier reads as "up" until the next real
+            // flags event (that event is usually this key's own release, so
+            // the mute typically lasts to the end of the capture). Stand down
+            // rather than cut a live recording — the 300 s cap and the next
+            // press still bound a genuinely lost release, as before the net.
+            if HotkeyMonitor.isModifierCode(code), !HotkeyMonitor.modifierStateTrustworthy {
+                if !keyWatchdogMuteLogged {
+                    keyWatchdogMuteLogged = true
+                    Log.d("hotkey: flags state clobbered by paste — lost-release net muted for this capture")
+                }
+                keyUpTicks = 0
                 return
             }
             if HotkeyMonitor.isKeyPhysicallyDown(code) {

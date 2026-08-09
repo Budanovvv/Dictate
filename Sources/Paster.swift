@@ -172,7 +172,19 @@ enum Paster {
         AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
     }
 
+    /// When the last synthetic ⌘V was posted. The paste events carry
+    /// flags=Command ONLY, and posting them REWRITES the session's modifier
+    /// flags state: a physically held push-to-talk modifier vanishes from
+    /// CGEventSource.flagsState until the next REAL flagsChanged event
+    /// arrives. Harmless while pastes and recordings never overlapped; the
+    /// dictation pipeline made a mid-recording paste normal, and the
+    /// lost-release watchdog read the clobbered state as "key up" and cut a
+    /// live recording at 2 s (log 2026-08-09 11:44). Anyone treating
+    /// flagsState as physical ground truth must check this first.
+    private(set) static var lastSyntheticPasteAt: Date?
+
     private static func sendCmdV() {
+        lastSyntheticPasteAt = Date()
         let src = CGEventSource(stateID: .combinedSessionState)
         let vKey: CGKeyCode = 9
         let down = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true)

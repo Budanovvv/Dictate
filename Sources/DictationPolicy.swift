@@ -46,6 +46,21 @@ enum DictationPolicy {
         !capturing && !liveDelivering && queuedJobs < maxQueued
     }
 
+    /// Whether CGEventSource.flagsState can be trusted as PHYSICAL modifier
+    /// state. The paster's synthetic ⌘V carries flags=Command only, and
+    /// posting it rewrites the session flags state — a physically held
+    /// push-to-talk modifier vanishes from flagsState until the next real
+    /// flagsChanged event repairs it. Harmless until the dictation pipeline
+    /// made mid-recording pastes normal: the lost-release watchdog then read
+    /// the clobbered state as "key up" and cut a live recording at 2 s
+    /// (log 2026-08-09 11:44). Trust returns with the first real flags event
+    /// after the paste.
+    static func modifierStateTrustworthy(lastRealFlagsEvent: Date,
+                                         lastSyntheticPaste: Date?) -> Bool {
+        guard let paste = lastSyntheticPaste else { return true }
+        return lastRealFlagsEvent > paste
+    }
+
     /// App Translocation: launched from the quarantined DMG/Downloads copy,
     /// the process runs from a random read-only path and TCC grants can never
     /// stick. The marker is precise — dev builds and normal installs never

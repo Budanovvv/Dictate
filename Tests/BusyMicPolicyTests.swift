@@ -178,3 +178,30 @@ final class PipelineAdmissionTests: XCTestCase {
                                                        queuedJobs: 3, maxQueued: 3))
     }
 }
+
+/// GRABLI: the synthetic ⌘V rewrites the session flags state, so flagsState
+/// briefly lies about physically held modifiers. Live case 2026-08-09 11:44:
+/// a pipelined paste landed mid-recording and the lost-release watchdog cut
+/// the recording at 2 s while the key was still held. Trust must drop with a
+/// paste and return with the first real flags event after it.
+final class ModifierStateTrustTests: XCTestCase {
+
+    func testNoPasteEverIsTrustworthy() {
+        XCTAssertTrue(DictationPolicy.modifierStateTrustworthy(
+            lastRealFlagsEvent: .distantPast, lastSyntheticPaste: nil))
+    }
+
+    func testPasteAfterLastFlagsEventBreaksTrust() {
+        let flags = Date(timeIntervalSince1970: 100)
+        let paste = Date(timeIntervalSince1970: 101)
+        XCTAssertFalse(DictationPolicy.modifierStateTrustworthy(
+            lastRealFlagsEvent: flags, lastSyntheticPaste: paste))
+    }
+
+    func testRealFlagsEventAfterPasteRestoresTrust() {
+        let paste = Date(timeIntervalSince1970: 101)
+        let flags = Date(timeIntervalSince1970: 102)
+        XCTAssertTrue(DictationPolicy.modifierStateTrustworthy(
+            lastRealFlagsEvent: flags, lastSyntheticPaste: paste))
+    }
+}

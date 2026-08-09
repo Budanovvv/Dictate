@@ -81,13 +81,28 @@ final class HotkeyMonitor {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             // Events during the disabled window are gone. A missed keyUp would
             // leave the recording running to the 300 s limit and eat the next
-            // press — re-sync held state from the hardware instead.
-            for code in pressedCodes where !Self.isKeyPhysicallyDown(code) {
-                Log.d("tap: resync — key \(code) is physically up, forcing release")
-                setPressed(code, false)
+            // press — re-sync held state from the hardware instead. Modifiers
+            // are skipped while the flags state is clobbered by a synthetic
+            // paste: the resync would read a held key as up and force a fake
+            // release (same trap as the lost-release watchdog).
+            for code in pressedCodes {
+                if Self.isModifierCode(code), !Self.modifierStateTrustworthy {
+                    Log.d("tap: resync skipped for key \(code) — flags state clobbered by a recent paste")
+                    continue
+                }
+                if !Self.isKeyPhysicallyDown(code) {
+                    Log.d("tap: resync — key \(code) is physically up, forcing release")
+                    setPressed(code, false)
+                }
             }
             return
         }
+
+        // Any REAL flagsChanged (hardware modifiers; our synthetic ⌘V arrives
+        // as keyDown/keyUp) refreshes the session flags state and makes it
+        // trustworthy again after a paste clobbered it — timestamp them all,
+        // not just the hotkey's.
+        if type == .flagsChanged { Self.lastRealFlagsEventAt = Date() }
 
         let code = event.getIntegerValueField(.keyboardEventKeycode)
         if type == .keyDown, code == 53 {
@@ -131,6 +146,23 @@ final class HotkeyMonitor {
         default:
             return CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(code))
         }
+    }
+
+    static func isModifierCode(_ code: Int64) -> Bool { (54...63).contains(code) }
+
+    /// Last REAL flagsChanged seen by the tap. Together with the paster's
+    /// timestamp this says whether flagsState currently reflects the physical
+    /// keyboard — a synthetic ⌘V rewrites it (see Paster.lastSyntheticPasteAt)
+    /// and only the next real flags event repairs it.
+    fileprivate(set) static var lastRealFlagsEventAt = Date.distantPast
+
+    /// False from the moment a synthetic paste clobbers the session flags
+    /// state until the next real flagsChanged repairs it. While false,
+    /// isKeyPhysicallyDown is meaningless for modifier codes.
+    static var modifierStateTrustworthy: Bool {
+        DictationPolicy.modifierStateTrustworthy(
+            lastRealFlagsEvent: lastRealFlagsEventAt,
+            lastSyntheticPaste: Paster.lastSyntheticPasteAt)
     }
 
     private static func isModifierFlagActive(_ flags: CGEventFlags, keyCode: Int64) -> Bool {
