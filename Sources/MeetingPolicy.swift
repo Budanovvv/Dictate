@@ -42,14 +42,15 @@ enum MeetingPolicy {
     /// was never held by anyone else) on manual stop only: for it, "mic
     /// free" proves nothing. Privacy rationale: silently recording the room
     /// AFTER a call is the worst failure mode; a false stop costs one click.
-    /// 20 s threshold: the mic-free signal is decisive (the browser holds
-    /// the mic for the WHOLE call, muted included), and the first field run
-    /// showed 60 s badly lags the user's "closed the tab, stop writing"
-    /// expectation — they hit manual stop 15 s in.
+    /// 10 s threshold (two consecutive mic polls): the mic-free signal is
+    /// decisive — the browser holds the mic for the WHOLE call, muted
+    /// included. Two field runs in a row the owner hit manual stop ~14 s
+    /// after closing the tab, beating both 60 s and 20 s; the status line
+    /// ("Call ended — stopping…") bridges the remaining gap visibly.
     static func callLikelyOver(sawForeignHold: Bool,
                                micFreeFor: TimeInterval,
                                remoteQuietFor: TimeInterval,
-                               threshold: TimeInterval = 20) -> Bool {
+                               threshold: TimeInterval = 10) -> Bool {
         sawForeignHold && micFreeFor >= threshold && remoteQuietFor >= threshold
     }
 

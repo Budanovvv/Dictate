@@ -44,6 +44,9 @@ final class MeetingSession: ObservableObject {
     /// sitting silent (cold-start field complaint: "не видно ни хрена…
     /// потом разогрелось", 2026-08-09 16:25).
     @Published private(set) var modelWarming = false
+    /// The meeting app released the mic — the call is ending; the window
+    /// says so while the auto-stop confirmation window runs.
+    @Published private(set) var callEnding = false
     /// Combined mic+tap audio level 0…1 for the window's equalizer — the
     /// "you are being heard" signal, same philosophy as the HUD's dancing
     /// bars meaning "sound is really being captured".
@@ -220,6 +223,7 @@ final class MeetingSession: ObservableObject {
         listeningFor = nil
         livePreview = nil
         modelWarming = false
+        callEnding = false
         audioLevel = 0
         if let activity = powerActivity {
             ProcessInfo.processInfo.endActivity(activity)
@@ -272,6 +276,12 @@ final class MeetingSession: ObservableObject {
                     Log.d("meeting: call detected (another app holds the mic)")
                 }
                 lastOtherMicUserAt = t
+                if callEnding { callEnding = false }   // the call came back
+            } else if sawForeignMicHold, !callEnding {
+                // Mic released after a detected call: announce the pending
+                // auto-stop instead of looking like it didn't notice.
+                callEnding = true
+                Log.d("meeting: mic released — call ending")
             }
             let remoteQuietFor = t - (themLastSpeechAt ?? 0)
             if MeetingPolicy.callLikelyOver(sawForeignHold: sawForeignMicHold,
@@ -341,12 +351,13 @@ final class MeetingSession: ObservableObject {
         }
 
         // Live current-line preview, the same idea as the dictation pill's
-        // live text: every ~1.5 s the active window's audio gets a quick
+        // live text: every ~1 s the active window's audio gets a quick
         // decode and the volatile text shows at the bottom of the transcript
-        // window. Waiting silently for a whole phrase to cut "read as broken"
-        // (owner's field feedback) — this is the fix.
+        // window. The re-decode architecture caps how live this can feel
+        // (~2 s lag, the live-typing ceiling of 5н) — the fast cadence at
+        // least lets short phrases occasionally make it to the screen.
         previewTicks += 1
-        if previewTicks >= 3 {
+        if previewTicks >= 2 {
             previewTicks = 0
             updateLivePreview(t)
         }
@@ -396,7 +407,9 @@ final class MeetingSession: ObservableObject {
         }
         let useYou = youActive && (!themActive || (youLastSpeechAt ?? 0) >= (themLastSpeechAt ?? 0))
         let pcm = useYou ? mic.currentPCM() : themPCM
-        guard pcm.count >= AudioRecorder.sampleRate * 2 else { return }
+        // 0.7 s of audio is enough for a first hypothesis — a 3-second
+        // phrase deserves at least one shot at the live line.
+        guard pcm.count >= Int(Double(AudioRecorder.sampleRate) * 1.4) else { return }
         let windowStart = useYou ? youWindowStart : themWindowStart
         previewBusy = true
         Task {

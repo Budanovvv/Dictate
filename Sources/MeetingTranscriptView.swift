@@ -61,7 +61,11 @@ struct MeetingTranscriptView: View {
     private var statusBar: some View {
         HStack(spacing: 8) {
             LevelWave(level: session.audioLevel)
-            if session.modelWarming {
+            if session.callEnding {
+                Text(L("Call ended — stopping…"))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if session.modelWarming {
                 ProgressView().controlSize(.mini)
                 Text(L("Warming up the model…"))
                     .font(.caption)

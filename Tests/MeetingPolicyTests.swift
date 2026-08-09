@@ -50,7 +50,7 @@ final class CallOverTests: XCTestCase {
 
     func testCallOverWhenBothSignalsHold() {
         XCTAssertTrue(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                   micFreeFor: 21, remoteQuietFor: 25))
+                                                   micFreeFor: 11, remoteQuietFor: 12))
     }
 
     func testMicStillHeldKeepsRecording() {
@@ -59,15 +59,15 @@ final class CallOverTests: XCTestCase {
     }
 
     func testFreshMicReleaseWaitsOutTheThreshold() {
-        // 15 s after closing the tab (the field run's manual-stop moment)
-        // is still inside the confirmation window.
+        // One free poll (~5 s) is not confirmation yet — a device switch can
+        // release the mic for a beat.
         XCTAssertFalse(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                    micFreeFor: 15, remoteQuietFor: 15))
+                                                    micFreeFor: 6, remoteQuietFor: 6))
     }
 
     func testRemoteStillTalkingKeepsRecording() {
         XCTAssertFalse(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                    micFreeFor: 120, remoteQuietFor: 10))
+                                                    micFreeFor: 120, remoteQuietFor: 5))
     }
 
     func testRoomRecordingNeverAutoStops() {
