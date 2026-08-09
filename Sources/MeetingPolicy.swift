@@ -30,20 +30,11 @@ enum MeetingPolicy {
         return sinceLoud >= silenceCut ? .cutTranscribe : .keep
     }
 
-    /// Adaptive "is this speech or just the room" for the mic channel. A
-    /// fixed level threshold broke on the FIRST field test: a mic held by
-    /// the meeting app goes through the no-AEC AVCaptureSession path, whose
-    /// raw noise floor sits ABOVE the fixed threshold — pauses never
-    /// registered and windows only cut at the hard cap (live log 2026-08-09
-    /// 15:48). Track the floor (drops instantly, rises slowly) and demand a
-    /// clear margin over it.
-    static func updatedNoiseFloor(_ floor: Double, level: Double) -> Double {
-        min(max(level, 0.001), floor * 1.05 + 0.0005)
-    }
-
-    static func isLoud(level: Double, floor: Double) -> Bool {
-        level >= max(0.08, floor * 1.7)
-    }
+    // NOTE: pause detection deliberately has NO energy-threshold helpers
+    // here. Fixed 0.08 failed on the no-AEC busy-mic path, and an adaptive
+    // noise floor failed the same afternoon (the owner out-talked it) —
+    // windows are cut by Silero VAD verdicts over the window tail instead
+    // (see MeetingSession.scheduleTailChecks and GRABLI).
 
     /// The voice that talked most within one utterance window labels the
     /// whole window — windows are cut at pauses, so mixtures are rare and

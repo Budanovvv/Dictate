@@ -75,6 +75,7 @@ struct MeetingTranscriptView: View {
                     ForEach(session.displayEntries) { entry in
                         row(entry)
                     }
+                    currentLine
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(10)
@@ -83,6 +84,35 @@ struct MeetingTranscriptView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
+            }
+            .onChange(of: session.livePreview) { _ in
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        }
+    }
+
+    /// The utterance still being spoken: the live Whisper hypothesis in
+    /// gray italic (the same "volatile text" idea as the dictation pill),
+    /// or a quiet "Listening…" while the first decode is under way. Without
+    /// this row, accumulating a long phrase looked like a hang — the
+    /// owner's first field complaint.
+    @ViewBuilder
+    private var currentLine: some View {
+        if let text = session.livePreview {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle().fill(Color.red).frame(width: 5, height: 5)
+                    .padding(.top, 5)
+                Text(text)
+                    .font(.body.italic())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if session.listeningFor != nil {
+            HStack(spacing: 6) {
+                Circle().fill(Color.red).frame(width: 5, height: 5)
+                Text(L("Listening…"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
     }

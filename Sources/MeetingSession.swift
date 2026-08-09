@@ -31,6 +31,17 @@ final class MeetingSession: ObservableObject {
     /// Windows currently being recognized — the window shows a subtle
     /// "Recognizing…" row while any are in flight.
     @Published private(set) var inflightCount = 0
+    /// Seconds of speech accumulating in a not-yet-cut window (nil = nothing
+    /// heard right now). Drives the "Listening…" row — without it, the quiet
+    /// stretch between speaking and the first cut read as "not working"
+    /// (owner's own field feedback, 2026-08-09 15:55).
+    @Published private(set) var listeningFor: Int?
+    /// Volatile decode of the utterance still being spoken — the transcript
+    /// window's gray "current line", superseded by the final entry at the
+    /// cut. Same idea as the dictation pill's live text.
+    @Published private(set) var livePreview: String?
+    private var previewBusy = false
+    private var previewTicks = 0
     var startedAt: Date { sessionStart }
 
     private let tap = MeetingTap()
@@ -45,13 +56,19 @@ final class MeetingSession: ObservableObject {
     // Them: accumulated 16k Int16 PCM of the current window.
     private var themPCM = Data()
     private var themWindowStart: TimeInterval = 0
-    private var themLastLoud: TimeInterval?
     // You: audio lives in the recorder (hot rollover cuts it); we track time.
     private var youWindowStart: TimeInterval = 0
-    private var youLastLoud: TimeInterval?
-    /// Rolling mic noise floor for the adaptive loudness threshold. Starts
-    /// high so the first quiet buffers pull it straight down to the room.
-    private var youLevelFloor: Double = 1.0
+    // Pause detection is Silero VAD on the last second of each accumulating
+    // window — energy thresholds failed twice in one day (fixed 0.08 on the
+    // no-AEC path, then the adaptive floor the owner still out-talked). The
+    // neural gate already decides "was this speech" before Whisper; now it
+    // also decides "has the speech stopped". lastSpeechAt is when a tail
+    // check last HEARD speech; a check finding silence leaves it stale, and
+    // a stale value ≥ silenceCut cuts the window.
+    private var youLastSpeechAt: TimeInterval?
+    private var themLastSpeechAt: TimeInterval?
+    private var youTailBusy = false
+    private var themTailBusy = false
     // Tap health: the tap delivers buffers CONTINUOUSLY (zeros when the
     // system is silent), so a stalled buffer flow means the tap died (e.g.
     // an output-device change mid-meeting) — never mere silence.
@@ -83,12 +100,15 @@ final class MeetingSession: ObservableObject {
         pending = []
         inflight = [:]
         stopping = false
-        themWindowStart = 0; themLastLoud = nil
-        youWindowStart = 0; youLastLoud = nil
-        youLevelFloor = 1.0
+        themWindowStart = 0; themLastSpeechAt = nil; themTailBusy = false
+        youWindowStart = 0; youLastSpeechAt = nil; youTailBusy = false
 
         displayEntries = []
         inflightCount = 0
+        listeningFor = nil
+        livePreview = nil
+        previewBusy = false
+        previewTicks = 0
         try openTranscriptFile()
         // Voice separation warms up in parallel (first ever run downloads its
         // CoreML models); until it's ready Them-entries just stay collective.
@@ -96,16 +116,6 @@ final class MeetingSession: ObservableObject {
         try tap.start()   // first run triggers the system-audio TCC prompt
         tap.onBuffer = { [weak self] pcm, peak in
             DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
-        }
-        mic.onLevel = { [weak self] level in
-            guard let self else { return }
-            // Adaptive threshold: the busy-mic capture path has no AEC and a
-            // high raw noise floor — a fixed 0.08 read the room as nonstop
-            // speech and windows never cut (field test 2026-08-09 15:48).
-            self.youLevelFloor = MeetingPolicy.updatedNoiseFloor(self.youLevelFloor, level: level)
-            if MeetingPolicy.isLoud(level: level, floor: self.youLevelFloor) {
-                self.youLastLoud = self.now
-            }
         }
         // The recorder retries a failing input for ~4.5 s on its own; this
         // fires only when it truly gave up (device vanished). One delayed
@@ -144,11 +154,15 @@ final class MeetingSession: ObservableObject {
         tick?.invalidate()
         tick = nil
         // Final cut of both channels — whatever was mid-utterance still lands.
-        cutYouWindow(transcribe: youLastLoud != nil)
-        cutThemWindow(transcribe: themLastLoud != nil)
+        // The Silero gate inside transcribeWindow re-checks anyway, so err on
+        // transcribing (a tail VAD check may simply not have run yet).
+        cutYouWindow(transcribe: (youLastSpeechAt ?? youWindowStart) >= youWindowStart)
+        cutThemWindow(transcribe: (themLastSpeechAt ?? -1) >= themWindowStart)
         _ = mic.stop()
         tap.stop()
         isActive = false
+        listeningFor = nil
+        livePreview = nil
         Log.d("meeting: session stopping, \(inflight.count) window(s) still recognizing")
         finalizeIfDrained()
     }
@@ -159,7 +173,6 @@ final class MeetingSession: ObservableObject {
         guard isActive, !stopping else { return }
         lastTapBufferAt = Date()
         themPCM.append(pcm)
-        if peak >= 0.02 { themLastLoud = now }
     }
 
     private func evaluateWindows() {
@@ -188,10 +201,26 @@ final class MeetingSession: ObservableObject {
                          t / 60, statWindows, statEntries, pending.count, inflight.count))
         }
 
+        // Neural pause detection: Silero over the last second of each
+        // accumulating window. Energy thresholds failed twice in one field
+        // day; the VAD hears "speech stopped" regardless of the capture
+        // path's noise floor.
+        scheduleTailChecks(t)
+
+        // "Listening…" feedback: some window holds speech that hasn't been
+        // cut yet — show for how long, so accumulation never looks dead.
+        var oldestSpeech: TimeInterval?
+        if (youLastSpeechAt ?? -1) >= youWindowStart { oldestSpeech = youWindowStart }
+        if (themLastSpeechAt ?? -1) >= themWindowStart {
+            oldestSpeech = min(oldestSpeech ?? themWindowStart, themWindowStart)
+        }
+        let newListening = oldestSpeech.map { Int(t - $0) }
+        if newListening != listeningFor { listeningFor = newListening }
+
         let youVerdict = MeetingPolicy.windowVerdict(
             accumulated: t - youWindowStart,
-            hadSpeech: (youLastLoud ?? -1) >= youWindowStart,
-            sinceLoud: t - (youLastLoud ?? -.infinity))
+            hadSpeech: (youLastSpeechAt ?? -1) >= youWindowStart,
+            sinceLoud: t - (youLastSpeechAt ?? -.infinity))
         switch youVerdict {
         case .keep: break
         case .cutTranscribe: cutYouWindow(transcribe: true)
@@ -200,12 +229,89 @@ final class MeetingSession: ObservableObject {
 
         let themVerdict = MeetingPolicy.windowVerdict(
             accumulated: t - themWindowStart,
-            hadSpeech: (themLastLoud ?? -1) >= themWindowStart,
-            sinceLoud: t - (themLastLoud ?? -.infinity))
+            hadSpeech: (themLastSpeechAt ?? -1) >= themWindowStart,
+            sinceLoud: t - (themLastSpeechAt ?? -.infinity))
         switch themVerdict {
         case .keep: break
         case .cutTranscribe: cutThemWindow(transcribe: true)
         case .dropSilence: cutThemWindow(transcribe: false)
+        }
+
+        // Live current-line preview, the same idea as the dictation pill's
+        // live text: every ~1.5 s the active window's audio gets a quick
+        // decode and the volatile text shows at the bottom of the transcript
+        // window. Waiting silently for a whole phrase to cut "read as broken"
+        // (owner's field feedback) — this is the fix.
+        previewTicks += 1
+        if previewTicks >= 3 {
+            previewTicks = 0
+            updateLivePreview(t)
+        }
+    }
+
+    /// Runs the Silero gate over the trailing second of each channel that has
+    /// enough audio; a check that HEARS speech refreshes lastSpeechAt, one
+    /// that hears silence leaves it stale — staleness is what cuts windows.
+    private func scheduleTailChecks(_ t: TimeInterval) {
+        let tailBytes = AudioRecorder.sampleRate * 2   // 1 s of Int16 mono
+        if !youTailBusy, t - youWindowStart >= 1.0 {
+            youTailBusy = true
+            let tail = Data(mic.currentPCM().suffix(tailBytes))
+            Task {
+                let speech = await SpeechGate.shared.hasSpeech(
+                    AudioRecorder.floatSamples(fromPCM: tail)) ?? true
+                await MainActor.run {
+                    self.youTailBusy = false
+                    if speech, t >= self.youWindowStart { self.youLastSpeechAt = t }
+                }
+            }
+        }
+        if !themTailBusy, themPCM.count >= tailBytes {
+            themTailBusy = true
+            let tail = Data(themPCM.suffix(tailBytes))
+            Task {
+                let speech = await SpeechGate.shared.hasSpeech(
+                    AudioRecorder.floatSamples(fromPCM: tail)) ?? true
+                await MainActor.run {
+                    self.themTailBusy = false
+                    if speech, t >= self.themWindowStart { self.themLastSpeechAt = t }
+                }
+            }
+        }
+    }
+
+    /// One quick decode of the most recently active window; the result shows
+    /// as the gray volatile line. Skips itself while a previous pass (or the
+    /// recognition queue) is busy — the preview must never delay a final.
+    private func updateLivePreview(_ t: TimeInterval) {
+        guard !previewBusy else { return }
+        let youActive = (youLastSpeechAt ?? -1) >= youWindowStart
+        let themActive = (themLastSpeechAt ?? -1) >= themWindowStart
+        guard youActive || themActive else {
+            if livePreview != nil { livePreview = nil }
+            return
+        }
+        let useYou = youActive && (!themActive || (youLastSpeechAt ?? 0) >= (themLastSpeechAt ?? 0))
+        let pcm = useYou ? mic.currentPCM() : themPCM
+        guard pcm.count >= AudioRecorder.sampleRate * 2 else { return }
+        let windowStart = useYou ? youWindowStart : themWindowStart
+        previewBusy = true
+        Task {
+            defer { DispatchQueue.main.async { self.previewBusy = false } }
+            guard await WhisperEngine.shared.isReady(for: .fast) else { return }
+            let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+            let window = Array(floats.suffix(15 * AudioRecorder.sampleRate))
+            guard let (text, _) = try? await WhisperEngine.shared.transcribe(
+                floats: window, tier: .fast, language: "", prompt: "",
+                isCancelled: { [weak self] in self?.isActive != true }) else { return }
+            await MainActor.run {
+                // The window may have been cut while we decoded — the final
+                // entry supersedes this hypothesis.
+                let stillCurrent = useYou ? self.youWindowStart == windowStart
+                                         : self.themWindowStart == windowStart
+                guard self.isActive, stillCurrent, !text.isEmpty else { return }
+                self.livePreview = text
+            }
         }
     }
 
@@ -217,6 +323,7 @@ final class MeetingSession: ObservableObject {
         // no-teardown path the dictation key rollover uses.
         let (pcm, duration) = mic.rollover()
         youWindowStart = now
+        livePreview = nil   // the final entry supersedes the hypothesis
         Log.d(String(format: "meeting: cut you %.1fs %@", duration,
                      shouldTranscribe ? "speech" : "silence"))
         guard shouldTranscribe, duration >= 0.5 else { return }
@@ -228,6 +335,7 @@ final class MeetingSession: ObservableObject {
         let pcm = themPCM
         themPCM = Data()
         themWindowStart = now
+        livePreview = nil   // the final entry supersedes the hypothesis
         let duration = Double(pcm.count) / Double(AudioRecorder.sampleRate * 2)
         Log.d(String(format: "meeting: cut them %.1fs %@", duration,
                      shouldTranscribe ? "speech" : "silence"))
