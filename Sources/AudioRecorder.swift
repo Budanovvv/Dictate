@@ -167,6 +167,18 @@ final class AudioRecorder {
     /// sleep and then reports garbage input formats (sampleRate 0, or a dead
     /// format that makes installTap throw).
     private func swapEngine(generation gen: Int) {
+        // A quick tap released before this queued block ran means the swap
+        // belongs to a recording that is already over. Skipping it matters:
+        // ioQueue is serial, and a stale swap's HAL teardown+creation (slow on
+        // a waking mic) runs BEFORE the next press's own swap+attach — that
+        // backlog once delayed a real recording's attach past its release, so
+        // it captured 0 bytes ("stale attach" after a rapid tap→re-hold, live
+        // log 2026-08-06 12:24). stop() queues its own teardown; nothing here
+        // is needed for a dead recording.
+        guard gen == currentGeneration else {
+            Log.d("audio: skipped stale engine swap")
+            return
+        }
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -214,14 +226,18 @@ final class AudioRecorder {
     /// Installs the tap and starts the engine for the current input device.
     /// `override` forces a specific device (used by the busy-mic fallback);
     /// otherwise the device follows the mic setting.
+    private static let staleAttachError = NSError(domain: "Dictate", code: 2, userInfo: [
+        NSLocalizedDescriptionKey: "stale attach"])
+    private static func isStaleAttach(_ error: Error) -> Bool {
+        let e = error as NSError
+        return e.domain == staleAttachError.domain && e.code == staleAttachError.code
+    }
+
     private func attachInput(generation gen: Int, override: AudioDeviceID? = nil) throws {
         // The blocking work below (HAL reads, VP enable, session start) can
         // outlive its recording during a rapid stop→start; a stale attach must
         // not write foreign/busy flags into the NEXT recording's fresh state.
-        guard gen == currentGeneration else {
-            throw NSError(domain: "Dictate", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "stale attach"])
-        }
+        guard gen == currentGeneration else { throw Self.staleAttachError }
         var input = engine.inputNode
         // Pin the input per the mic setting (default: built-in). Bluetooth
         // mics take seconds of HFP negotiation and record phone-call quality;
@@ -278,10 +294,7 @@ final class AudioRecorder {
             let rawArrayForeign = fp.rawArray
             // Re-check after the HAL reads above — same stale-attach guard as
             // at entry, now protecting the flag writes below.
-            guard gen == currentGeneration else {
-                throw NSError(domain: "Dictate", code: 2, userInfo: [
-                    NSLocalizedDescriptionKey: "stale attach"])
-            }
+            guard gen == currentGeneration else { throw Self.staleAttachError }
             if rateForeign || rawArrayForeign {
                 sawForeignFormat = true
                 // Name the culprit for the "mic busy" message (best-effort).
@@ -387,6 +400,10 @@ final class AudioRecorder {
             return
         } catch {
             Log.d("audio: attach failed (attempt \(attempt)): \(error.localizedDescription)")
+            // Stale = the recording this chain belonged to is already over.
+            // No retry can ever succeed (the generation is gone) — don't
+            // occupy the serial queue the next press is waiting on.
+            if Self.isStaleAttach(error) { rebuilding = false; return }
         }
 
         guard attempt < 15 else {

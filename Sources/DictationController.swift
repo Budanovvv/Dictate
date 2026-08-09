@@ -598,6 +598,12 @@ final class DictationController {
 
     private func endRecording() {
         guard state == .recording else { return }
+        // Hold length = press→release, measured BEFORE anything that can
+        // block: soundStop and the frontmostApplication XPC below stalled
+        // ~0.8 s in the wild, and a Date() taken after them inflated a 0.24 s
+        // accidental tap into a "1.0 s hold" that showed a spurious "nothing
+        // heard" (live log 2026-08-06 12:24).
+        let held = pressedAt.map { -$0.timeIntervalSinceNow } ?? 0
         keyStateTimer?.invalidate()
         keyStateTimer = nil
         stopLivePreview()
@@ -606,22 +612,23 @@ final class DictationController {
         targetAppPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         guard duration >= 0.3 else {
-            // Nothing usable was captured. A quick tap (< 0.5 s) is an
-            // accidental touch — stay silent as before. But if the key was
-            // genuinely held, the mic gave us nothing: say so instead of
-            // seeming deaf. A foreign input format means another app owns the
-            // mic (Meet/Zoom); otherwise it was likely still waking up.
+            // Nothing usable was captured. A quick tap is an accidental
+            // touch — stay silent as before. But if the key was genuinely
+            // held, the mic gave us nothing: say so instead of seeming deaf.
+            // A foreign input format means another app owns the mic
+            // (Meet/Zoom); otherwise it was likely still waking up.
             // The message fires before state = .idle so the idle transition
             // doesn't hide it (same ordering as finish()).
-            let held = pressedAt.map { Date().timeIntervalSince($0) } ?? 0
-            if held >= 0.5 {
-                if recorder.sawForeignFormat {
-                    Log.d("empty after \(String(format: "%.1f", held))s hold -> mic busy")
-                    onNotice?(.micBusy(recorder.busyAppName))
-                } else {
-                    Log.d("empty after \(String(format: "%.1f", held))s hold -> nothing heard")
-                    onNotice?(.nothingHeard)
-                }
+            switch DictationPolicy.zeroCaptureVerdict(held: held,
+                                                      foreignHeld: recorder.sawForeignFormat) {
+            case .micBusy:
+                Log.d("empty after \(String(format: "%.1f", held))s hold -> mic busy")
+                onNotice?(.micBusy(recorder.busyAppName))
+            case .none:
+                break
+            default:
+                Log.d("empty after \(String(format: "%.1f", held))s hold -> nothing heard")
+                onNotice?(.nothingHeard)
             }
             resetLiveTyping()
             state = .idle

@@ -22,6 +22,18 @@ enum DictationPolicy {
         return .nothingHeard
     }
 
+    /// What to tell the user when the recording captured ZERO usable audio
+    /// (chain never came up before the release). nil = stay silent: a tap
+    /// under 0.5 s is an accidental touch, not a failed dictation. CRITICAL:
+    /// `held` must be the press→release span measured AT release — a Date()
+    /// taken after blocking calls once inflated a 0.24 s tap into a "1.0 s
+    /// hold" and showed a spurious "nothing heard" (live log 2026-08-06).
+    static func zeroCaptureVerdict(held: Double,
+                                   foreignHeld: Bool) -> EmptyCaptureVerdict? {
+        guard held >= 0.5 else { return nil }
+        return foreignHeld ? .micBusy : .nothingHeard
+    }
+
     /// App Translocation: launched from the quarantined DMG/Downloads copy,
     /// the process runs from a random read-only path and TCC grants can never
     /// stick. The marker is precise — dev builds and normal installs never

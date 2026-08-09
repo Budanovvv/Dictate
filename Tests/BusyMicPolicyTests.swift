@@ -119,3 +119,35 @@ final class EmptyCaptureVerdictTests: XCTestCase {
                        .nothingHeard)
     }
 }
+
+/// GRABLI: zero-byte captures (the audio chain never came up before the
+/// release). The live bug 2026-08-06 12:24: a 0.24 s accidental tap was
+/// judged with a Date() taken after ~0.8 s of blocking calls, crossed the
+/// 0.5 s threshold and showed a spurious "nothing heard". The verdict itself
+/// must keep short taps silent and name the mic holder when there is one.
+final class ZeroCaptureVerdictTests: XCTestCase {
+
+    func testAccidentalTapStaysSilent() {
+        XCTAssertNil(DictationPolicy.zeroCaptureVerdict(held: 0.24, foreignHeld: false))
+    }
+
+    func testAccidentalTapUnderForeignHoldStaysSilent() {
+        XCTAssertNil(DictationPolicy.zeroCaptureVerdict(held: 0.24, foreignHeld: true))
+    }
+
+    func testRealHoldWithNoAudioIsNothingHeard() {
+        XCTAssertEqual(DictationPolicy.zeroCaptureVerdict(held: 1.0, foreignHeld: false),
+                       .nothingHeard)
+    }
+
+    func testRealHoldUnderForeignHoldIsMicBusy() {
+        XCTAssertEqual(DictationPolicy.zeroCaptureVerdict(held: 1.2, foreignHeld: true),
+                       .micBusy)
+    }
+
+    func testThresholdBoundaryReports() {
+        XCTAssertEqual(DictationPolicy.zeroCaptureVerdict(held: 0.5, foreignHeld: false),
+                       .nothingHeard)
+        XCTAssertNil(DictationPolicy.zeroCaptureVerdict(held: 0.49, foreignHeld: false))
+    }
+}
