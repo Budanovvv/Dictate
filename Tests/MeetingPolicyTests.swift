@@ -22,8 +22,13 @@ final class MeetingWindowVerdictTests: XCTestCase {
     }
 
     func testMonologueHitsHardCap() {
-        XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 30.0, hadSpeech: true, sinceLoud: 0.1),
+        // 15 s cap: even when pause detection fails entirely (the no-AEC
+        // busy-mic path once read the room as nonstop speech), the live
+        // window shows progress at least this often.
+        XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 15.0, hadSpeech: true, sinceLoud: 0.1),
                        .cutTranscribe)
+        XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 14.0, hadSpeech: true, sinceLoud: 0.1),
+                       .keep)
     }
 
     func testSilentChannelDropsPeriodically() {
@@ -31,6 +36,34 @@ final class MeetingWindowVerdictTests: XCTestCase {
                        .dropSilence)
         XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 9.0, hadSpeech: false, sinceLoud: .infinity),
                        .keep)
+    }
+}
+
+/// GRABLI: fixed level thresholds don't survive a second audio path. The
+/// no-AEC busy-mic capture has a raw noise floor ABOVE the old fixed 0.08 —
+/// the room read as nonstop speech and windows never cut (field test
+/// 2026-08-09 15:48). The floor adapts; loudness needs a clear margin over it.
+final class AdaptiveLoudnessTests: XCTestCase {
+
+    func testQuietRoomKeepsFixedThreshold() {
+        // Floor near zero: the classic 0.08 threshold applies.
+        XCTAssertFalse(MeetingPolicy.isLoud(level: 0.05, floor: 0.01))
+        XCTAssertTrue(MeetingPolicy.isLoud(level: 0.09, floor: 0.01))
+    }
+
+    func testNoisyCapturePathRaisesThreshold() {
+        // The live failure: floor ~0.14 (no-AEC room noise). 0.14 must NOT
+        // count as speech; a real voice well above the floor must.
+        XCTAssertFalse(MeetingPolicy.isLoud(level: 0.14, floor: 0.14))
+        XCTAssertTrue(MeetingPolicy.isLoud(level: 0.30, floor: 0.14))
+    }
+
+    func testFloorDropsInstantlyAndRisesSlowly() {
+        // A quiet buffer pulls the floor straight down…
+        XCTAssertEqual(MeetingPolicy.updatedNoiseFloor(1.0, level: 0.12), 0.12, accuracy: 0.001)
+        // …speech only nudges it up a few percent per buffer.
+        let crept = MeetingPolicy.updatedNoiseFloor(0.12, level: 0.9)
+        XCTAssertLessThan(crept, 0.13)
     }
 }
 

@@ -21,13 +21,28 @@ enum MeetingPolicy {
     /// periodically so a quiet channel never grows an hour-long buffer.
     static func windowVerdict(accumulated: Double, hadSpeech: Bool, sinceLoud: Double,
                               minChunk: Double = 2.0, silenceCut: Double = 0.8,
-                              hardCap: Double = 30, silentReset: Double = 10) -> WindowVerdict {
+                              hardCap: Double = 15, silentReset: Double = 10) -> WindowVerdict {
         if !hadSpeech {
             return accumulated >= silentReset ? .dropSilence : .keep
         }
         guard accumulated >= minChunk else { return .keep }
         if accumulated >= hardCap { return .cutTranscribe }
         return sinceLoud >= silenceCut ? .cutTranscribe : .keep
+    }
+
+    /// Adaptive "is this speech or just the room" for the mic channel. A
+    /// fixed level threshold broke on the FIRST field test: a mic held by
+    /// the meeting app goes through the no-AEC AVCaptureSession path, whose
+    /// raw noise floor sits ABOVE the fixed threshold — pauses never
+    /// registered and windows only cut at the hard cap (live log 2026-08-09
+    /// 15:48). Track the floor (drops instantly, rises slowly) and demand a
+    /// clear margin over it.
+    static func updatedNoiseFloor(_ floor: Double, level: Double) -> Double {
+        min(max(level, 0.001), floor * 1.05 + 0.0005)
+    }
+
+    static func isLoud(level: Double, floor: Double) -> Bool {
+        level >= max(0.08, floor * 1.7)
     }
 
     /// The voice that talked most within one utterance window labels the

@@ -49,6 +49,9 @@ final class MeetingSession: ObservableObject {
     // You: audio lives in the recorder (hot rollover cuts it); we track time.
     private var youWindowStart: TimeInterval = 0
     private var youLastLoud: TimeInterval?
+    /// Rolling mic noise floor for the adaptive loudness threshold. Starts
+    /// high so the first quiet buffers pull it straight down to the room.
+    private var youLevelFloor: Double = 1.0
     // Tap health: the tap delivers buffers CONTINUOUSLY (zeros when the
     // system is silent), so a stalled buffer flow means the tap died (e.g.
     // an output-device change mid-meeting) — never mere silence.
@@ -82,6 +85,7 @@ final class MeetingSession: ObservableObject {
         stopping = false
         themWindowStart = 0; themLastLoud = nil
         youWindowStart = 0; youLastLoud = nil
+        youLevelFloor = 1.0
 
         displayEntries = []
         inflightCount = 0
@@ -94,8 +98,14 @@ final class MeetingSession: ObservableObject {
             DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
         }
         mic.onLevel = { [weak self] level in
-            guard let self, level >= 0.08 else { return }
-            self.youLastLoud = self.now
+            guard let self else { return }
+            // Adaptive threshold: the busy-mic capture path has no AEC and a
+            // high raw noise floor — a fixed 0.08 read the room as nonstop
+            // speech and windows never cut (field test 2026-08-09 15:48).
+            self.youLevelFloor = MeetingPolicy.updatedNoiseFloor(self.youLevelFloor, level: level)
+            if MeetingPolicy.isLoud(level: level, floor: self.youLevelFloor) {
+                self.youLastLoud = self.now
+            }
         }
         // The recorder retries a failing input for ~4.5 s on its own; this
         // fires only when it truly gave up (device vanished). One delayed
@@ -207,6 +217,8 @@ final class MeetingSession: ObservableObject {
         // no-teardown path the dictation key rollover uses.
         let (pcm, duration) = mic.rollover()
         youWindowStart = now
+        Log.d(String(format: "meeting: cut you %.1fs %@", duration,
+                     shouldTranscribe ? "speech" : "silence"))
         guard shouldTranscribe, duration >= 0.5 else { return }
         transcribeWindow(pcm: pcm, start: start, channel: .you)
     }
@@ -216,6 +228,9 @@ final class MeetingSession: ObservableObject {
         let pcm = themPCM
         themPCM = Data()
         themWindowStart = now
+        let duration = Double(pcm.count) / Double(AudioRecorder.sampleRate * 2)
+        Log.d(String(format: "meeting: cut them %.1fs %@", duration,
+                     shouldTranscribe ? "speech" : "silence"))
         guard shouldTranscribe, pcm.count >= AudioRecorder.sampleRate else { return } // ≥0.5s
         transcribeWindow(pcm: pcm, start: start, channel: .them)
     }
