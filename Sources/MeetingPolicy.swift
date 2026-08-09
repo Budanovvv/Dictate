@@ -30,6 +30,15 @@ enum MeetingPolicy {
         return sinceLoud >= silenceCut ? .cutTranscribe : .keep
     }
 
+    /// The voice that talked most within one utterance window labels the
+    /// whole window — windows are cut at pauses, so mixtures are rare and
+    /// short. Deterministic tie-break (smaller id) keeps tests stable.
+    static func dominantSpeakerId(durations: [String: Double]) -> String? {
+        durations.min { a, b in
+            a.value > b.value || (a.value == b.value && a.key < b.key)
+        }?.key
+    }
+
     /// How many of the pending entries (sorted by window start) may be
     /// written out now. An entry is final only when no channel can still
     /// produce an EARLIER entry: both channels' current windows started after

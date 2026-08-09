@@ -18,6 +18,7 @@ final class MeetingSession {
 
     private let tap = MeetingTap()
     private let mic = AudioRecorder()
+    private let diarizer = MeetingDiarizer()
     private var tick: Timer?
     private var sessionStart = Date()
     private var fileHandle: FileHandle?
@@ -52,6 +53,9 @@ final class MeetingSession {
         youWindowStart = 0; youLastLoud = nil
 
         try openTranscriptFile()
+        // Voice separation warms up in parallel (first ever run downloads its
+        // CoreML models); until it's ready Them-entries just stay collective.
+        Task { await diarizer.startSession(); await diarizer.prepare() }
         try tap.start()   // first run triggers the system-audio TCC prompt
         tap.onBuffer = { [weak self] pcm, peak in
             DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
@@ -120,6 +124,8 @@ final class MeetingSession {
         }
     }
 
+    private enum Channel { case you, them }
+
     private func cutYouWindow(transcribe shouldTranscribe: Bool) {
         let start = youWindowStart
         // Hot rollover: hands back the window and keeps recording — the same
@@ -127,7 +133,7 @@ final class MeetingSession {
         let (pcm, duration) = mic.rollover()
         youWindowStart = now
         guard shouldTranscribe, duration >= 0.5 else { return }
-        transcribeWindow(pcm: pcm, start: start, speaker: L("You"))
+        transcribeWindow(pcm: pcm, start: start, channel: .you)
     }
 
     private func cutThemWindow(transcribe shouldTranscribe: Bool) {
@@ -136,14 +142,14 @@ final class MeetingSession {
         themPCM = Data()
         themWindowStart = now
         guard shouldTranscribe, pcm.count >= AudioRecorder.sampleRate else { return } // ≥0.5s
-        transcribeWindow(pcm: pcm, start: start, speaker: L("Them"))
+        transcribeWindow(pcm: pcm, start: start, channel: .them)
     }
 
     // MARK: - Recognition
 
-    private func transcribeWindow(pcm: Data, start: TimeInterval, speaker: String) {
+    private func transcribeWindow(pcm: Data, start: TimeInterval, channel: Channel) {
         inflightSeq += 1
-        let key = "\(speaker)#\(inflightSeq)"
+        let key = "\(channel)#\(inflightSeq)"
         inflight[key] = start
         let language = Settings.shared.language
         Task {
@@ -153,7 +159,14 @@ final class MeetingSession {
             // on non-speech).
             let speech = await SpeechGate.shared.hasSpeech(floats) ?? true
             var text = ""
+            var ordinal: Int?
             if speech, !self.cancelled.isCancelled {
+                // Who is talking (Them only): the diarizer numbers the mixed
+                // stream's voices — "Speaker 1/2…". You needs no ML: the mic
+                // channel IS the attribution.
+                if channel == .them {
+                    ordinal = await self.diarizer.speakerOrdinal(floats: floats, atTime: start)
+                }
                 // No user prompt and no replacements: a meeting transcript is
                 // a verbatim record, not a dictation being typed.
                 text = (try? await WhisperEngine.shared.transcribe(
@@ -164,6 +177,11 @@ final class MeetingSession {
                 self.inflight.removeValue(forKey: key)
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
+                    let speaker: String
+                    switch channel {
+                    case .you: speaker = L("You")
+                    case .them: speaker = ordinal.map { Lf("Speaker %d", $0) } ?? L("Them")
+                    }
                     self.pending.append(Entry(start: start, speaker: speaker, text: trimmed))
                 }
                 self.flushReadyEntries()

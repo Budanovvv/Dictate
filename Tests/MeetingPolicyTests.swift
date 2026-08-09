@@ -34,6 +34,23 @@ final class MeetingWindowVerdictTests: XCTestCase {
     }
 }
 
+/// Speaker attribution of one utterance window: the dominant voice wins,
+/// ties break deterministically, an empty window has no speaker.
+final class DominantSpeakerTests: XCTestCase {
+
+    func testDominantVoiceWins() {
+        XCTAssertEqual(MeetingPolicy.dominantSpeakerId(durations: ["a": 1.2, "b": 4.5]), "b")
+    }
+
+    func testTieBreaksBySmallerId() {
+        XCTAssertEqual(MeetingPolicy.dominantSpeakerId(durations: ["b": 2.0, "a": 2.0]), "a")
+    }
+
+    func testEmptyWindowHasNoSpeaker() {
+        XCTAssertNil(MeetingPolicy.dominantSpeakerId(durations: [:]))
+    }
+}
+
 /// Entry flushing: dialogue order must survive recognitions finishing out of
 /// order — a slow early chunk holds back fast later ones, never the reverse.
 final class MeetingFlushTests: XCTestCase {
