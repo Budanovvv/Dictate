@@ -12,12 +12,16 @@ final class MeetingWindowVerdictTests: XCTestCase {
     }
 
     func testPauseAfterSpeechCuts() {
-        XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 5.0, hadSpeech: true, sinceLoud: 0.9),
+        XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 5.0, hadSpeech: true, sinceLoud: 1.2),
                        .cutTranscribe)
     }
 
     func testOngoingSpeechKeeps() {
         XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 5.0, hadSpeech: true, sinceLoud: 0.2),
+                       .keep)
+        // A reflective mid-thought pause (the 16:25 field complaint: 0.8 s
+        // used to split one sentence in two) keeps accumulating.
+        XCTAssertEqual(MeetingPolicy.windowVerdict(accumulated: 5.0, hadSpeech: true, sinceLoud: 0.9),
                        .keep)
     }
 

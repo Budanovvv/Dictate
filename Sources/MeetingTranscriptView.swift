@@ -20,6 +20,10 @@ struct MeetingTranscriptView: View {
             } else {
                 entryList
             }
+            if session.isActive {
+                Divider()
+                statusBar
+            }
         }
         .frame(minWidth: 320, minHeight: 260)
     }
@@ -37,14 +41,6 @@ struct MeetingTranscriptView: View {
                 }
             }
             Spacer()
-            if session.inflightCount > 0 {
-                HStack(spacing: 5) {
-                    ProgressView().controlSize(.small)
-                    Text(L("Recognizing…"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
             if session.isActive {
                 Button(L("Stop"), action: onStop)
                     .controlSize(.small)
@@ -52,6 +48,33 @@ struct MeetingTranscriptView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
+    }
+
+    /// The "it's alive" strip: a level-driven equalizer (dancing bars =
+    /// sound is really being captured, the HUD's honesty rule) plus the
+    /// current state in words — warming, recognizing, listening.
+    private var statusBar: some View {
+        HStack(spacing: 8) {
+            LevelWave(level: session.audioLevel)
+            if session.modelWarming {
+                ProgressView().controlSize(.mini)
+                Text(L("Warming up the model…"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if session.inflightCount > 0 {
+                ProgressView().controlSize(.mini)
+                Text(L("Recognizing…"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if session.listeningFor != nil {
+                Text(L("Listening…"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private var emptyState: some View {
@@ -138,5 +161,24 @@ struct MeetingTranscriptView: View {
     private func elapsed(at date: Date) -> String {
         let s = max(0, Int(date.timeIntervalSince(session.startedAt)))
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Five brand-styled bars dancing with the live audio level — flat when the
+/// room is silent, alive when anyone speaks. The window's proof of hearing.
+private struct LevelWave: View {
+    let level: Double
+    private static let profile: [Double] = [0.36, 0.64, 1.0, 0.64, 0.36]
+
+    var body: some View {
+        HStack(spacing: 2.5) {
+            ForEach(0..<5, id: \.self) { i in
+                Capsule()
+                    .fill(Brand.cyan)
+                    .frame(width: 3, height: 4 + 12 * level * Self.profile[i])
+            }
+        }
+        .frame(height: 16, alignment: .center)
+        .animation(.easeOut(duration: 0.12), value: level)
     }
 }

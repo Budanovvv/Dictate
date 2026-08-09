@@ -19,8 +19,12 @@ enum MeetingPolicy {
     /// so Whisper gets whole utterances; a hard cap bounds the recognition
     /// latency of an uninterrupted monologue; pure silence is dropped
     /// periodically so a quiet channel never grows an hour-long buffer.
+    // silenceCut 1.1 s: 0.8 s cut mid-thought on the owner's reflective
+    // pauses ("Но оно, конечно, не нравится." / "как-то не дослушивает" —
+    // one sentence split in two, field test 2026-08-09 16:25). +0.3 s of
+    // latency buys whole thoughts.
     static func windowVerdict(accumulated: Double, hadSpeech: Bool, sinceLoud: Double,
-                              minChunk: Double = 2.0, silenceCut: Double = 0.8,
+                              minChunk: Double = 2.0, silenceCut: Double = 1.1,
                               hardCap: Double = 15, silentReset: Double = 10) -> WindowVerdict {
         if !hadSpeech {
             return accumulated >= silentReset ? .dropSilence : .keep

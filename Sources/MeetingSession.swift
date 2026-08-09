@@ -40,6 +40,14 @@ final class MeetingSession: ObservableObject {
     /// window's gray "current line", superseded by the final entry at the
     /// cut. Same idea as the dictation pill's live text.
     @Published private(set) var livePreview: String?
+    /// Whisper is still loading into memory — the window says so instead of
+    /// sitting silent (cold-start field complaint: "не видно ни хрена…
+    /// потом разогрелось", 2026-08-09 16:25).
+    @Published private(set) var modelWarming = false
+    /// Combined mic+tap audio level 0…1 for the window's equalizer — the
+    /// "you are being heard" signal, same philosophy as the HUD's dancing
+    /// bars meaning "sound is really being captured".
+    @Published private(set) var audioLevel: Double = 0
     private var previewBusy = false
     private var previewTicks = 0
     var startedAt: Date { sessionStart }
@@ -129,9 +137,16 @@ final class MeetingSession: ObservableObject {
         // Whisper warms up too: a meeting started right after app launch
         // would otherwise lose its first windows to a not-yet-loaded model
         // (the "warm-up fired once and died silently" onboarding grabla).
+        // The window shows the warming state honestly meanwhile.
+        modelWarming = true
         Task {
+            if await WhisperEngine.shared.isReady(for: .fast) {
+                await MainActor.run { self.modelWarming = false }
+                return
+            }
             do { try await WhisperEngine.shared.prepare(tier: .fast) { _ in } }
             catch { Log.d("meeting: whisper prepare failed: \(error.localizedDescription)") }
+            await MainActor.run { self.modelWarming = false }
         }
         powerActivity = ProcessInfo.processInfo.beginActivity(
             options: [.idleSystemSleepDisabled, .userInitiated],
@@ -160,6 +175,12 @@ final class MeetingSession: ObservableObject {
         statWindows = 0
         statEntries = 0
         ticksSinceHeartbeat = 0
+        // The window's equalizer: mic level drives it directly (delivered on
+        // main by AudioRecorder); the tap side feeds it from appendThem.
+        mic.onLevel = { [weak self] level in
+            guard let self, self.isActive else { return }
+            self.audioLevel = max(level, self.audioLevel * 0.7)
+        }
         mic.start()
         isActive = true
         // 0.5 s cadence is the window-cut resolution — half the shortest
@@ -187,6 +208,8 @@ final class MeetingSession: ObservableObject {
         isActive = false
         listeningFor = nil
         livePreview = nil
+        modelWarming = false
+        audioLevel = 0
         if let activity = powerActivity {
             ProcessInfo.processInfo.endActivity(activity)
             powerActivity = nil
@@ -201,6 +224,10 @@ final class MeetingSession: ObservableObject {
         guard isActive, !stopping else { return }
         lastTapBufferAt = Date()
         themPCM.append(pcm)
+        // Their voices move the equalizer too — "hearing the call" is as
+        // important a signal as "hearing you".
+        let level = min(1.0, peak * 3)
+        if level > audioLevel { audioLevel = level }
     }
 
     private func evaluateWindows() {
