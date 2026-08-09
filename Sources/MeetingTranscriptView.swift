@@ -15,7 +15,12 @@ struct MeetingTranscriptView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if session.displayEntries.isEmpty && session.inflightCount == 0 {
+            // The empty-state placeholder must yield the moment there is ANY
+            // life to show — the live gray hypothesis of the very first
+            // phrase used to hide behind it for up to 17 s (field run
+            // 2026-08-09 16:59, read as "it's warming up forever").
+            if session.displayEntries.isEmpty && session.inflightCount == 0
+                && session.livePreview == nil {
                 emptyState
             } else {
                 entryList

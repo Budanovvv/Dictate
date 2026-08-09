@@ -404,9 +404,14 @@ final class MeetingSession: ObservableObject {
             guard await WhisperEngine.shared.isReady(for: .fast) else { return }
             let floats = AudioRecorder.floatSamples(fromPCM: pcm)
             let window = Array(floats.suffix(15 * AudioRecorder.sampleRate))
+            let started = Date()
             guard let (text, _) = try? await WhisperEngine.shared.transcribe(
                 floats: window, tier: .fast, language: "", prompt: "",
                 isCancelled: { [weak self] in self?.isActive != true }) else { return }
+            Log.d(String(format: "meeting: preview %.2fs over %.1fs audio (%@)",
+                         Date().timeIntervalSince(started),
+                         Double(window.count) / Double(AudioRecorder.sampleRate),
+                         useYou ? "you" : "them"))
             await MainActor.run {
                 // The window may have been cut while we decoded — the final
                 // entry supersedes this hypothesis.
