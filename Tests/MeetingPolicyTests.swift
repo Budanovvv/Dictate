@@ -43,6 +43,26 @@ final class MeetingWindowVerdictTests: XCTestCase {
     }
 }
 
+/// GRABLI: Whisper hallucinates on windows with no real content. The root
+/// fix is at the input — a continuous channel's window must hold enough
+/// voiced audio to be worth transcribing. The live case: 1 voiced chunk of
+/// 39 produced "Thank you." three times in the first real meeting.
+final class WindowWorthTranscribingTests: XCTestCase {
+
+    func testSingleBreathBlipIsDropped() {
+        XCTAssertFalse(MeetingPolicy.windowWorthTranscribing(voicedChunks: 1))
+    }
+
+    func testSilenceIsDropped() {
+        XCTAssertFalse(MeetingPolicy.windowWorthTranscribing(voicedChunks: 0))
+    }
+
+    func testCurtRealUtterancePasses() {
+        // ~0.5 s of voiced audio — a real short "Да." from a participant.
+        XCTAssertTrue(MeetingPolicy.windowWorthTranscribing(voicedChunks: 2))
+    }
+}
+
 /// The flush frontier per channel: speech pins it, silence must not — a
 /// silent channel's ancient window start once held finished entries hostage
 /// for up to 10 s and dumped them in a batch (field run 2026-08-09 17:25).

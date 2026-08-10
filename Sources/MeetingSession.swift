@@ -460,10 +460,18 @@ final class MeetingSession: ObservableObject {
         let language = ""
         Task {
             let floats = AudioRecorder.floatSamples(fromPCM: pcm)
-            // Silero gate: a window can pass the level heuristic on a cough
-            // or keyboard noise — don't wake Whisper for it (it hallucinates
-            // on non-speech).
-            let speech = await SpeechGate.shared.hasSpeech(floats) ?? true
+            // Substantive-speech gate: a continuous channel's window needs
+            // ENOUGH voiced audio, not just any speech-like blip — one breath
+            // in ten silent seconds made Whisper hallucinate "Thank you."
+            // three times in the first real meeting. VAD unavailable → let it
+            // through (Whisper still sees trimmed audio).
+            let stats = await SpeechGate.shared.speechStats(floats)
+            let speech = stats.map {
+                MeetingPolicy.windowWorthTranscribing(voicedChunks: $0.voiced)
+            } ?? true
+            if let stats, !speech {
+                Log.d("meeting: window skipped (voiced \(stats.voiced)/\(stats.chunks) — not enough speech)")
+            }
             var text = ""
             var ordinal: Int?
             if speech, !self.cancelled.isCancelled {

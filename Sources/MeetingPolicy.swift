@@ -57,6 +57,18 @@ enum MeetingPolicy {
         }?.key
     }
 
+    /// Whether a cut window holds enough ACTUAL speech to be worth waking
+    /// Whisper. The dictation gate's "any voiced chunk" bar is wrong for a
+    /// continuous channel: a 10 s remote window with one breath-like blip
+    /// (1 voiced chunk of 39) passed to Whisper, which explained the
+    /// near-silence with its favorite phantom — three "Thank you." entries
+    /// in the first real meeting (2026-08-10 09:19). Two voiced chunks
+    /// (~0.5 s of speech) keep a curt real "Да." while dropping breaths;
+    /// the fix is at the INPUT — no output blocklists.
+    static func windowWorthTranscribing(voicedChunks: Int) -> Bool {
+        voicedChunks >= 2
+    }
+
     /// What a channel contributes to the flush frontier. A window WITH
     /// speech pins it at the first speech moment — that is the start its
     /// eventual entry will carry. A silent window must NOT pin anything to

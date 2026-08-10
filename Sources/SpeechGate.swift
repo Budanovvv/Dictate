@@ -19,14 +19,24 @@ actor SpeechGate {
 
     /// true — speech present, false — no speech, nil — VAD unavailable
     /// (caller falls back to the energy heuristic).
+    ///
+    /// The `voiced > 0` bar is deliberate FOR DICTATION: the user held the
+    /// key on purpose, so even one voiced chunk usually is a short word that
+    /// must not be dropped. Continuous sources (the meeting channels) need
+    /// speechStats and their own higher bar instead.
     func hasSpeech(_ floats: [Float]) async -> Bool? {
+        (await speechStats(floats)).map { $0.voiced > 0 }
+    }
+
+    /// Per-chunk verdict counts (a chunk is 256 ms). nil — VAD unavailable.
+    func speechStats(_ floats: [Float]) async -> (chunks: Int, voiced: Int)? {
         guard let manager = loadManager() else { return nil }
         do {
             let results = try await manager.process(floats)
             let voiced = results.filter(\.isVoiceActive).count
             let maxProb = results.map(\.probability).max() ?? 0
             Log.d("vad: chunks=\(results.count) voiced=\(voiced) maxProb=\(String(format: "%.2f", maxProb))")
-            return voiced > 0
+            return (results.count, voiced)
         } catch {
             Log.d("vad: process failed (\(error.localizedDescription)) — falling back")
             return nil
