@@ -496,6 +496,22 @@ final class MeetingSession: ObservableObject {
                 text = (try? await WhisperEngine.shared.transcribe(
                     floats: speechFloats, tier: .fast, language: language, prompt: "",
                     isCancelled: { self.cancelled.isCancelled }))?.0 ?? ""
+                // Phantom-phrase forensics: one "Thank you." nobody said
+                // survived the input gate in the second real meeting, so it
+                // is NOT the silence class the gate closed. Log what such
+                // windows look like — speech ratio, trimmed length, word
+                // count — instead of guessing; a blocklist would also delete
+                // the real "Thank you" a participant does say.
+                if let stats {
+                    let words = text.split(whereSeparator: \.isWhitespace).count
+                    if words <= 3, !text.isEmpty {
+                        Log.d(String(format: "meeting: short result %d word(s) from %.1fs (voiced %d/%d) — %@",
+                                     words,
+                                     Double(speechFloats.count) / Double(AudioRecorder.sampleRate),
+                                     stats.voiced, stats.chunks,
+                                     text.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    }
+                }
             }
             await MainActor.run {
                 self.inflight.removeValue(forKey: key)
