@@ -68,38 +68,8 @@ final class ChannelFrontierTests: XCTestCase {
     }
 }
 
-/// Auto-stop when the call ends: both signals must hold, and a session whose
-/// mic was NEVER held by another app (a room recording, no browser call)
-/// never auto-stops — "mic free" proves nothing there.
-final class CallOverTests: XCTestCase {
-
-    func testCallOverWhenBothSignalsHold() {
-        XCTAssertTrue(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                   micFreeFor: 11, remoteQuietFor: 12))
-    }
-
-    func testMicStillHeldKeepsRecording() {
-        XCTAssertFalse(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                    micFreeFor: 3, remoteQuietFor: 300))
-    }
-
-    func testFreshMicReleaseWaitsOutTheThreshold() {
-        // One free poll (~5 s) is not confirmation yet — a device switch can
-        // release the mic for a beat.
-        XCTAssertFalse(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                    micFreeFor: 6, remoteQuietFor: 6))
-    }
-
-    func testRemoteStillTalkingKeepsRecording() {
-        XCTAssertFalse(MeetingPolicy.callLikelyOver(sawForeignHold: true,
-                                                    micFreeFor: 120, remoteQuietFor: 5))
-    }
-
-    func testRoomRecordingNeverAutoStops() {
-        XCTAssertFalse(MeetingPolicy.callLikelyOver(sawForeignHold: false,
-                                                    micFreeFor: 999, remoteQuietFor: 999))
-    }
-}
+// NOTE: CallOverTests removed with the auto-stop feature itself
+// (2026-08-10, owner's call) — see the note in MeetingPolicy.
 
 /// Speaker attribution of one utterance window: the dominant voice wins,
 /// ties break deterministically, an empty window has no speaker.

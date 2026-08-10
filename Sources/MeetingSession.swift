@@ -44,9 +44,6 @@ final class MeetingSession: ObservableObject {
     /// sitting silent (cold-start field complaint: "не видно ни хрена…
     /// потом разогрелось", 2026-08-09 16:25).
     @Published private(set) var modelWarming = false
-    /// The meeting app released the mic — the call is ending; the window
-    /// says so while the auto-stop confirmation window runs.
-    @Published private(set) var callEnding = false
     /// Combined mic+tap audio level 0…1 for the window's equalizer — the
     /// "you are being heard" signal, same philosophy as the HUD's dancing
     /// bars meaning "sound is really being captured".
@@ -116,13 +113,6 @@ final class MeetingSession: ObservableObject {
     private static let maxInflightWindows = 4
     private var backpressureLogged = false
 
-    // Auto-stop when the call ends: while a call runs, the meeting app holds
-    // the mic (the busy-mic detector's own machinery says who); when it
-    // releases AND the remote channel stays speechless, the call is over —
-    // keeping the room recording after that is a privacy failure.
-    private var sawForeignMicHold = false
-    private var lastOtherMicUserAt: TimeInterval = 0
-    private var micPollTicks = 0
     private var pending: [Entry] = []
     private var inflight: [String: TimeInterval] = [:]   // key → window start
     private var inflightSeq = 0
@@ -192,9 +182,6 @@ final class MeetingSession: ObservableObject {
         statWindows = 0
         statEntries = 0
         ticksSinceHeartbeat = 0
-        sawForeignMicHold = false
-        lastOtherMicUserAt = 0
-        micPollTicks = 0
         // The window's equalizer: mic level drives it directly (delivered on
         // main by AudioRecorder); the tap side feeds it from appendThem.
         mic.onLevel = { [weak self] level in
@@ -229,7 +216,6 @@ final class MeetingSession: ObservableObject {
         listeningFor = nil
         livePreview = nil
         modelWarming = false
-        callEnding = false
         audioLevel = 0
         if let activity = powerActivity {
             ProcessInfo.processInfo.endActivity(activity)
@@ -267,37 +253,6 @@ final class MeetingSession: ObservableObject {
                 Log.d("meeting: tap restart failed: \(error.localizedDescription)")
             }
             lastTapBufferAt = Date()   // fresh grace for the restarted tap
-        }
-
-        // Call-end detection, every ~5 s: does any OTHER app still hold the
-        // mic? (Our own recorder is excluded.) The enumeration is the same
-        // Core Audio process walk the busy-mic culprit naming uses.
-        micPollTicks += 1
-        if micPollTicks >= 10 {
-            micPollTicks = 0
-            let ourPID = ProcessInfo.processInfo.processIdentifier
-            if !AudioInputDevices.appsRunningInput(excluding: ourPID).isEmpty {
-                if !sawForeignMicHold {
-                    sawForeignMicHold = true
-                    Log.d("meeting: call detected (another app holds the mic)")
-                }
-                lastOtherMicUserAt = t
-                if callEnding { callEnding = false }   // the call came back
-            } else if sawForeignMicHold, !callEnding {
-                // Mic released after a detected call: announce the pending
-                // auto-stop instead of looking like it didn't notice.
-                callEnding = true
-                Log.d("meeting: mic released — call ending")
-            }
-            let remoteQuietFor = t - (themLastSpeechAt ?? 0)
-            if MeetingPolicy.callLikelyOver(sawForeignHold: sawForeignMicHold,
-                                            micFreeFor: t - lastOtherMicUserAt,
-                                            remoteQuietFor: remoteQuietFor) {
-                Log.d(String(format: "meeting: call over (mic free %.0fs, remote quiet %.0fs) — auto-stopping",
-                             t - lastOtherMicUserAt, remoteQuietFor))
-                stop()
-                return
-            }
         }
 
         // Once a minute: a heartbeat for the field-test log.
