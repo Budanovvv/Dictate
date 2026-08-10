@@ -163,6 +163,13 @@ final class TitleSanitizingTests: XCTestCase {
     func testStripsAModelAnnouncement() {
         XCTAssertEqual(MeetingTitler.sanitize("Meeting Title: Technical issue resolution"),
                        "Technical issue resolution")
+        // Seen live while retitling the existing meetings (2026-08-10).
+        XCTAssertEqual(MeetingTitler.sanitize("Meeting Transcript: New System Implementation"),
+                       "New System Implementation")
+    }
+
+    func testARealTitleKeepsItsColon() {
+        XCTAssertEqual(MeetingTitler.sanitize("Q3: plans and risks"), "Q3: plans and risks")
     }
 
     func testExcerptStaysWithinTheLimit() {

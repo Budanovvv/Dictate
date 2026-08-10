@@ -85,12 +85,18 @@ enum MeetingTitler {
         if let newline = text.firstIndex(where: \.isNewline) {
             text = String(text[text.startIndex..<newline])
         }
-        // Models like to announce what they're doing ("Meeting Title: …").
-        for prefix in ["Meeting title:", "Title:", "Meeting:", "Topic:",
-                       "Заголовок:", "Название:", "Тема:"] where
-            text.lowercased().hasPrefix(prefix.lowercased()) {
-            text = String(text.dropFirst(prefix.count))
-            break
+        // Models like to announce what they're doing — "Title:", "Meeting
+        // Title:", "Meeting Transcript:". Strip a short leading label that
+        // names the artefact rather than the meeting; a real title like
+        // "Q3: plans" survives because "q3" is none of these words.
+        if let colon = text.range(of: ":") {
+            let head = text[text.startIndex..<colon.lowerBound].lowercased()
+            let markers = ["title", "meeting", "transcript", "topic", "subject",
+                           "заголовок", "название", "тема"]
+            if head.split(whereSeparator: \.isWhitespace).count <= 3,
+               markers.contains(where: { head.contains($0) }) {
+                text = String(text[colon.upperBound...])
+            }
         }
         text = text.trimmingCharacters(in: CharacterSet(charactersIn: " \"'«»*_.…"))
         guard !text.isEmpty else { return nil }
