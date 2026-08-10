@@ -211,6 +211,60 @@ enum MeetingArchive {
         return true
     }
 
+    /// `2026-08-10 09.17 — Release planning` — the date stays in front so
+    /// sorting by name is still sorting by time, which is the order meetings
+    /// actually have. Characters the file system can't take are replaced,
+    /// never dropped silently.
+    static func fileName(stamp: String, title: String?, maxTitle: Int = 60) -> String {
+        guard let title else { return "\(stamp).md" }
+        var clean = title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: " -")
+            .components(separatedBy: .newlines).joined(separator: " ")
+            .components(separatedBy: .whitespaces).filter { !$0.isEmpty }.joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: " .-"))
+        if clean.count > maxTitle {
+            clean = String(clean.prefix(maxTitle)).trimmingCharacters(in: .whitespaces)
+        }
+        guard !clean.isEmpty else { return "\(stamp).md" }
+        return "\(stamp) — \(clean).md"
+    }
+
+    /// Same name, minus collisions: " 2", " 3"… Two meetings can share a
+    /// title ("Weekly standup") but never a minute, so this is a formality —
+    /// which is exactly why it must not be forgotten.
+    static func uniqueName(_ name: String, taken: (String) -> Bool) -> String {
+        guard taken(name) else { return name }
+        let base = name.hasSuffix(".md") ? String(name.dropLast(3)) : name
+        for n in 2...99 {
+            let candidate = "\(base) \(n).md"
+            if !taken(candidate) { return candidate }
+        }
+        return name
+    }
+
+    /// Renames the transcript to match its new title, returning the new URL
+    /// (or the old one when the rename isn't possible). The file's content is
+    /// the source of truth — the name is a courtesy to Finder, so a failure
+    /// here is logged and shrugged off.
+    static func renameFile(at url: URL, stamp: String, title: String) -> URL {
+        let fm = FileManager.default
+        let directory = url.deletingLastPathComponent()
+        let wanted = uniqueName(fileName(stamp: stamp, title: title)) {
+            fm.fileExists(atPath: directory.appendingPathComponent($0).path)
+        }
+        guard wanted != url.lastPathComponent else { return url }
+        let target = directory.appendingPathComponent(wanted)
+        do {
+            try fm.moveItem(at: url, to: target)
+            Log.d("meeting: file renamed -> \(wanted)")
+            return target
+        } catch {
+            Log.d("meeting: rename failed (\(error.localizedDescription)) — keeping \(url.lastPathComponent)")
+            return url
+        }
+    }
+
     @discardableResult
     static func setTitle(_ title: String, dateLine: String, in url: URL) -> Bool {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }

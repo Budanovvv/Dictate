@@ -89,6 +89,50 @@ final class MeetingTitleTests: XCTestCase {
     }
 }
 
+/// Titled transcripts get titled FILES, with the date still in front so the
+/// folder sorts chronologically in Finder.
+final class MeetingFileNameTests: XCTestCase {
+
+    func testUntitledKeepsThePlainStamp() {
+        XCTAssertEqual(MeetingArchive.fileName(stamp: "2026-08-10 09.17", title: nil),
+                       "2026-08-10 09.17.md")
+    }
+
+    func testTitleFollowsTheDate() {
+        XCTAssertEqual(MeetingArchive.fileName(stamp: "2026-08-10 09.17", title: "Release planning"),
+                       "2026-08-10 09.17 — Release planning.md")
+    }
+
+    func testPathCharactersAreReplacedNotDropped() {
+        let name = MeetingArchive.fileName(stamp: "2026-08-10 09.17", title: "Q3/Q4: plans")
+        XCTAssertFalse(name.contains("/"))
+        XCTAssertFalse(name.dropLast(3).contains(":"))
+        XCTAssertTrue(name.contains("Q3-Q4"))
+    }
+
+    func testOverlongTitleIsTrimmed() {
+        let long = String(repeating: "слово ", count: 40)
+        let name = MeetingArchive.fileName(stamp: "2026-08-10 09.17", title: long)
+        XCTAssertLessThanOrEqual(name.count, 60 + "2026-08-10 09.17 — .md".count)
+    }
+
+    func testEmptyishTitleFallsBackToTheStamp() {
+        XCTAssertEqual(MeetingArchive.fileName(stamp: "2026-08-10 09.17", title: "  ..  "),
+                       "2026-08-10 09.17.md")
+    }
+
+    func testCollisionsGetASuffix() {
+        let taken: Set<String> = ["2026-08-10 09.17 — Standup.md",
+                                  "2026-08-10 09.17 — Standup 2.md"]
+        XCTAssertEqual(MeetingArchive.uniqueName("2026-08-10 09.17 — Standup.md") { taken.contains($0) },
+                       "2026-08-10 09.17 — Standup 3.md")
+    }
+
+    func testFreeNameIsUsedAsIs() {
+        XCTAssertEqual(MeetingArchive.uniqueName("a.md") { _ in false }, "a.md")
+    }
+}
+
 /// The model answers in free text; the sidebar needs a label.
 final class TitleSanitizingTests: XCTestCase {
 
@@ -116,12 +160,51 @@ final class TitleSanitizingTests: XCTestCase {
         XCTAssertNil(MeetingTitler.sanitize("ok"))     // too short to be a title
     }
 
+    func testStripsAModelAnnouncement() {
+        XCTAssertEqual(MeetingTitler.sanitize("Meeting Title: Technical issue resolution"),
+                       "Technical issue resolution")
+    }
+
     func testExcerptStaysWithinTheLimit() {
         let entries = (0..<200).map {
             TranscriptEntry(time: "09:00:00", speaker: "You", text: "фраза номер \($0)", isYou: true)
         }
         XCTAssertLessThanOrEqual(MeetingTitler.excerpt(from: entries).count,
                                  MeetingTitler.excerptLimit)
+    }
+
+    /// The excerpt must represent the WHOLE meeting: reading only the opening
+    /// titled a work call "Aunt won't be there" (field run 2026-08-10).
+    func testExcerptSpansTheWholeMeeting() {
+        let entries = (0..<200).map {
+            TranscriptEntry(time: "09:00:00", speaker: "You",
+                            text: String(repeating: "слово ", count: 10) + "\($0)", isYou: true)
+        }
+        let text = MeetingTitler.excerpt(from: entries)
+        XCTAssertTrue(text.contains(" 0"))            // the opening is kept
+        // …and something from the last third made it in as well.
+        let tailReached = (140..<200).contains { text.contains(" \($0)") }
+        XCTAssertTrue(tailReached)
+    }
+
+    func testShortMeetingIsQuotedWhole() {
+        let entries = [TranscriptEntry(time: "09:00:00", speaker: "You", text: "привет", isYou: true),
+                       TranscriptEntry(time: "09:00:05", speaker: "Speaker 1", text: "и тебе", isYou: false)]
+        XCTAssertEqual(MeetingTitler.excerpt(from: entries), "You: привет\nSpeaker 1: и тебе")
+    }
+
+    /// Russian is not one of the model's languages — it must be routed
+    /// through translation instead of being handed over raw.
+    func testUnsupportedLanguageIsRouted() {
+        XCTAssertTrue(MeetingTitler.needsTranslation(language: "ru"))
+        XCTAssertFalse(MeetingTitler.needsTranslation(language: "en"))
+        XCTAssertFalse(MeetingTitler.needsTranslation(language: "de"))
+        XCTAssertFalse(MeetingTitler.needsTranslation(language: nil))   // unknown: let it try
+    }
+
+    func testDominantLanguageIsDetected() {
+        XCTAssertEqual(MeetingTitler.dominantLanguage(of: "Давайте обсудим релиз и планы на неделю"), "ru")
+        XCTAssertEqual(MeetingTitler.dominantLanguage(of: "Let us discuss the release plan"), "en")
     }
 }
 

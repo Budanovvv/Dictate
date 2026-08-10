@@ -606,12 +606,26 @@ final class MeetingSession: ObservableObject {
         Task { @MainActor in
             guard let title = await MeetingTitler.title(for: entries) else { return }
             MeetingArchive.setTitle(title, dateLine: Self.dateLine(stamp), in: url)
-            self.onFinished?(url)
+            // The file follows its title so the folder reads in Finder too;
+            // the transcript's content stays the source of truth, so a failed
+            // rename costs nothing but a plainer name.
+            let renamed = MeetingArchive.renameFile(at: url, stamp: Self.fileStamp(stamp),
+                                                    title: title)
+            if self.fileURL == url { self.fileURL = renamed }
+            self.onFinished?(renamed)
         }
     }
 
     static func dateLine(_ date: Date) -> String {
         DateFormatter.localizedString(from: date, dateStyle: .long, timeStyle: .short)
+    }
+
+    /// Sortable file-name stamp — the part that keeps the folder in
+    /// chronological order once titles are appended.
+    static func fileStamp(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH.mm"
+        return f.string(from: date)
     }
 
     // MARK: - File
@@ -620,9 +634,8 @@ final class MeetingSession: ObservableObject {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Dictate Meetings", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let stamp = DateFormatter()
-        stamp.dateFormat = "yyyy-MM-dd HH.mm"
-        let url = dir.appendingPathComponent("Meeting \(stamp.string(from: Date())).md")
+        let url = dir.appendingPathComponent(
+            MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: nil))
         let header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\n"
         try header.data(using: .utf8)!.write(to: url)
         fileHandle = try FileHandle(forWritingTo: url)
