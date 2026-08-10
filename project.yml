@@ -91,6 +91,7 @@ targets:
       - path: Sources/DictationPolicy.swift
       - path: Sources/MeetingPolicy.swift
       - path: Sources/MeetingArchive.swift
+      - path: Sources/MeetingTitler.swift
       - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift
       - path: Sources/RecordingHUD.swift

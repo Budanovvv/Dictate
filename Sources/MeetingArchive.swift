@@ -37,6 +37,9 @@ struct ArchivedMeeting: Identifiable, Hashable {
     let url: URL
     let started: Date       // file creation, i.e. session start
     let entries: [TranscriptEntry]
+    /// What the meeting was about, when the on-device model managed to name
+    /// it; nil means the meeting is known by its date alone.
+    let title: String?
 
     var speakers: [String] {
         var seen = Set<String>(), ordered: [String] = []
@@ -105,6 +108,43 @@ enum MeetingArchive {
                                isYou: speaker == youLabel)
     }
 
+    /// A named transcript looks like
+    ///
+    ///     # Release planning
+    ///     _August 10, 2026 at 9:17 AM_
+    ///
+    /// while an unnamed one keeps the original date header. The italic date
+    /// line is what tells them apart — a format we write ourselves, so the
+    /// test is exact instead of guessing whether an H1 "looks like" a date
+    /// in whatever language it was written.
+    static func parseTitle(markdown: String) -> String? {
+        let lines = markdown.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard lines.count >= 2, lines[0].hasPrefix("# "),
+              lines[1].hasPrefix("_"), lines[1].hasSuffix("_"), lines[1].count > 2
+        else { return nil }
+        let title = String(lines[0].dropFirst(2)).trimmingCharacters(in: .whitespaces)
+        return title.isEmpty ? nil : title
+    }
+
+    /// Puts a title on a transcript, keeping the date visible underneath.
+    static func applying(title: String, dateLine: String, to markdown: String) -> String {
+        var lines = markdown.components(separatedBy: .newlines)
+        guard let h1 = lines.firstIndex(where: { $0.hasPrefix("# ") }) else {
+            return "# \(title)\n_\(dateLine)_\n\n" + markdown
+        }
+        lines[h1] = "# \(title)"
+        // Replace an existing italic date line, or add one.
+        let next = lines[(h1 + 1)...].firstIndex { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        if let next, lines[next].hasPrefix("_"), lines[next].hasSuffix("_") {
+            lines[next] = "_\(dateLine)_"
+        } else {
+            lines.insert("_\(dateLine)_", at: h1 + 1)
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Merges consecutive entries of the same voice into one turn.
     static func turns(_ entries: [TranscriptEntry]) -> [TranscriptTurn] {
         var turns: [TranscriptTurn] = []
@@ -153,7 +193,8 @@ enum MeetingArchive {
                 let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?
                     .creationDate ?? Date.distantPast
                 return ArchivedMeeting(id: url, url: url, started: created,
-                                       entries: parse(markdown: text, youLabel: youLabel))
+                                       entries: parse(markdown: text, youLabel: youLabel),
+                                       title: parseTitle(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }
@@ -168,6 +209,13 @@ enum MeetingArchive {
         else { return false }
         Log.d("meeting: renamed \"\(old)\" -> \"\(clean)\" in \(url.lastPathComponent)")
         return true
+    }
+
+    @discardableResult
+    static func setTitle(_ title: String, dateLine: String, in url: URL) -> Bool {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        let updated = applying(title: title, dateLine: dateLine, to: text)
+        return (try? updated.write(to: url, atomically: true, encoding: .utf8)) != nil
     }
 
     static func delete(_ meeting: ArchivedMeeting) {

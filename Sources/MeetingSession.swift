@@ -596,7 +596,22 @@ final class MeetingSession: ObservableObject {
         try? fileHandle?.close()
         fileHandle = nil
         Log.d("meeting: transcript finished -> \(url.lastPathComponent)")
+        let entries = displayEntries
+        let stamp = sessionStart
+        // The transcript is safe on disk before the model is asked for a
+        // name: titling is a finishing touch, never a step the recording
+        // depends on. The window is told twice — once now, once if a title
+        // lands — so the meeting appears in the library immediately.
         onFinished?(url)
+        Task { @MainActor in
+            guard let title = await MeetingTitler.title(for: entries) else { return }
+            MeetingArchive.setTitle(title, dateLine: Self.dateLine(stamp), in: url)
+            self.onFinished?(url)
+        }
+    }
+
+    static func dateLine(_ date: Date) -> String {
+        DateFormatter.localizedString(from: date, dateStyle: .long, timeStyle: .short)
     }
 
     // MARK: - File

@@ -104,9 +104,16 @@ struct MeetingsView: View {
 
     private func meetingRow(_ meeting: ArchivedMeeting) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(timeOfDay(meeting.started))
+            // A named meeting leads with its subject; an unnamed one is
+            // known by when it happened.
+            Text(meeting.title ?? timeOfDay(meeting.started))
                 .font(.callout.weight(.medium))
+                .lineLimit(2)
             HStack(spacing: 5) {
+                if meeting.title != nil {
+                    Text(timeOfDay(meeting.started))
+                    Text("·")
+                }
                 if let duration = meeting.duration {
                     Text(compactDuration(duration))
                 }
@@ -141,8 +148,10 @@ struct MeetingsView: View {
         case .archived(let url):
             if let meeting = meetings.first(where: { $0.url == url }) {
                 TranscriptPane(entries: meeting.entries,
-                               title: dayAndTime(meeting.started),
-                               subtitle: subtitle(for: meeting),
+                               title: meeting.title ?? dayAndTime(meeting.started),
+                               subtitle: meeting.title == nil
+                                   ? subtitle(for: meeting)
+                                   : dayAndTime(meeting.started) + " · " + subtitle(for: meeting),
                                live: nil,
                                onStop: nil,
                                onRename: { old, new in
