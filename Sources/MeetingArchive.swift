@@ -190,8 +190,9 @@ enum MeetingArchive {
             .filter { $0.pathExtension == "md" }
             .compactMap { url -> ArchivedMeeting? in
                 guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-                let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?
-                    .creationDate ?? Date.distantPast
+                let created = startedDate(fileName: url.lastPathComponent)
+                    ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+                    ?? Date.distantPast
                 return ArchivedMeeting(id: url, url: url, started: created,
                                        entries: parse(markdown: text, youLabel: youLabel),
                                        title: parseTitle(markdown: text))
@@ -209,6 +210,22 @@ enum MeetingArchive {
         else { return false }
         Log.d("meeting: renamed \"\(old)\" -> \"\(clean)\" in \(url.lastPathComponent)")
         return true
+    }
+
+    /// When the meeting happened, read from the file NAME. The name carries
+    /// the stamp we wrote at the start of the session and survives every
+    /// later edit; the file's creation date does not — an atomic rewrite
+    /// (which is how a title is saved) resets it, and once did, making every
+    /// transcript claim it was recorded the minute it was retitled.
+    static func startedDate(fileName: String) -> Date? {
+        var name = fileName
+        for prefix in ["Meeting "] where name.hasPrefix(prefix) {
+            name = String(name.dropFirst(prefix.count))
+        }
+        let stamp = String(name.prefix(16))          // yyyy-MM-dd HH.mm
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH.mm"
+        return f.date(from: stamp)
     }
 
     /// `2026-08-10 09.17 — Release planning` — the date stays in front so
@@ -265,11 +282,38 @@ enum MeetingArchive {
         }
     }
 
+    /// Gives a finished meeting a new name: the title inside the file (the
+    /// source of truth) and then the file name to match. Returns where the
+    /// transcript lives now — the caller must follow it, since the URL is
+    /// the meeting's identity.
+    static func retitle(_ meeting: ArchivedMeeting, to title: String) -> URL {
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean != meeting.title else { return meeting.url }
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyy-MM-dd HH.mm"
+        let dateLine = DateFormatter.localizedString(from: meeting.started,
+                                                     dateStyle: .long, timeStyle: .short)
+        guard setTitle(clean, dateLine: dateLine, in: meeting.url) else { return meeting.url }
+        return renameFile(at: meeting.url, stamp: stamp.string(from: meeting.started), title: clean)
+    }
+
     @discardableResult
     static func setTitle(_ title: String, dateLine: String, in url: URL) -> Bool {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
         let updated = applying(title: title, dateLine: dateLine, to: text)
-        return (try? updated.write(to: url, atomically: true, encoding: .utf8)) != nil
+        // An atomic write replaces the file, so the original creation date
+        // has to be carried over deliberately — Finder sorts by it, and a
+        // transcript that claims to be from the moment it was renamed is a
+        // small lie about the user's own history.
+        let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+        guard (try? updated.write(to: url, atomically: true, encoding: .utf8)) != nil else {
+            return false
+        }
+        if let created {
+            try? FileManager.default.setAttributes([.creationDate: created],
+                                                   ofItemAtPath: url.path)
+        }
+        return true
     }
 
     static func delete(_ meeting: ArchivedMeeting) {

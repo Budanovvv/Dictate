@@ -121,6 +121,26 @@ final class MeetingFileNameTests: XCTestCase {
                        "2026-08-10 09.17.md")
     }
 
+    /// The file name is the authoritative record of WHEN a meeting happened:
+    /// saving a title rewrites the file atomically, which resets the
+    /// creation date — it once made every transcript claim it was recorded
+    /// the minute it was retitled (caught live 2026-08-10).
+    func testStartedDateComesFromTheName() {
+        let date = MeetingArchive.startedDate(fileName: "2026-08-10 09.17 — Release planning.md")
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH.mm"
+        XCTAssertEqual(date.map { f.string(from: $0) }, "2026-08-10 09.17")
+    }
+
+    func testLegacyMeetingPrefixStillParses() {
+        let date = MeetingArchive.startedDate(fileName: "Meeting 2026-08-09 13.56.md")
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH.mm"
+        XCTAssertEqual(date.map { f.string(from: $0) }, "2026-08-09 13.56")
+    }
+
+    func testAForeignNameHasNoDate() {
+        XCTAssertNil(MeetingArchive.startedDate(fileName: "notes.md"))
+    }
+
     func testCollisionsGetASuffix() {
         let taken: Set<String> = ["2026-08-10 09.17 — Standup.md",
                                   "2026-08-10 09.17 — Standup 2.md"]

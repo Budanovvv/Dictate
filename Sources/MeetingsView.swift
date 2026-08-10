@@ -18,6 +18,9 @@ struct MeetingsView: View {
     @State private var selection: Selection?
     @State private var meetings: [ArchivedMeeting] = []
     @State private var query = ""
+    /// The toolbar's Rename… routes to the same popover the title carries,
+    /// so there is one editing surface no matter how you get to it.
+    @State private var renamingFromMenu = false
 
     enum Selection: Hashable {
         case live
@@ -139,12 +142,17 @@ struct MeetingsView: View {
     private var detail: some View {
         switch selection {
         case .live:
+            // A running meeting has no title yet (it is written when the
+            // transcript closes), and its file is open for appending — so
+            // titling waits until it's finished.
             TranscriptPane(entries: session.displayEntries,
                            title: L("Recording now"),
                            subtitle: nil,
                            live: session,
                            onStop: onStop,
-                           onRename: { old, new in session.renameSpeaker(from: old, to: new) })
+                           onRename: { old, new in session.renameSpeaker(from: old, to: new) },
+                           onRetitle: nil,
+                           openRename: .constant(false))
         case .archived(let url):
             if let meeting = meetings.first(where: { $0.url == url }) {
                 TranscriptPane(entries: meeting.entries,
@@ -157,7 +165,16 @@ struct MeetingsView: View {
                                onRename: { old, new in
                                    MeetingArchive.rename(speaker: old, to: new, in: url)
                                    reload()
-                               })
+                               },
+                               onRetitle: { newTitle in
+                                   // The file is renamed too, so the meeting's
+                                   // identity moves — follow it, or the pane
+                                   // would show "select a meeting".
+                                   let moved = MeetingArchive.retitle(meeting, to: newTitle)
+                                   reload()
+                                   selection = .archived(moved)
+                               },
+                               openRename: $renamingFromMenu)
             } else {
                 placeholder
             }
@@ -182,6 +199,7 @@ struct MeetingsView: View {
             if case .archived(let url) = selection,
                let meeting = meetings.first(where: { $0.url == url }) {
                 Menu {
+                    Button(L("Rename meeting…")) { renamingFromMenu = true }
                     Button(L("Copy transcript")) { copy(meeting) }
                     Button(L("Show in Finder")) {
                         NSWorkspace.shared.activateFileViewerSelecting([meeting.url])
@@ -294,8 +312,15 @@ private struct TranscriptPane: View {
     let live: MeetingSession?
     let onStop: (() -> Void)?
     let onRename: (String, String) -> Void
+    /// nil while a meeting is still recording — a title is written when the
+    /// transcript closes.
+    let onRetitle: ((String) -> Void)?
+    /// Set by the toolbar's Rename… — the same popover, opened from elsewhere.
+    @Binding var openRename: Bool
 
     @ObservedObject private var loc = Localization.shared
+    @State private var retitling = false
+    @State private var titleDraft = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -311,13 +336,35 @@ private struct TranscriptPane: View {
                 StatusStrip(session: live)
             }
         }
+        .onChange(of: openRename) { open in
+            guard open, onRetitle != nil else { return }
+            openRename = false
+            titleDraft = title
+            retitling = true
+        }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
             if live?.isActive == true { PulsingDot() }
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.headline)
+                if let onRetitle {
+                    // The name the model chose is a suggestion, not a
+                    // verdict: click it and type your own.
+                    Button {
+                        titleDraft = title
+                        retitling = true
+                    } label: {
+                        Text(title).font(.headline)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("Rename this meeting"))
+                    .popover(isPresented: $retitling, arrowEdge: .bottom) {
+                        retitlePopover(onRetitle)
+                    }
+                } else {
+                    Text(title).font(.headline)
+                }
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
@@ -338,6 +385,23 @@ private struct TranscriptPane: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    private func retitlePopover(_ commit: @escaping (String) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L("Name this meeting")).font(.caption).foregroundStyle(.secondary)
+            TextField(L("Name"), text: $titleDraft)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+                .onSubmit { retitling = false; commit(titleDraft) }
+            HStack {
+                Spacer()
+                Button(L("Cancel")) { retitling = false }
+                Button(L("Save")) { retitling = false; commit(titleDraft) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(12)
     }
 
     private var emptyState: some View {
