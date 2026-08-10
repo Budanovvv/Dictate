@@ -216,12 +216,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         )
         meeting.target = self
         menu.addItem(meeting)
-        if meetingActive() {
-            let show = NSMenuItem(title: L("Show Meeting Transcript"),
-                                  action: #selector(showMeetingClicked), keyEquivalent: "")
-            show.target = self
-            menu.addItem(show)
-        }
+
+        // The library is always reachable — past transcripts are content the
+        // user owns, not a by-product of a running session.
+        let show = NSMenuItem(title: L("Meetings…"),
+                              action: #selector(showMeetingClicked), keyEquivalent: "")
+        show.target = self
+        menu.addItem(show)
 
         let settings = NSMenuItem(title: L("Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
         settings.target = self

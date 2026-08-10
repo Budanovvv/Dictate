@@ -25,29 +25,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private let meeting = MeetingSession()
     private var meetingWindow: NSPanel?
 
-    /// The live transcript window: floating, NON-ACTIVATING (glancing at it
-    /// must not steal focus from the call), visible over fullscreen Spaces —
-    /// the same combination the HUD and translator panels learned the hard
-    /// way (GRABLI).
+    /// The meetings window. While a call is being recorded it behaves like
+    /// the HUD — floating over fullscreen Spaces and NON-ACTIVATING, so a
+    /// glance at the transcript never steals focus from the call (GRABLI);
+    /// `becomesKeyOnlyIfNeeded` still lets the search field and the rename
+    /// popover take keystrokes when they're actually clicked. Opening the
+    /// library (the sidebar) turns it into an ordinary window and widens it,
+    /// because browsing is a deliberate, focused activity.
     private func showMeetingWindow() {
         if meetingWindow == nil {
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 380, height: 460),
-                styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .utilityWindow],
+                contentRect: NSRect(x: 0, y: 0, width: 420, height: 500),
+                styleMask: [.titled, .closable, .resizable,
+                            .nonactivatingPanel, .utilityWindow],
                 backing: .buffered, defer: false
             )
-            panel.title = L("Meeting transcript")
-            panel.level = .floating
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.title = L("Meetings")
+            panel.becomesKeyOnlyIfNeeded = true
+            panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
-            panel.minSize = NSSize(width: 320, height: 260)
-            panel.contentView = NSHostingView(rootView: MeetingTranscriptView(
+            panel.minSize = NSSize(width: 360, height: 300)
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.contentView = NSHostingView(rootView: MeetingsView(
                 session: meeting,
-                onStop: { [weak self] in self?.meeting.stop() }))
+                onStop: { [weak self] in self?.meeting.stop() },
+                onSidebarChange: { [weak self] shown in
+                    self?.adjustMeetingWindow(sidebarShown: shown)
+                }))
             panel.center()
             meetingWindow = panel
         }
+        applyMeetingWindowLevel()
         meetingWindow?.orderFront(nil)
+    }
+
+    /// A floating panel is right while recording (glanceable over the call)
+    /// and wrong afterwards (a library that covers everything is rude).
+    private func applyMeetingWindowLevel() {
+        meetingWindow?.level = meeting.isActive ? .floating : .normal
+    }
+
+    /// Opening the library needs room; closing it hands the space back.
+    private func adjustMeetingWindow(sidebarShown: Bool) {
+        guard let window = meetingWindow else { return }
+        let width = window.frame.width
+        guard sidebarShown ? width < 720 : width > 720 else { return }
+        var frame = window.frame
+        let target: CGFloat = sidebarShown ? 780 : 460
+        frame.origin.x -= (target - frame.width) / 2
+        frame.size.width = target
+        if sidebarShown { frame.size.height = max(frame.height, 540) }
+        window.setFrame(frame, display: true, animate: true)
     }
 
     /// Menu toggle for the meeting transcript. The first start of every
@@ -107,13 +135,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() },
             showMeetingTranscript: { [weak self] in self?.showMeetingWindow() }
         )
-        meeting.onFinished = { [weak self] url in
-            // The finished transcript opens itself — the payoff moment; no
-            // extra pill or dialog needed. The live window bows out to it.
-            self?.meetingWindow?.orderOut(nil)
-            NSWorkspace.shared.open(url)
+        meeting.onFinished = { [weak self] _ in
+            guard let self else { return }
+            // The window IS the reader now: the finished transcript simply
+            // becomes the newest item in the library, in place. No external
+            // editor, no file hunting.
+            self.applyMeetingWindowLevel()
+            self.showMeetingWindow()
             // Drop the red recording dot from the menu bar.
-            if let self { self.statusController.applyState(self.dictation.state) }
+            self.statusController.applyState(self.dictation.state)
         }
         dictation.onError = { [weak self] message in
             DispatchQueue.main.async { self?.statusController.showError(message) }

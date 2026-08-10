@@ -20,14 +20,7 @@ final class MeetingSession: ObservableObject {
     /// Mirror of the transcript for the live window, in the exact order the
     /// file gets the lines. Capped so an hours-long session can't grow an
     /// unbounded array — the file remains the full record.
-    struct DisplayEntry: Identifiable {
-        let id = UUID()
-        let time: String
-        let speaker: String
-        let text: String
-        let isYou: Bool
-    }
-    @Published private(set) var displayEntries: [DisplayEntry] = []
+    @Published private(set) var displayEntries: [TranscriptEntry] = []
     /// Windows currently being recognized — the window shows a subtle
     /// "Recognizing…" row while any are in flight.
     @Published private(set) var inflightCount = 0
@@ -51,6 +44,33 @@ final class MeetingSession: ObservableObject {
     private var previewBusy = false
     private var previewTicks = 0
     var startedAt: Date { sessionStart }
+    /// Voices the user renamed during this session ("Speaker 2" → "Anna").
+    private var speakerNames: [String: String] = [:]
+
+    /// Renames a voice in the running session: the lines already written to
+    /// the file, everything on screen, and every entry this voice produces
+    /// from here on. The file handle is reopened at the end because the
+    /// rewrite replaces the whole file underneath it.
+    @MainActor
+    func renameSpeaker(from old: String, to new: String) {
+        let clean = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean != old else { return }
+        speakerNames[old] = clean
+        // Anything already mapped INTO the old name follows it along.
+        for (source, current) in speakerNames where current == old { speakerNames[source] = clean }
+        displayEntries = displayEntries.map {
+            $0.speaker == old
+                ? TranscriptEntry(id: $0.id, time: $0.time, speaker: clean,
+                                  text: $0.text, isYou: $0.isYou)
+                : $0
+        }
+        guard let url = fileURL else { return }
+        try? fileHandle?.close()
+        fileHandle = nil
+        MeetingArchive.rename(speaker: old, to: clean, in: url)
+        fileHandle = try? FileHandle(forWritingTo: url)
+        fileHandle?.seekToEndOfFile()
+    }
 
     private let tap = MeetingTap()
     private let mic = AudioRecorder()
@@ -132,6 +152,7 @@ final class MeetingSession: ObservableObject {
         youWindowStart = 0; youLastSpeechAt = nil; youFirstSpeechAt = nil; youTailBusy = false
 
         displayEntries = []
+        speakerNames = [:]
         inflightCount = 0
         listeningFor = nil
         livePreview = nil
@@ -552,11 +573,14 @@ final class MeetingSession: ObservableObject {
                                              inflightStarts: Array(inflight.values))
         guard n > 0 else { return }
         for entry in pending.prefix(n) {
-            write("**[\(clock(entry.start))] \(entry.speaker):** \(entry.text)\n\n")
-            displayEntries.append(DisplayEntry(time: clock(entry.start),
-                                               speaker: entry.speaker,
-                                               text: entry.text,
-                                               isYou: entry.you))
+            // A voice the user has already named keeps that name for the rest
+            // of the session — including in the file.
+            let speaker = speakerNames[entry.speaker] ?? entry.speaker
+            write("**[\(clock(entry.start))] \(speaker):** \(entry.text)\n\n")
+            displayEntries.append(TranscriptEntry(time: clock(entry.start),
+                                                  speaker: speaker,
+                                                  text: entry.text,
+                                                  isYou: entry.you))
         }
         if displayEntries.count > 500 {
             displayEntries.removeFirst(displayEntries.count - 500)
