@@ -106,34 +106,51 @@ struct MeetingsView: View {
     }
 
     private func meetingRow(_ meeting: ArchivedMeeting) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             // A named meeting leads with its subject; an unnamed one is
             // known by when it happened.
             Text(meeting.title ?? timeOfDay(meeting.started))
                 .font(.callout.weight(.medium))
                 .lineLimit(2)
-            HStack(spacing: 5) {
-                if meeting.title != nil {
-                    Text(timeOfDay(meeting.started))
-                    Text("·")
+            // One text run with one separator, so the gaps are even however
+            // many facts a meeting happens to have; the speaker count is a
+            // labelled figure rather than a third kind of separator.
+            HStack(spacing: 7) {
+                let facts = metaFacts(meeting)
+                if !facts.isEmpty {
+                    Text(facts.joined(separator: " · "))
                 }
-                if let duration = meeting.duration {
-                    Text(compactDuration(duration))
-                }
-                if !meeting.speakers.isEmpty {
-                    Text("· \(meeting.speakers.count)")
-                    Image(systemName: "person.wave.2")
-                        .imageScale(.small)
+                if meeting.speakers.count > 1 {
+                    // Hand-built instead of a Label: the stock label style
+                    // leaves a gap wide enough to read as another column.
+                    HStack(spacing: 3) {
+                        Image(systemName: "person.wave.2").imageScale(.small)
+                        Text("\(meeting.speakers.count)")
+                    }
                 }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            Text(meeting.preview)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            if !meeting.preview.isEmpty {
+                Text(meeting.preview)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
+    }
+
+    /// Time (unless it is already the row's title) and length — omitting a
+    /// duration too short to state, so a one-line meeting doesn't advertise
+    /// "0 s".
+    private func metaFacts(_ meeting: ArchivedMeeting) -> [String] {
+        var facts: [String] = []
+        if meeting.title != nil { facts.append(timeOfDay(meeting.started)) }
+        if let duration = meeting.duration, duration >= 1 {
+            facts.append(compactDuration(duration))
+        }
+        return facts
     }
 
     // MARK: - Detail
@@ -256,7 +273,11 @@ struct MeetingsView: View {
 
     private func subtitle(for meeting: ArchivedMeeting) -> String {
         var parts: [String] = []
-        if let duration = meeting.duration { parts.append(compactDuration(duration)) }
+        // Same rule as the list: a meeting too short to measure says nothing
+        // rather than "0 s".
+        if let duration = meeting.duration, duration >= 1 {
+            parts.append(compactDuration(duration))
+        }
         if !meeting.speakers.isEmpty {
             parts.append(meeting.speakers.joined(separator: ", "))
         }
