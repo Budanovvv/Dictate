@@ -33,6 +33,8 @@ struct SettingsView: View {
         "en", "es", "pt", "fr", "de", "it", "nl", "pl", "tr", "uk", "ru",
         "ar", "hi", "id", "th", "vi", "zh", "ja", "ko",
     ]
+    /// The downloadable text model behind meeting names and section lines.
+    @ObservedObject private var textModel = LocalTextModelDownload.shared
     @State private var micGranted = Permissions.microphone == .granted
     @State private var axGranted = Permissions.accessibility == .granted
     @State private var replacements = Settings.shared.replacements
@@ -280,6 +282,29 @@ struct SettingsView: View {
                     }
             } header: { Text(L("General")) }
 
+            // — The downloadable text model —
+            //
+            // Absent entirely on a Mac that cannot run it (see
+            // LocalTextModelFile.isSupported). That is the whole point
+            // of hiding the section rather than disabling the button: a
+            // greyed-out row invites the question "why not?", and the honest
+            // answer is a hardware fact the user cannot change. What such a Mac
+            // gets instead is unchanged — Apple's model where the OS provides
+            // one, and otherwise meetings keep their date-and-time names.
+            if textModel.state != .unsupported {
+                Section {
+                    LabeledContent {
+                        textModelControl
+                    } label: {
+                        rowLabel(L("Text model"),
+                                 L("Names your meetings and says what each part was about."))
+                    }
+                } header: { Text(L("Meetings")) } footer: {
+                    Text(L("A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             // — Status (read-only) —
             Section {
                 LabeledContent(L("Microphone")) {
@@ -342,12 +367,59 @@ struct SettingsView: View {
             micGranted = Permissions.microphone == .granted
             axGranted = Permissions.accessibility == .granted
             launchAtLogin = SMAppService.mainApp.status == .enabled
+            textModel.refresh()
             refreshStatuses()
         }
-        .onAppear { refreshStatuses() }
+        .onAppear {
+            textModel.refresh()
+            refreshStatuses()
+        }
         .onDisappear {
             captureMain.cancel()
             captureTranslate.cancel()
+        }
+    }
+
+    /// The right-hand side of the text-model row: one control per state, and
+    /// every state says what it is rather than spinning anonymously.
+    @ViewBuilder
+    private var textModelControl: some View {
+        switch textModel.state {
+        case .unsupported:
+            EmptyView()
+        case .absent:
+            Button(Lf("Download %@", LocalTextModelFile.sizeText)) { textModel.start() }
+        case .downloading(let fraction):
+            HStack(spacing: 8) {
+                // A determinate bar, because we know the total to the byte. A
+                // 2.3 GB download behind a spinner is indistinguishable from a
+                // hang, and this one takes minutes.
+                ProgressView(value: fraction).frame(width: 90)
+                Text("\(Int(fraction * 100))%")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Button(L("Cancel")) { textModel.cancel() }
+                    .controlSize(.small)
+            }
+        case .verifying:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(L("Checking…")).font(.callout).foregroundStyle(.secondary)
+            }
+        case .ready:
+            HStack(spacing: 8) {
+                statusBadge(ok: true, text: L("Ready"))
+                Button(L("Remove")) { textModel.remove() }
+                    .controlSize(.small)
+            }
+        case .failed:
+            HStack(spacing: 8) {
+                Label(L("Download failed. Check your connection and retry."),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange).font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(L("Retry")) { textModel.start() }
+                    .controlSize(.small)
+            }
         }
     }
 

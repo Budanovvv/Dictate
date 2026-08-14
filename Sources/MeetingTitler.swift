@@ -317,55 +317,39 @@ enum MeetingTitler {
     /// the one the model invents on the way past is thrown away. Judging the
     /// summary against that discarded title dropped two good lines and kept
     /// one that echoed the visible name (measured 2026-08-13).
+    ///
+    /// How much of the meeting the model reads is the ENGINE's business, not
+    /// this function's: a large-context engine is handed the whole transcript,
+    /// where the 1200-character even sample that Apple's window forces is
+    /// where "son Geruslan" and "death recording system" came from. Same
+    /// prompt, same filters, more to read.
     static func brief(for entries: [TranscriptEntry],
                       titled existing: String? = nil) async -> MeetingBrief? {
         guard !entries.isEmpty else { return nil }
-        #if canImport(FoundationModels)
-        guard #available(macOS 26, *) else {
-            Log.d("title: system model needs macOS 26 — keeping the date name")
+        guard let engine = await MeetingTextEngines.best() else {
+            Log.d("title: no generation engine — keeping the date name")
             return nil
         }
-        switch SystemLanguageModel.default.availability {
-        case .available:
-            break
-        case .unavailable(let reason):
-            Log.d("title: system model unavailable (\(reason)) — keeping the date name")
-            return nil
-        }
-        var text = excerpt(from: entries)
+        var text = excerpt(from: entries, limit: engine.briefLimit)
         let language = dominantLanguage(of: text)
         // Unsupported language → translate the excerpt to English first
         // (Apple Translation knows the languages the model doesn't). The
         // title then comes out in English even for a Russian meeting, which
         // beats both of the alternatives: an outright refusal, or a
-        // confident invention.
-        if needsTranslation(language: language) {
-            guard let english = await translatedToEnglish(text, from: language) else {
+        // confident invention. An engine that reads the language itself skips
+        // this: the hop is not free, it LOSES content on these transcripts.
+        let translating = !engine.readsEveryLanguage && needsTranslation(language: language)
+        if translating {
+            guard #available(macOS 26, *),
+                  let english = await translatedToEnglish(text, from: language) else {
                 Log.d("title: \(language ?? "?") unsupported and not translatable — keeping the date name")
                 return nil
             }
             text = english
         }
-        let session = LanguageModelSession(instructions: instructions)
         do {
             let started = Date()
-            // ONE call for both. Guided generation (the @Generable type below)
-            // rather than two free-text lines to parse: the model fills named
-            // fields, so a chatty answer cannot put the summary in the title.
-            // The response cap is load-bearing, not tuning. Without it the
-            // framework reserves the rest of the 4096-token window for an
-            // answer it will never need, and a perfectly ordinary meeting
-            // comes back as "Content contains 4091 tokens, which exceeds the
-            // maximum allowed context size of 4096" — two of the owner's
-            // eighteen transcripts failed exactly that way until this was put
-            // back (it was there for the title before guided generation, and
-            // dropping it is what broke them). A title and a 90-character
-            // line do not need 80 tokens; the meetings that were failing now
-            // pass.
-            let answer = try await session.respond(
-                to: text, generating: ModelBrief.self,
-                options: GenerationOptions(temperature: 0.3,
-                                           maximumResponseTokens: 80)).content
+            let answer = try await engine.brief(about: text, instructions: instructions)
             guard let title = sanitize(answer.title) else {
                 Log.d("title: model returned nothing usable")
                 return nil
@@ -373,18 +357,15 @@ enum MeetingTitler {
             let summary = await finished(summary: answer.summary,
                                          under: existing ?? title,
                                          spokenIn: language,
-                                         viaEnglish: needsTranslation(language: language))
-            Log.d(String(format: "title: \"%@\" in %.1fs", title,
-                         Date().timeIntervalSince(started)))
+                                         viaEnglish: translating)
+            Log.d(String(format: "title: \"%@\" in %.1fs via %@ (%d chars read)", title,
+                         Date().timeIntervalSince(started), engine.engineName, text.count))
             if let summary { Log.d("summary: \"\(summary)\"") }
             return MeetingBrief(title: title, summary: summary)
         } catch {
-            Log.d("title: generation failed (\(error.localizedDescription))")
+            Log.d("title: generation failed (\(error))")
             return nil
         }
-        #else
-        return nil
-        #endif
     }
 
     /// The ONE place a generated summary passes through on its way to the
@@ -576,12 +557,8 @@ enum MeetingSectioner {
         async -> [TranscriptSection] {
         let ranges = MeetingArchive.sectionRanges(of: entries)
         guard ranges.count >= 2 else { return [] }
-        #if canImport(FoundationModels)
-        guard #available(macOS 26, *) else { return [] }
-        switch SystemLanguageModel.default.availability {
-        case .available: break
-        case .unavailable(let reason):
-            Log.d("sections: system model unavailable (\(reason))")
+        guard let engine = await MeetingTextEngines.best() else {
+            Log.d("sections: no generation engine")
             return []
         }
         let started = Date()
@@ -593,11 +570,11 @@ enum MeetingSectioner {
             }
             let slice = Array(entries[range])
             guard let time = slice.first?.time,
-                  let line = await self.line(for: slice) else { continue }
+                  let line = await self.line(for: slice, on: engine) else { continue }
             out.append(TranscriptSection(time: time, line: line))
         }
-        Log.d(String(format: "sections: %d of %d in %.1fs", out.count, ranges.count,
-                     Date().timeIntervalSince(started)))
+        Log.d(String(format: "sections: %d of %d in %.1fs via %@", out.count, ranges.count,
+                     Date().timeIntervalSince(started), engine.engineName))
         // A block with holes in it is still a table of contents; a block with
         // two lines in thirteen is a misleading one. Half is the bar, and it
         // is set by what the model actually does rather than by taste: it
@@ -607,38 +584,23 @@ enum MeetingSectioner {
         // with the five lines that worked than with nothing to search.
         guard out.count >= 2, out.count * 2 >= ranges.count else { return [] }
         return out
-        #else
-        return []
-        #endif
     }
 
-    #if canImport(FoundationModels)
-    /// One section, one model call.
-    ///
-    /// A FRESH session every time, deliberately. A LanguageModelSession keeps
-    /// its transcript, so reusing one across a dozen sections would grow the
-    /// context by a passage each time and walk straight into the window we are
-    /// here to avoid. The response cap is the same one the brief needs and for
-    /// the same reason: without it the framework reserves the rest of the
-    /// window for an answer it will never need.
-    ///
-    /// 80 rather than the 40 a 90-character line needs, and that gap is the
-    /// bug this had on its first run against the archive: guided generation
-    /// spends tokens on the JSON around the value, so a cap sized to the
-    /// SENTENCE truncates the structure and every call comes back "Failed to
-    /// deserialize a Generable type from model output" (measured 2026-08-14,
-    /// four passages in a row). 80 is what the brief already uses for two
-    /// fields, so one field has room to spare.
-    @available(macOS 26, *)
-    private static func line(for slice: [TranscriptEntry]) async -> String? {
-        var text = MeetingTitler.excerpt(from: slice, limit: excerptLimit)
+    /// One section, one model call — and one retry, with every filter in
+    /// between. Which model answers is the engine's business; everything that
+    /// decides whether the answer is USABLE lives here, and applies to all of
+    /// them.
+    private static func line(for slice: [TranscriptEntry],
+                             on engine: any MeetingTextEngine) async -> String? {
+        var text = MeetingTitler.excerpt(from: slice, limit: engine.sectionLimit)
         guard !text.isEmpty else { return nil }
         let language = MeetingTitler.dominantLanguage(of: text)
         // Asked per section rather than once per meeting: these calls really
         // do switch language halfway through, and the passage in front of the
         // model is the only text whose language matters to it.
-        if MeetingTitler.needsTranslation(language: language) {
-            guard let english = await MeetingTitler.translatedToEnglish(text, from: language)
+        if !engine.readsEveryLanguage, MeetingTitler.needsTranslation(language: language) {
+            guard #available(macOS 26, *),
+                  let english = await MeetingTitler.translatedToEnglish(text, from: language)
             else { return nil }
             text = english
         }
@@ -649,7 +611,7 @@ enum MeetingSectioner {
         // fails twice gets NO line: a keyword list would find badly and read
         // worse, and the block is allowed to have holes in it.
         for attempt in 0..<2 {
-            guard let answer = await ask(text, strict: attempt > 0) else { continue }
+            guard let answer = await ask(text, strict: attempt > 0, on: engine) else { continue }
             let raw = withoutSpeakerPrefix(answer, spokenBy: slice)
             let collapsed = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             // Too long to write, not too long to show: rather than amputate it
@@ -675,21 +637,19 @@ enum MeetingSectioner {
         return nil
     }
 
-    @available(macOS 26, *)
-    private static func ask(_ text: String, strict: Bool) async -> String? {
+    /// The colder second attempt is the whole point of the retry: the same
+    /// prompt at the same temperature mostly produces the same shape again.
+    private static func ask(_ text: String, strict: Bool,
+                            on engine: any MeetingTextEngine) async -> String? {
         do {
-            let session = LanguageModelSession(
-                instructions: strict ? stricterInstructions : instructions)
-            return try await session.respond(
-                to: text, generating: ModelSection.self,
-                options: GenerationOptions(temperature: strict ? 0.1 : 0.3,
-                                           maximumResponseTokens: 80)).content.line
+            return try await engine.line(about: text,
+                                         instructions: strict ? stricterInstructions : instructions,
+                                         temperature: strict ? 0.1 : 0.3)
         } catch {
-            Log.d("sections: one passage failed (\(error.localizedDescription))")
+            Log.d("sections: one passage failed (\(error))")
             return nil
         }
     }
-    #endif
 
     /// A line that ran past the ceiling, ended where a reader would end it.
     ///
@@ -829,43 +789,6 @@ enum MeetingSectioner {
         return previous[y.count] <= 1
     }
 }
-
-#if canImport(FoundationModels)
-/// The shape a section line arrives in — one named field, so a chatty answer
-/// cannot smuggle a second sentence past the cleaner.
-@available(macOS 26, *)
-@Generable
-struct ModelSection {
-    @Guide(description: """
-        A table-of-contents label for this passage: the problem raised, what \
-        was decided, or what somebody has to do next, in the concrete nouns \
-        the conversation used. Never a quotation from the transcript and never \
-        prefixed with a speaker's name. Two subjects are named briefly and \
-        separated by a semicolon, never blurred into one vague phrase. ONE \
-        clause with a verb, never a list of nouns, with no full stop at the \
-        end and under 100 characters.
-        """)
-    var line: String
-}
-
-/// The shape the model must answer in. Guided generation means the two fields
-/// arrive separately instead of as a paragraph we would have to cut in half.
-@available(macOS 26, *)
-@Generable
-struct ModelBrief {
-    @Guide(description: "A title of at most 6 words naming what the meeting is about.")
-    var title: String
-    @Guide(description: """
-        The line that adds what the title does not say: what was wrong, what \
-        was decided, or what happens next. Never restates the title. Uses the \
-        concrete nouns the conversation used — names, artifacts, numbers — \
-        never abstractions like "system functionality" or "objectives". ONE \
-        fragment, not a sentence, with no full stop at the end. At most 90 \
-        characters, and the meaning is in the first 60.
-        """)
-    var summary: String
-}
-#endif
 
 /// Gives the transcripts already on disk the summary they were recorded
 /// without.

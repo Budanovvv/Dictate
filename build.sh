@@ -12,6 +12,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# The llama.cpp helper is deliberately NOT in the repository (34 MB per copy,
+# forever in git history, and as much again on every llama.cpp bump) — it is
+# reproduced from a pinned upstream commit. Check BEFORE xcodegen: without this
+# the run dies inside spec validation with "missing source directory", which
+# reads like a corrupt checkout rather than a one-command fix.
+if [ ! -x Resources/llama-server ]; then
+    echo "!! Resources/llama-server is missing (helper for on-device text generation)."
+    echo "   Build it once:  ./tools/build-llama-server.sh"
+    exit 1
+fi
+
 # Dictate.xcodeproj is generated from project.yml (XcodeGen) and gitignored.
 # Regenerate it every build so project.yml stays the single source of truth —
 # otherwise a MARKETING_VERSION bump in project.yml never reaches the built app

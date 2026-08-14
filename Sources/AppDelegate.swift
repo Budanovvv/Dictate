@@ -293,6 +293,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             catchUpFastModelDownload()
         }
         removeRetiredPolishModel()
+        // Third of the three layers that keep the text model's helper process
+        // from outliving us (the other two are the quit below and SIGPIPE on
+        // our log pipe when we crash): anything still running from a previous
+        // run dies here. The app is a login item, so "the next launch" is soon.
+        LlamaServer.reapOrphans()
         // Persistent invisible host for Apple Translation: the translationTask
         // modifier needs a live, on-screen view to run in.
         let panel = NSPanel(
@@ -318,6 +323,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         if meeting.isActive { meeting.stop() }
         dictation.shutdown()
+        // Synchronous, and it has to be: this handler does not outlive an async
+        // hop, and a helper still running after we exit is precisely what the
+        // child-process design exists to prevent. Costs nothing when no helper
+        // is running, which is the usual case.
+        LlamaServer.shared.shutdown()
     }
 
     /// The AI polish pass was removed after 2.3.1 (it distorted what people

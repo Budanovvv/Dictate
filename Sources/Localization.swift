@@ -101,6 +101,13 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Text model": "Текстовая модель",
+        "Names your meetings and says what each part was about.": "Даёт встречам названия и описывает, о чём была каждая часть.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Разовая загрузка. Работает на этом Mac — встречи никуда не отправляются, и всё работает с выключенным Wi-Fi.",
+        "Download %@": "Загрузить %@",
+        "Ready": "Готова",
+        "Checking…": "Проверка…",
+        "Retry": "Повторить",
         "Start Meeting Transcript": "Начать транскрипт встречи",
         "Stop Meeting Transcript": "Остановить транскрипт встречи",
         "You": "Вы",
@@ -305,6 +312,13 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Text model": "Текстова модель",
+        "Names your meetings and says what each part was about.": "Дає зустрічам назви й описує, про що була кожна частина.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Одноразове завантаження. Працює на цьому Mac — зустрічі нікуди не надсилаються й усе працює з вимкненим Wi-Fi.",
+        "Download %@": "Завантажити %@",
+        "Ready": "Готова",
+        "Checking…": "Перевірка…",
+        "Retry": "Повторити",
         "Start Meeting Transcript": "Почати транскрипт зустрічі",
         "Stop Meeting Transcript": "Зупинити транскрипт зустрічі",
         "You": "Ви",
@@ -500,6 +514,13 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Text model": "Modelo de texto",
+        "Names your meetings and says what each part was about.": "Pone nombre a tus reuniones y dice de qué trató cada parte.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Una descarga única. Funciona en este Mac: tus reuniones nunca se suben y todo va con el Wi-Fi apagado.",
+        "Download %@": "Descargar %@",
+        "Ready": "Lista",
+        "Checking…": "Comprobando…",
+        "Retry": "Reintentar",
         "Start Meeting Transcript": "Iniciar transcripción de la reunión",
         "Stop Meeting Transcript": "Detener transcripción de la reunión",
         "You": "Tú",
@@ -704,6 +725,13 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Text model": "Modelo de texto",
+        "Names your meetings and says what each part was about.": "Dá nome às suas reuniões e diz sobre o que foi cada parte.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Uma transferência única. Funciona neste Mac — as suas reuniões nunca são enviadas e tudo funciona com o Wi-Fi desligado.",
+        "Download %@": "Transferir %@",
+        "Ready": "Pronto",
+        "Checking…": "A verificar…",
+        "Retry": "Tentar de novo",
         "Start Meeting Transcript": "Iniciar transcrição da reunião",
         "Stop Meeting Transcript": "Parar transcrição da reunião",
         "You": "Você",
@@ -908,6 +936,13 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Text model": "Modèle de texte",
+        "Names your meetings and says what each part was about.": "Nomme vos réunions et indique le sujet de chaque partie.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Un téléchargement unique. Tout se passe sur ce Mac : vos réunions ne sont jamais envoyées et cela fonctionne Wi-Fi coupé.",
+        "Download %@": "Télécharger %@",
+        "Ready": "Prêt",
+        "Checking…": "Vérification…",
+        "Retry": "Réessayer",
         "Start Meeting Transcript": "Démarrer la transcription de la réunion",
         "Stop Meeting Transcript": "Arrêter la transcription de la réunion",
         "You": "Vous",
@@ -1112,6 +1147,13 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Text model": "Textmodell",
+        "Names your meetings and says what each part was about.": "Benennt deine Meetings und sagt, worum es in jedem Teil ging.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Ein einmaliger Download. Läuft auf diesem Mac – deine Meetings werden nie hochgeladen, und es funktioniert mit ausgeschaltetem WLAN.",
+        "Download %@": "%@ laden",
+        "Ready": "Bereit",
+        "Checking…": "Wird geprüft…",
+        "Retry": "Erneut versuchen",
         "Start Meeting Transcript": "Meeting-Transkript starten",
         "Stop Meeting Transcript": "Meeting-Transkript stoppen",
         "You": "Sie",
@@ -1316,6 +1358,13 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Text model": "文本模型",
+        "Names your meetings and says what each part was about.": "为会议命名，并说明每个部分讲了什么。",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "一次性下载。全部在这台 Mac 上运行——会议内容不会上传，关掉 Wi-Fi 也能用。",
+        "Download %@": "下载 %@",
+        "Ready": "就绪",
+        "Checking…": "正在校验…",
+        "Retry": "重试",
         "Start Meeting Transcript": "开始会议转录",
         "Stop Meeting Transcript": "停止会议转录",
         "You": "你",
@@ -1520,6 +1569,13 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Text model": "テキストモデル",
+        "Names your meetings and says what each part was about.": "会議に名前を付け、各パートの内容を書きます。",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "一度だけのダウンロードです。この Mac 上で動作し、会議の内容が送信されることはありません。Wi-Fi を切っても使えます。",
+        "Download %@": "%@ をダウンロード",
+        "Ready": "準備完了",
+        "Checking…": "確認中…",
+        "Retry": "再試行",
         "Start Meeting Transcript": "会議の文字起こしを開始",
         "Stop Meeting Transcript": "会議の文字起こしを停止",
         "You": "あなた",
@@ -1724,6 +1780,13 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Text model": "텍스트 모델",
+        "Names your meetings and says what each part was about.": "회의에 이름을 붙이고 각 부분의 내용을 정리합니다.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "한 번만 내려받으면 됩니다. 이 Mac에서 실행되며 회의 내용은 전송되지 않고 Wi-Fi를 꺼도 작동합니다.",
+        "Download %@": "%@ 내려받기",
+        "Ready": "준비됨",
+        "Checking…": "확인 중…",
+        "Retry": "다시 시도",
         "Start Meeting Transcript": "회의 전사 시작",
         "Stop Meeting Transcript": "회의 전사 중지",
         "You": "나",
@@ -1928,6 +1991,13 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Text model": "Mô hình văn bản",
+        "Names your meetings and says what each part was about.": "Đặt tên cuộc họp và cho biết mỗi phần nói về điều gì.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Tải một lần. Chạy ngay trên chiếc Mac này — cuộc họp của bạn không bao giờ được tải lên và vẫn hoạt động khi tắt Wi-Fi.",
+        "Download %@": "Tải %@",
+        "Ready": "Sẵn sàng",
+        "Checking…": "Đang kiểm tra…",
+        "Retry": "Thử lại",
         "Start Meeting Transcript": "Bắt đầu ghi biên bản cuộc họp",
         "Stop Meeting Transcript": "Dừng ghi biên bản cuộc họp",
         "You": "Bạn",
@@ -2132,6 +2202,13 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Text model": "Modelo ng teksto",
+        "Names your meetings and says what each part was about.": "Pinapangalanan ang mga pulong mo at sinasabi kung tungkol saan ang bawat bahagi.",
+        "A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off.": "Isang beses lang i-download. Tumatakbo sa Mac na ito — hindi kailanman ina-upload ang mga pulong mo, at gumagana kahit patay ang Wi-Fi.",
+        "Download %@": "I-download ang %@",
+        "Ready": "Handa na",
+        "Checking…": "Sinusuri…",
+        "Retry": "Subukan ulit",
         "Start Meeting Transcript": "Simulan ang Transcript ng Meeting",
         "Stop Meeting Transcript": "Ihinto ang Transcript ng Meeting",
         "You": "Ikaw",

@@ -27,6 +27,25 @@ targets:
       - path: Resources/silero-vad-unified-256ms-v6.2.1.mlmodelc
         buildPhase: resources
         type: folder
+      # The llama.cpp server, embedded as a helper executable and run as a
+      # CHILD PROCESS (see LocalTextEngine for why it is a separate process and
+      # not a linked library — the SIGABRT-on-every-quit scar in GRABLI).
+      #
+      # Contents/Helpers, which is where Apple puts non-.app helper
+      # executables, and NOT Contents/Resources: an executable sitting in
+      # Resources is a code object where the notary does not expect one.
+      #
+      # CodeSignOnCopy is what makes this survive notarization — the helper is
+      # signed with the app's own identity as it is copied in, inheriting the
+      # Release configuration's Developer ID identity, hardened runtime and
+      # --timestamp. Same shape as the Sparkle helpers this app already ships
+      # and notarizes.
+      - path: Resources/llama-server
+        buildPhase:
+          copyFiles:
+            destination: executables
+            subpath: ../Helpers
+        attributes: [CodeSignOnCopy]
     dependencies:
       - package: WhisperKit
       - package: Sparkle
@@ -101,6 +120,11 @@ targets:
       - path: Sources/AppleTranslator.swift
       - path: Sources/TranscriptCopy.swift
       - path: Sources/MeetingTitler.swift
+      # The generation engines the titler now goes through. Compiled in so the
+      # filter tests keep testing the code the app actually runs — the filters
+      # sit on the far side of this boundary and apply to every engine.
+      - path: Sources/MeetingTextEngine.swift
+      - path: Sources/LocalTextEngine.swift
       - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift
       - path: Sources/RecordingHUD.swift

@@ -7,6 +7,11 @@ xcuserdata/
 .DS_Store
 # Generated from project.yml: xcodegen generate
 *.xcodeproj/
+# The llama.cpp helper that powers on-device text generation: 34 MB of built
+# binary that would live in git history forever, and grow by as much on every
+# llama.cpp bump. Reproduce it with tools/build-llama-server.sh, which pins the
+# upstream commit; build.sh refuses to build without it and prints that command.
+Resources/llama-server
 # Local-only
 internal/
 .claude/
