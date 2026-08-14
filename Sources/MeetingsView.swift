@@ -6,8 +6,30 @@ import AppKit
 /// of "a debug panel plus a folder in Finder": the live call is simply the
 /// first item in the list, so watching a call and reading last week's notes
 /// are the same gesture.
+/// Where the meetings window should open.
+///
+/// The window is built once and reused for the whole session, so "open THIS
+/// meeting" cannot be an argument to the view: the second request would arrive
+/// long after the only `onAppear` that would have read it. It is state the view
+/// watches instead — and every request counts, including a repeat of one
+/// already served, or asking twice for the same meeting would do nothing the
+/// second time.
+final class MeetingsNavigator: ObservableObject {
+    /// The transcript to select; nil means "wherever the window opens on its
+    /// own" — the live call, or the newest meeting there is.
+    private(set) var target: URL?
+    @Published private(set) var requests = 0
+
+    func open(_ url: URL?) {
+        target = url
+        requests += 1
+    }
+}
+
 struct MeetingsView: View {
     @ObservedObject var session: MeetingSession
+    /// Which meeting the menu asked for, if it asked for one.
+    @ObservedObject var navigator: MeetingsNavigator
     /// Subviews using L() must observe the localization (GRABLI).
     @ObservedObject private var loc = Localization.shared
     /// Summaries arriving for older meetings — each one is a row that has
@@ -30,6 +52,8 @@ struct MeetingsView: View {
     /// colour instead of the grey AppKit gives an unfocused list, and it means
     /// the arrow keys walk the meetings from the moment the window appears.
     @FocusState private var listFocused: Bool
+    /// Drives the field's own focus ring (see searchField).
+    @FocusState private var searchFocused: Bool
     @State private var selection: Selection?
     @State private var meetings: [ArchivedMeeting] = []
     @State private var query = ""
@@ -94,8 +118,13 @@ struct MeetingsView: View {
                 // window that cannot hold focus yet and is dropped.
                 DispatchQueue.main.async { listFocused = true }
             }
+            // A meeting picked in the menu wins over both defaults — the window
+            // is opening BECAUSE of it.
+            applyRequest()
             backfillSummaries()
         }
+        // The same request arriving at a window that already exists.
+        .onChange(of: navigator.requests) { _ in applyRequest() }
         .onChange(of: session.isActive) { active in
             // A finished session becomes a file: refresh and follow it.
             reload()
@@ -127,8 +156,9 @@ struct MeetingsView: View {
     /// proof that the two panes are one surface and not two.
     private var sidebar: some View {
         VStack(spacing: 0) {
-            searchRow
+            headerRow
             Divider()
+            searchArea
             list
         }
         // An explicit AppKit sidebar material, not the window's background:
@@ -186,7 +216,9 @@ struct MeetingsView: View {
         .onChange(of: query) { meaning.search($0) }
     }
 
-    /// The library's header: the control that closes the library, then search.
+    /// The library's header: the control that closes the library, and nothing
+    /// else — it is the title-bar band, and the window's own buttons own most
+    /// of it.
     ///
     /// The toggle lives HERE rather than in the transcript's header whenever
     /// the sidebar is open, for two reasons. It is the control that hides this
@@ -196,12 +228,12 @@ struct MeetingsView: View {
     /// words underneath started at 14, which — next to the divider, which is a
     /// hard vertical reference — was the most visible instance of "things do
     /// not line up".
-    private var searchRow: some View {
+    private var headerRow: some View {
         HStack(spacing: 2) {
             ChromeButton(icon: "sidebar.leading",
                          help: MeetingsChrome.sidebarHelp(shown: sidebarShown),
                          action: toggleSidebar)
-            searchField
+            Spacer(minLength: 0)
         }
         // The library holds the window's top-left corner while it is open, and
         // the window's own buttons live there — so this row starts after them
@@ -213,25 +245,47 @@ struct MeetingsView: View {
         .frame(height: MeetingsChrome.headerHeight)
     }
 
+    /// The search field, across the column, and one line saying what it can do.
+    ///
+    /// The field used to share the header row with the sidebar toggle, which
+    /// left it about 120pt — narrow enough that "Search transcripts" truncated
+    /// in ENGLISH, which is why the placeholder had been cut to one word. That
+    /// was the wrong thing to shrink. This search matches by MEANING, and a
+    /// magnifying glass with "Search" beside it promises the opposite: literal
+    /// words. Below the divider the field has the whole 240pt column, which is
+    /// room for a placeholder that asks a question and for a caption that says
+    /// what will happen to the answer.
+    private var searchArea: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            searchField
+            // Only until the first keystroke. It is an invitation, and once
+            // typing has started it would be a permanent caption on a working
+            // control — the results themselves say what the search did.
+            if query.isEmpty {
+                Text(L("Words, or a question — I'll match by meaning"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
+        }
+        .padding(.horizontal, MeetingsChrome.sidebarInset)
+        .padding(.vertical, 8)
+    }
+
     /// Search, hand-built rather than `.searchable`: the stock sidebar field is
     /// a tall pill on its own inset, which is what put the sidebar and the
-    /// transcript on two different grids. This one sits on the shared header
-    /// row, at the list's own margin.
+    /// transcript on two different grids. This one sits at the list's own
+    /// margin, on the same left edge as the rows under it.
     private var searchField: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .imageScale(.small)
                 .foregroundStyle(.secondary)
-            // One word, not three. The row now begins after the window's own
-            // buttons, which leaves the field about 120pt — and "Search
-            // transcripts" was already truncating there in ENGLISH, never mind
-            // "Transkripte durchsuchen". The full sentence stays as the field's
-            // tooltip, where it has all the room it needs; a magnifying glass
-            // over a list of transcripts does not need to say what is being
-            // searched (Mail and Notes say exactly this much).
-            TextField(L("Search"), text: $query)
+            TextField(L("What do you want to find?"), text: $query)
                 .textFieldStyle(.plain)
                 .font(.callout)
+                .focused($searchFocused)
                 .help(L("Search transcripts"))
             if !query.isEmpty {
                 Button { query = "" } label: {
@@ -242,18 +296,21 @@ struct MeetingsView: View {
                 .help(L("Clear search"))
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
         // Lighter than a selected row and outlined instead of filled: the two
         // are the same shape at the same width, and the field must not read as
-        // a list item that happens to be at the top.
+        // a list item that happens to be at the top. Focused, the outline is
+        // the brand indigo — the system's own focus ring is drawn around
+        // AppKit's field, and this one is ours.
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(0.05))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12))
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(searchFocused ? Brand.indigoLabel : Color.primary.opacity(0.12),
+                              lineWidth: searchFocused ? 1.5 : 1)
         )
     }
 
@@ -552,6 +609,17 @@ struct MeetingsView: View {
             }
         }
         return groups
+    }
+
+    /// Show the meeting the menu asked for. A request with no meeting in it
+    /// ("Show All Meetings…", or the window opening by itself) leaves the
+    /// selection alone — the window simply comes forward on whatever it held.
+    private func applyRequest() {
+        guard let url = navigator.target else { return }
+        // Picked from the menu, which reads the folder itself: the transcript
+        // may be newer than the list this window last loaded.
+        if !meetings.contains(where: { $0.url == url }) { reload() }
+        selection = .archived(url)
     }
 
     private func reload() {
@@ -897,7 +965,7 @@ private struct TranscriptPane<MenuItems: View>: View {
     ///
     /// The sidebar toggle appears here only when there is no sidebar for it to
     /// sit on. While the library is open the toggle lives in the library's own
-    /// header (MeetingsView.searchRow), where it is over the column it hides
+    /// header (MeetingsView.headerRow), where it is over the column it hides
     /// instead of across the divider from it — and where it is not pushing this
     /// title 36pt off the transcript's margin.
     private var header: some View {

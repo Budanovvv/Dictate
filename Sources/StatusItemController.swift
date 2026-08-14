@@ -6,25 +6,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let dictation: DictationController
     private let openSettings: () -> Void
-    private let checkForUpdates: () -> Void
     private let meetingActive: () -> Bool
+    /// When the running session started — for the live entry's clock. nil when
+    /// nothing is being recorded.
+    private let meetingStarted: () -> Date?
     private let toggleMeeting: () -> Void
-    private let showMeetingTranscript: () -> Void
+    /// Opens the meetings window. A URL selects that transcript; nil opens the
+    /// window wherever it would open on its own (the live call, or the newest
+    /// meeting in the library).
+    private let showMeetings: (URL?) -> Void
     private var lastError: String?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
-         checkForUpdates: @escaping () -> Void,
          meetingActive: @escaping () -> Bool,
+         meetingStarted: @escaping () -> Date?,
          toggleMeeting: @escaping () -> Void,
-         showMeetingTranscript: @escaping () -> Void) {
+         showMeetings: @escaping (URL?) -> Void) {
         self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         self.dictation = dictation
         self.openSettings = openSettings
-        self.checkForUpdates = checkForUpdates
         self.meetingActive = meetingActive
+        self.meetingStarted = meetingStarted
         self.toggleMeeting = toggleMeeting
-        self.showMeetingTranscript = showMeetingTranscript
+        self.showMeetings = showMeetings
         super.init()
 
         item.button?.toolTip = L("Dictate — voice dictation")
@@ -70,11 +75,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             // an armed recording must never be invisible, and it doubles as
             // the "don't forget to stop" reminder. Dictation states (below)
             // still take over while a dictation is actually running.
-            button.image = dictation.paused
-                ? coloredSymbol("mic.slash.fill", color: .systemGray)
-                : meetingActive()
-                    ? coloredSymbol("record.circle.fill", color: .systemRed)
-                    : Self.waveIcon
+            button.image = meetingActive()
+                ? coloredSymbol("record.circle.fill", color: .systemRed)
+                : Self.waveIcon
         case .recording:
             smoothedLevel = 0
             button.image = Self.waveImage(scale: { _ in 0.3 })
@@ -141,39 +144,88 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     // Rebuilt on every open so the items reflect current state.
+    //
+    // The app does two things — it records meetings and it dictates — and the
+    // menu says so: two labelled sections (NSMenuItem.sectionHeader, macOS 14+,
+    // and this app requires 15), meetings first. Dictation lives on a hotkey
+    // and is hardly ever *started* from here; the menu is opened to record a
+    // call or to go back to one. HIG: group related items, frequent groups
+    // above rare ones, attributes apart from actions.
+    //
+    // On the key equivalents below. A status-item menu is NOT the main menu, so
+    // its shortcuts are live only while the menu itself is open — measured, not
+    // assumed: a harness item fires from a menu in tracking (submenus included)
+    // and never with the menu closed, app active or not. ⌘, on Settings is kept
+    // because it means the same here as everywhere in macOS. The library
+    // deliberately has NO shortcut: ⌘M is the system's Minimize, in the Window
+    // menu of nearly every app, and a benefit that exists only while the menu
+    // is already open — where everything is one mouse move away — does not pay
+    // for teaching that key a second meaning.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let title = NSMenuItem(
-            title: Lf("Hotkey: %@", KeyNames.displayName(Settings.shared.hotkeyName)),
-            action: nil, keyEquivalent: ""
-        )
-        title.isEnabled = false
-        menu.addItem(title)
-
-        if Settings.shared.translateKeyCode != nil {
-            let key = KeyNames.displayName(Settings.shared.translateKeyName)
-            let target = Settings.shared.translateTargetCode
-            // Non-English targets compose from the picker's own label instead
-            // of asking for one translated string per language.
-            let tr = NSMenuItem(
-                title: target == "en"
-                    ? Lf("Translate to English: %@", key)
-                    : L("Translate to") + " " + LanguageList.endonym(for: target) + ": " + key,
-                action: nil, keyEquivalent: ""
-            )
-            tr.isEnabled = false
-            menu.addItem(tr)
+        // Warnings first and unlabelled: they explain why the app looks broken,
+        // and nothing else in the menu matters until they are read.
+        var warned = false
+        // Secure Keyboard Entry (password fields, Terminal option) blocks key capture system-wide.
+        if IsSecureEventInputEnabled() {
+            menu.addItem(Self.label("⚠️ " + L("Secure input is on (password field?) — the hotkey won't work for now")))
+            warned = true
         }
+        if let lastError {
+            menu.addItem(Self.label("⚠️ \(lastError)"))
+            warned = true
+        }
+        if warned { menu.addItem(.separator()) }
+
+        menu.addItem(.sectionHeader(title: L("Meetings")))
+
+        // Meeting transcript: local two-channel recording of a browser call
+        // (mic = You, system audio = Them). "Record Meeting", because the
+        // transcript is the by-product — recording is what is being asked for.
+        //
+        // The one symbol in this menu, and the one item that gets any emphasis
+        // at all. It is the menu's primary action and nothing but its position
+        // said so; a red record glyph says both "this is the thing" and WHAT
+        // the thing does, which a bold title could not. Apple's own menus never
+        // bold an item — they carry meaning in symbols — and the emphasis only
+        // works while it is alone: a menu where every row has an icon
+        // highlights nothing.
+        let recording = meetingActive()
+        let record = NSMenuItem(
+            title: recording ? L("Stop Recording") : L("Record Meeting"),
+            action: #selector(meetingClicked), keyEquivalent: ""
+        )
+        // Not a template image: a template is recoloured to the menu's own text
+        // colour, which is exactly the meaning being removed here. A palette
+        // configuration keeps it red in both appearances and under the
+        // highlight bar.
+        record.image = Self.redSymbol(recording ? "stop.circle.fill" : "record.circle")
+        record.target = self
+        menu.addItem(record)
+
+        addMeetingsItem(to: menu)
+
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: L("Dictation")))
+
+        // What each key does, spelled out. These were once two rows at the very
+        // TOP of the menu, holding its most valuable position while being
+        // unclickable; they were then collapsed into one glyph line
+        // ("⌥ dictate · ⌘ English"), which fit but stopped explaining itself —
+        // it never said what the second key does or in which direction. Under a
+        // heading, halfway down the menu, a second line is cheap and a sentence
+        // is worth having.
+        for line in dictationKeyLines() { menu.addItem(Self.label(line)) }
 
         // Safety net: recent results are recoverable even when a paste went
         // nowhere or the clipboard got overwritten. Click → copy.
         if !dictation.history.isEmpty {
-            let recent = NSMenuItem(title: L("Recent dictations"), action: nil, keyEquivalent: "")
+            let recent = NSMenuItem(title: L("Recent Dictations"), action: nil, keyEquivalent: "")
             let sub = NSMenu()
             for text in dictation.history {
-                let preview = text.count > 50 ? String(text.prefix(50)) + "…" : text
-                let entry = NSMenuItem(title: preview, action: #selector(copyHistoryItem(_:)), keyEquivalent: "")
+                let entry = NSMenuItem(title: Self.shortened(text),
+                                       action: #selector(copyHistoryItem(_:)), keyEquivalent: "")
                 entry.target = self
                 entry.representedObject = text
                 entry.toolTip = text
@@ -182,55 +234,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             recent.submenu = sub
             menu.addItem(recent)
         }
-        if let lastError {
-            let err = NSMenuItem(title: "⚠️ \(lastError)", action: nil, keyEquivalent: "")
-            err.isEnabled = false
-            menu.addItem(err)
-        }
-
-        // Secure Keyboard Entry (password fields, Terminal option) blocks key capture system-wide.
-        if IsSecureEventInputEnabled() {
-            let sec = NSMenuItem(
-                title: "⚠️ " + L("Secure input is on (password field?) — the hotkey won't work for now"),
-                action: nil, keyEquivalent: ""
-            )
-            sec.isEnabled = false
-            menu.addItem(sec)
-        }
 
         menu.addItem(.separator())
 
-        let pause = NSMenuItem(
-            title: dictation.paused ? L("Resume dictation") : L("Pause dictation"),
-            action: #selector(togglePause), keyEquivalent: ""
-        )
-        pause.target = self
-        menu.addItem(pause)
-
-        // Meeting transcript: local two-channel recording of a browser call
-        // (mic = You, system audio = Them). A red dot marks a live session so
-        // an armed recording is never invisible.
-        let meeting = NSMenuItem(
-            title: meetingActive() ? "🔴 " + L("Stop Meeting Transcript") : L("Start Meeting Transcript"),
-            action: #selector(meetingClicked), keyEquivalent: ""
-        )
-        meeting.target = self
-        menu.addItem(meeting)
-
-        // The library is always reachable — past transcripts are content the
-        // user owns, not a by-product of a running session.
-        let show = NSMenuItem(title: L("Meetings…"),
-                              action: #selector(showMeetingClicked), keyEquivalent: "")
-        show.target = self
-        menu.addItem(show)
-
+        // The service group stays unlabelled — a heading over "Settings…" would
+        // only name what the items already say. "Check for Updates…" is gone
+        // from here: it now sits beside the version number in Settings.
         let settings = NSMenuItem(title: L("Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
-
-        let updates = NSMenuItem(title: L("Check for Updates…"), action: #selector(updatesClicked), keyEquivalent: "")
-        updates.target = self
-        menu.addItem(updates)
 
         let about = NSMenuItem(title: L("About Dictate"), action: #selector(showAbout), keyEquivalent: "")
         about.target = self
@@ -243,16 +255,227 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    /// The way into the library: the window, and — the point of this — the last
+    /// few meetings, so going back to one is a click instead of a click, a
+    /// window and a hunt down a list.
+    ///
+    /// "Show All Meetings…" sits at the BOTTOM, under a separator. It was tried
+    /// at the top — a parent item with a submenu does not fire on click, so the
+    /// window costs one step more than it used to, and first place makes that
+    /// step positional rather than something to read. The owner then went
+    /// looking for it at the end of the list and asked where it had gone: "see
+    /// all" lives last in every list a Mac user has ever opened, and a
+    /// convention people navigate by beats a saved inch of mouse travel.
+    ///
+    /// Every row leads with its DATE, "12 Aug · Agent Discussion", so the dates
+    /// line up down the left edge of a newest-first list and the eye can find
+    /// last week without reading a single title. The month comes from the
+    /// locale's own short form (an English interface gets "12 Aug", a Russian
+    /// one "12 авг."), because a hardcoded English month in a Russian menu is a
+    /// bug, not a style.
+    private func addMeetingsItem(to menu: NSMenu) {
+        let recent = Self.recentMeetings()
+        // Nothing recorded yet and nothing running: a submenu holding one item
+        // is worse than the plain item it holds.
+        guard !recent.isEmpty || meetingActive() else {
+            let plain = NSMenuItem(title: L("Meetings…"),
+                                   action: #selector(showAllMeetings), keyEquivalent: "")
+            plain.target = self
+            menu.addItem(plain)
+            return
+        }
+
+        let parent = NSMenuItem(title: L("Meetings"), action: nil, keyEquivalent: "")
+        // A second symbol, and only because the first one exists: AppKit lays a
+        // whole group out on the icon's text column, so ONE image left this pair
+        // indented ~36pt while the rows below stayed flush — a stray row rather
+        // than emphasis. Both rows of the section carry one, Dictation carries
+        // none, and the difference reads as two sections. Template, not
+        // coloured: the red is the record action's alone.
+        parent.image = Self.plainSymbol("list.bullet.rectangle")
+        let sub = NSMenu()
+
+        // The running call heads the list, with the clock it has been running
+        // where the others carry a date — the same red dot the menu bar icon is
+        // wearing while it does.
+        if let started = meetingStarted() {
+            let live = NSMenuItem(title: "🔴 " + L("Recording now") + " · " + Self.elapsed(since: started),
+                                  action: #selector(showLiveMeeting), keyEquivalent: "")
+            live.target = self
+            sub.addItem(live)
+        }
+        for meeting in recent {
+            let entry = NSMenuItem(title: Self.row(for: meeting),
+                                   action: #selector(openMeeting(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.representedObject = meeting.url
+            entry.toolTip = meeting.name
+            sub.addItem(entry)
+        }
+
+        sub.addItem(.separator())
+        let all = NSMenuItem(title: L("Show All Meetings…"),
+                             action: #selector(showAllMeetings), keyEquivalent: "")
+        all.target = self
+        sub.addItem(all)
+
+        parent.submenu = sub
+        menu.addItem(parent)
+    }
+
+    /// "12 Aug · Agent Discussion". Only the TITLE is ever cut — the date is
+    /// the part that has to survive, and it is what makes the column scannable.
+    private static func row(for meeting: RecentMeeting) -> String {
+        Self.shortDate(meeting.started) + " · " + shortened(meeting.name)
+    }
+
+    /// One line per key, saying which key and what comes out of it:
+    ///
+    ///     Right Option (⌥) — dictate in Russian
+    ///     Right Command (⌘) — translate Russian → English
+    ///
+    /// The key is named exactly as Settings and onboarding name it, side
+    /// included: left and right modifiers are different keycodes in this app,
+    /// people have been bitten by that, and a bare "⌥" cannot say which one is
+    /// bound.
+    ///
+    /// Languages are named in the LANGUAGE OF THE INTERFACE — "dictate in
+    /// Russian", not "dictate in Русский". The endonym is the right label in
+    /// the picker, where a person hunts for their own language and has to
+    /// recognise it in its own script; inside a sentence written in another
+    /// language it reads as a glitch.
+    private func dictationKeyLines() -> [String] {
+        let spoken = Settings.shared.language
+        let dictateKey = KeyNames.displayName(Settings.shared.hotkeyName)
+        // "" is Automatic (any language) — Whisper decides per dictation, so
+        // there is no language to name and saying one would be a guess.
+        var lines = [spoken.isEmpty
+            ? Lf("%@ — dictate in any language", dictateKey)
+            : Lf("%@ — dictate in %@", dictateKey, LanguageList.name(for: spoken))]
+
+        guard let _ = Settings.shared.translateKeyCode else { return lines }
+        let target = Settings.shared.translateTargetCode
+        // Speaking the target language already: the runtime skips the
+        // translation hop entirely in that case (there is no en→en), so the
+        // second key does exactly what the first does and a line claiming a
+        // translation would be a lie.
+        guard spoken != target else { return lines }
+        let translateKey = KeyNames.displayName(Settings.shared.translateKeyName)
+        lines.append(spoken.isEmpty
+            ? Lf("%@ — translate into %@", translateKey, LanguageList.name(for: target))
+            : Lf("%@ — translate %@ → %@", translateKey,
+                 LanguageList.name(for: spoken), LanguageList.name(for: target)))
+        return lines
+    }
+
+    /// A red SF Symbol at menu-item size.
+    private static func redSymbol(_ name: String) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.systemRed]))
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = false
+        return image
+    }
+
+    /// An SF Symbol in the menu's own ink — a template image, so it follows the
+    /// text colour in both appearances and under the highlight bar.
+    private static func plainSymbol(_ name: String) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        image?.isTemplate = true
+        return image
+    }
+
+    /// A line of text in the menu rather than a command.
+    private static func label(_ title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    /// Menu-width truncation, one rule for both submenus so they read as
+    /// siblings.
+    private static func shortened(_ text: String) -> String {
+        text.count > 50 ? String(text.prefix(50)) + "…" : text
+    }
+
+    private static func elapsed(since start: Date) -> String {
+        let s = max(0, Int(Date().timeIntervalSince(start)))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private struct RecentMeeting {
+        let url: URL
+        let started: Date
+        /// The meeting's name, or the time of day it happened when the model
+        /// never managed to name it (the date is on the row already).
+        let name: String
+    }
+
+    /// The newest transcripts, read the cheap way — this runs on every single
+    /// open of the menu.
+    ///
+    /// `MeetingArchive.list()` opens and fully parses EVERY file in the folder
+    /// (entries, summary, sections), which is right for the library window and
+    /// wrong here: nineteen meetings today, a working year of them later, all
+    /// to print five titles. So the directory is only *listed* (names, no
+    /// reads), the date comes out of our own file names, and exactly five files
+    /// are opened — the first 4 KB of each, which is far more than an H1 and
+    /// the italic date line under it ever need. Cost per menu open: one
+    /// readdir plus five short reads, flat in the size of the archive.
+    private static func recentMeetings(limit: Int = 5) -> [RecentMeeting] {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(
+            at: MeetingArchive.directory, includingPropertiesForKeys: [.creationDateKey],
+            options: [.skipsHiddenFiles]) else { return [] }
+        let newest = files
+            .filter { $0.pathExtension == "md" }
+            .map { url -> (URL, Date) in
+                (url, MeetingArchive.startedDate(fileName: url.lastPathComponent)
+                    ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+                    ?? .distantPast)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(limit)
+        return newest.map { url, started in
+            RecentMeeting(url: url, started: started,
+                          name: head(of: url).flatMap(MeetingArchive.parseTitle) ?? timeOfDay(started))
+        }
+    }
+
+    /// The first bytes of a transcript — its heading, not the meeting.
+    private static func head(of url: URL, bytes: Int = 4096) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: bytes) else { return nil }
+        // The cut can land mid-character; decoding leniently keeps the title,
+        // which is at the very top, readable regardless.
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// "12 Aug" — the day as a number and the month as the locale's own short
+    /// word, from a TEMPLATE rather than a fixed pattern, so the pieces come
+    /// out in the order that locale writes them.
+    private static func shortDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("d MMM")
+        return f.string(from: date)
+    }
+
+    private static func timeOfDay(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f.string(from: date)
+    }
+
     @objc private func copyHistoryItem(_ sender: NSMenuItem) {
         guard let text = sender.representedObject as? String else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
-    }
-
-    @objc private func togglePause() {
-        dictation.paused.toggle()
-        updateIcon(for: dictation.state)
     }
 
     @objc private func settingsClicked() {
@@ -263,12 +486,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         toggleMeeting()
     }
 
-    @objc private func showMeetingClicked() {
-        showMeetingTranscript()
+    @objc private func showAllMeetings() {
+        showMeetings(nil)
     }
 
-    @objc private func updatesClicked() {
-        checkForUpdates()
+    /// The window opens on the running call by itself when one is running.
+    @objc private func showLiveMeeting() {
+        showMeetings(nil)
+    }
+
+    @objc private func openMeeting(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        showMeetings(url)
     }
 
     @objc private func showAbout() {

@@ -116,17 +116,6 @@ final class DictationController {
         pendingNotices.removeAll()
     }
 
-    var paused = false {
-        didSet {
-            if paused, capturing {
-                stopLivePreview()
-                resetLiveTyping()
-                _ = recorder.stop()
-                capturing = false
-                updateDerivedState()
-            }
-        }
-    }
     var onStateChange: ((State) -> Void)?
     var onError: ((String) -> Void)?
     /// Voice level 0…1 while recording.
@@ -329,7 +318,7 @@ final class DictationController {
 
     // Push-to-talk: press starts, release stops.
     private func handlePress(_ code: Int64) {
-        Log.d("press code=\(code) state=\(state) paused=\(paused)")
+        Log.d("press code=\(code) state=\(state)")
         beginRecording(key: code, translate: isTranslateKey(code))
     }
 
@@ -341,7 +330,6 @@ final class DictationController {
     }
 
     private func beginRecording(key code: Int64, translate: Bool) {
-        guard !paused else { return }
         // Key rollover: when alternating between the two dictation keys, the
         // new key goes DOWN a few ms before the old one comes up (seen live
         // 2026-08-09 11:57: 8–39 ms overlaps) — the press was swallowed and

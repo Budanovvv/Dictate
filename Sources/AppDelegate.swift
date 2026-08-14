@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// Local meeting transcription (mic = You, system audio tap = Them).
     private let meeting = MeetingSession()
     private var meetingWindow: NSPanel?
+    /// Which transcript the meetings window should show. The window is created
+    /// once and reused, so "open this one" has to be state the view watches
+    /// (see MeetingsNavigator) rather than an argument it would only ever read
+    /// on the first open.
+    private let meetingNavigator = MeetingsNavigator()
 
     /// The meetings window. While a call is being recorded it behaves like
     /// the HUD — floating over fullscreen Spaces and NON-ACTIVATING, so a
@@ -35,7 +40,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     ///
     /// `focus` is the user asking for the library by name (menu → Meetings…)
     /// while nothing is being recorded — see applyMeetingWindowMode().
-    private func showMeetingWindow(focus: Bool = false) {
+    /// `select` is the menu asking for one particular transcript.
+    private func showMeetingWindow(select: URL? = nil, focus: Bool = false) {
+        // Before the window exists, so a first open honours the request in its
+        // own onAppear instead of picking a default and then jumping.
+        meetingNavigator.open(select)
         if meetingWindow == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 420, height: 500),
@@ -75,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.contentView = NSHostingView(rootView: MeetingsView(
                 session: meeting,
+                navigator: meetingNavigator,
                 onStop: { [weak self] in self?.meeting.stop() },
                 onSidebarChange: { [weak self] shown in
                     self?.adjustMeetingWindow(sidebarShown: shown)
@@ -193,13 +203,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         statusController = StatusItemController(
             dictation: dictation,
             openSettings: { [weak self] in self?.showSettings() },
-            checkForUpdates: { [weak self] in
-                NSApp.activate(ignoringOtherApps: true)
-                self?.updater.checkForUpdates(nil)
-            },
             meetingActive: { [weak self] in self?.meeting.isActive ?? false },
+            meetingStarted: { [weak self] in
+                guard let self, self.meeting.isActive else { return nil }
+                return self.meeting.startedAt
+            },
             toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() },
-            showMeetingTranscript: { [weak self] in self?.showMeetingWindow(focus: true) }
+            showMeetings: { [weak self] url in self?.showMeetingWindow(select: url, focus: true) }
         )
         meeting.onFinished = { [weak self] _ in
             guard let self else { return }
@@ -492,9 +502,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             present(settingsWindow)
             return
         }
-        let view = SettingsView { [weak self] in
-            self?.dictation.restart()
-        }
+        // The manual update check moved here from the status menu: updates are
+        // found daily and installed silently, so asking by hand is a rare,
+        // impatient act — and it is the same Sparkle call it always was.
+        let view = SettingsView(
+            onHotkeyChanged: { [weak self] in self?.dictation.restart() },
+            onCheckForUpdates: { [weak self] in
+                NSApp.activate(ignoringOtherApps: true)
+                self?.updater.checkForUpdates(nil)
+            })
         let window = makeWindow(title: L("Dictate Settings"), content: view)
         settingsWindow = window
         present(window)

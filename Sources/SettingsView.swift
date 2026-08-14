@@ -6,6 +6,8 @@ import ServiceManagement
 /// read-only status at the bottom (Apple HIG).
 struct SettingsView: View {
     let onHotkeyChanged: () -> Void
+    /// Sparkle's manual check — the same call the status menu used to make.
+    let onCheckForUpdates: () -> Void
 
     @ObservedObject private var loc = Localization.shared
     @StateObject private var captureMain = KeyCapture()
@@ -41,6 +43,12 @@ struct SettingsView: View {
     @State private var removeFillers = Settings.shared.removeFillers
 
     private var languageOptions: [(code: String, name: String)] { LanguageList.options }
+
+    /// The same string the About panel shows — both read
+    /// CFBundleShortVersionString, so the two can never disagree.
+    static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
 
     /// Language whose command phrases the showcase lists: the spoken language
     /// when set and supported; auto-detect → interface language; else English.
@@ -293,15 +301,24 @@ struct SettingsView: View {
             // one, and otherwise meetings keep their date-and-time names.
             if textModel.state != .unsupported {
                 Section {
+                    // Named by what the user gets, not by what it is. "Text
+                    // model" is the implementation: it says nothing about what
+                    // the thing does, what it costs or where it runs, and
+                    // nobody has ever wanted a text model — they want their
+                    // meetings to have names.
                     LabeledContent {
                         textModelControl
                     } label: {
-                        rowLabel(L("Text model"),
-                                 L("Names your meetings and says what each part was about."))
+                        rowLabel(L("Meeting titles & summaries"), textModelHint)
                     }
                 } header: { Text(L("Meetings")) } footer: {
-                    Text(L("A one-time download. It runs on this Mac — your meetings are never uploaded, and it works with Wi-Fi off."))
+                    // Three facts in the order a person asks for them: what it
+                    // does, where it runs (the whole positioning of this app),
+                    // what it costs.
+                    Text(Lf("Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.",
+                            LocalTextModelFile.sizeText))
                         .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -336,6 +353,20 @@ struct SettingsView: View {
                             URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!)
                     }
                     .controlSize(.small)
+                }
+                // The version and "am I current?" on ONE line, because they are
+                // one question. Updates are checked daily and installed
+                // silently (the app even relaunches itself when idle to apply
+                // one), so a manual check is a rare, impatient act — it did not
+                // deserve a permanent row in the menu bar's menu, and it does
+                // belong next to the number people come here to read.
+                LabeledContent(L("Version")) {
+                    HStack(spacing: 6) {
+                        Text(Self.appVersion)
+                        Text("·").foregroundStyle(.tertiary)
+                        Button(L("Check for Updates")) { onCheckForUpdates() }
+                            .buttonStyle(.link)
+                    }
                 }
             } header: { Text(L("Status")) } footer: {
                 Text(L("Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate."))
@@ -377,6 +408,23 @@ struct SettingsView: View {
         .onDisappear {
             captureMain.cancel()
             captureTranslate.cancel()
+        }
+    }
+
+    /// The line under the row's name — only while there is something to gain by
+    /// reading it. With nothing downloaded, what is being lost; once the model
+    /// is there (or on its way) the state on the right says everything, and a
+    /// permanent second line would just be a caption on a finished setting.
+    ///
+    /// Note the framing: this is an upgrade, not a repair. Meetings are still
+    /// saved, still searchable, still transcribed — they are named by their
+    /// date instead of their subject.
+    private var textModelHint: String? {
+        switch textModel.state {
+        case .absent, .failed:
+            return L("Without it, meetings are saved with the date as their name.")
+        default:
+            return nil
         }
     }
 
@@ -446,11 +494,15 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private func rowLabel(_ title: String, _ hint: String) -> some View {
+    /// A row's name, and under it the one line that explains it — when there is
+    /// one. `nil` leaves the row a single line rather than an empty second one.
+    private func rowLabel(_ title: String, _ hint: String?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-            Text(hint).font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if let hint {
+                Text(hint).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
