@@ -42,6 +42,9 @@ struct MeetingsView: View {
     /// which is a different question from "contains these characters" and gets
     /// its own group in the list.
     @ObservedObject private var meaning = MeetingMeaning.shared
+    /// Whether the optional text model may still be offered here. Observed so
+    /// that "Not now" empties every surface at once.
+    @ObservedObject private var offer = LocalTextModelOffer.shared
     let onStop: () -> Void
     /// The window owner resizes/levels the panel when the library opens.
     let onSidebarChange: (Bool) -> Void
@@ -160,6 +163,15 @@ struct MeetingsView: View {
             Divider()
             searchArea
             list
+            // The first of the two places the missing model is physically
+            // visible: a column of meetings that are all named by their date.
+            // At the FOOT of the column, under a rule — where a mail client
+            // puts "downloading messages": it is the last thing read, not the
+            // first, and it pushes nothing out of the way.
+            if showsLibraryOffer {
+                Divider()
+                TextModelOffer(line: L("Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents."))
+            }
         }
         // An explicit AppKit sidebar material, not the window's background:
         // it distinguishes the library from the transcript in both themes, and
@@ -207,6 +219,18 @@ struct MeetingsView: View {
                     Text(meetings.isEmpty
                          ? L("Start a transcript from the menu bar during a call.")
                          : L("No transcript contains that."))
+                } actions: {
+                    // The second place the absence shows, and the sharper of
+                    // the two: the search that came back empty matches by
+                    // MEANING, and meaning is read out of the summaries and
+                    // section lines the model writes. With no model there is
+                    // nothing to match against — this search is not worse, it
+                    // does not function. An empty result is exactly when to
+                    // say so.
+                    if showsSearchOffer {
+                        TextModelOffer(line: L("Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here."))
+                            .frame(maxWidth: MeetingsChrome.sidebarWidth)
+                    }
                 }
             }
         }
@@ -505,7 +529,10 @@ struct MeetingsView: View {
                                // not at the top of a fifty-minute file.
                                jumpTo: selection?.time,
                                sidebarShown: sidebarShown,
-                               onToggleSidebar: toggleSidebar) {
+                               onToggleSidebar: toggleSidebar,
+                               notice: declined(meeting)
+                                   ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
+                                   : nil) {
                     Button(L("Rename meeting…")) { renamingFromMenu = true }
                     Button(L("Copy transcript")) {
                         TranscriptCopy.put(TranscriptCopy.transcript(meeting.entries))
@@ -596,6 +623,53 @@ struct MeetingsView: View {
                 }
                 return RelatedHit(meeting: meeting, section: section)
             }
+    }
+
+    // MARK: - Where the missing text model is offered
+
+    /// The library's own offer: there are meetings, and not one of them has a
+    /// name.
+    ///
+    /// ALL of them rather than any: a single untitled meeting is the newest
+    /// one, still being summarized, and pitching a download at that is noise.
+    /// Nothing titled anywhere means nothing on this Mac can title anything —
+    /// which is the fact worth telling somebody. Never during a call, and never
+    /// while the search's own offer is on screen: one surface, one offer.
+    private var showsLibraryOffer: Bool {
+        offer.allowed && !session.isActive && !meetings.isEmpty
+            && !meetings.contains { $0.title != nil }
+            && !showsSearchOffer
+    }
+
+    /// The search's offer: something was typed, nothing came back, and nothing
+    /// could have — no meeting in the archive has a summary or a contents
+    /// block, so the semantic index has an empty vocabulary to score against.
+    private var showsSearchOffer: Bool {
+        offer.allowed && !query.trimmingCharacters(in: .whitespaces).isEmpty
+            && !meetings.isEmpty && filtered.isEmpty && related.isEmpty
+            && !meetings.contains { $0.summary != nil || !$0.sections.isEmpty }
+    }
+
+    /// The macOS 26 case: a meeting Apple's model would not describe.
+    ///
+    /// A generic pitch would be noise on macOS 26 — the built-in model names
+    /// meetings there perfectly well. What it does instead is refuse content it
+    /// judges sensitive ("Detected content likely to be unsafe" — 112 of them
+    /// in one of the owner's logs, most of an archive that happens to discuss
+    /// medicine), and a refusal is a specific event worth answering
+    /// specifically.
+    ///
+    /// Recognised by its shape rather than by a flag, because the refusal is
+    /// not recorded anywhere per meeting: the backfill worked — other meetings
+    /// came back with summaries and contents — and this one, with a real
+    /// transcript, came back with neither. A model that is running and produced
+    /// nothing here declined here. The backfill has to be finished before that
+    /// reasoning holds, or the answer is simply "not its turn yet".
+    private func declined(_ meeting: ArchivedMeeting) -> Bool {
+        guard #available(macOS 26, *), offer.allowed else { return false }
+        guard !summaries.running, meeting.entries.count >= 3 else { return false }
+        guard meeting.summary == nil, meeting.sections.isEmpty else { return false }
+        return meetings.contains { $0.url != meeting.url && $0.summary != nil }
     }
 
     private var groupedMeetings: [(title: String, meetings: [ArchivedMeeting])] {
@@ -852,6 +926,99 @@ private struct SidebarMaterial: View {
     }
 }
 
+// MARK: - The optional text model, offered where its absence is visible
+
+/// One line saying what is missing, and one button. This is the whole of the
+/// text model's presence outside Settings.
+///
+/// Deliberately NOT a card: no border, no icon, no accent, no illustration. A
+/// caption and a small button, in the same idiom as every other hint in this
+/// window. An app with nothing to sell has no business drawing a banner over
+/// somebody's meetings, and a utility that is invisible by design cannot make
+/// an exception for its own upsell.
+///
+/// Stacked rather than laid out side by side, because of the 240pt sidebar:
+/// German and Russian run about a third longer than English, and a sentence
+/// beside a button in that column reflows into a two-word ribbon.
+///
+/// The states are the download's own — pressing Download turns the button into
+/// the bar it started, so the button cannot look like it did nothing, and the
+/// whole view disappears when the model lands (there is nothing left to offer).
+private struct TextModelOffer: View {
+    /// What is lost without it, in this particular place.
+    let line: String
+
+    @ObservedObject private var loc = Localization.shared
+    @ObservedObject private var offer = LocalTextModelOffer.shared
+    @ObservedObject private var download = LocalTextModelDownload.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(line)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            // Intel Macs are the audience with the MOST to gain — Apple's model
+            // needs macOS 26 and those Macs are frozen below it, so this is the
+            // only way they get titles, summaries or a working search by
+            // meaning — and they are also the slow case: measured 13.9 s per
+            // passage against 1.1 s. Somebody who is not told will report it as
+            // a hang, so it is said before the download, not after.
+            if LocalTextModelFile.runsOnCPU {
+                Text(L("On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            // Under 16 GB it still runs, and it is still worth having — but it
+            // holds 4.7 GB while it writes, and on such a Mac that is felt.
+            // Said with the number in it rather than as a warning: the person
+            // decides, the same way he decides about everything else here.
+            if LocalTextModelFile.isMemoryTight {
+                Text(L("It holds about 4.7 GB of memory while it writes, which this Mac will feel."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            action
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // One appearance of the offer costs one of its two runs, wherever it
+        // was shown.
+        .onAppear { offer.noteShown() }
+    }
+
+    @ViewBuilder
+    private var action: some View {
+        switch download.state {
+        case .downloading(let fraction):
+            HStack(spacing: 6) {
+                // Determinate, as in Settings: the total is known to the byte,
+                // and 2.5 GB behind a spinner is indistinguishable from a hang.
+                ProgressView(value: fraction).frame(width: 90)
+                Text("\(Int(fraction * 100))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        case .verifying:
+            Text(L("Checking…")).font(.caption).foregroundStyle(.secondary)
+        case .failed:
+            Button(L("Retry")) { download.start() }.controlSize(.small)
+        default:
+            HStack(spacing: 10) {
+                Button(Lf("Download %@", LocalTextModelFile.sizeText)) { download.start() }
+                    .controlSize(.small)
+                // "Not now" means never — here, in the search, and on every
+                // meeting. Written to disk, so a relaunch does not forget it.
+                // Settings keeps the row either way: that is where somebody
+                // comes back on purpose.
+                Button(L("Not now")) { offer.dismiss() }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+            }
+        }
+    }
+}
+
 // MARK: - Transcript pane
 
 /// The coordinate space the turn rectangles and the pointer are both
@@ -885,6 +1052,10 @@ private struct TranscriptPane<MenuItems: View>: View {
     let jumpTo: String?
     let sidebarShown: Bool
     let onToggleSidebar: () -> Void
+    /// A one-line notice under the header — the offer of the text model, on
+    /// the one meeting the built-in one refused to describe. nil is the
+    /// ordinary case, which is every meeting and every live call.
+    var notice: AnyView? = nil
     /// What the ⋯ menu offers for this transcript. Passed as items rather than
     /// as a whole menu so both call sites get the identical button.
     @ViewBuilder let menuItems: () -> MenuItems
@@ -937,6 +1108,10 @@ private struct TranscriptPane<MenuItems: View>: View {
         return VStack(spacing: 0) {
             header
             Divider()
+            if let notice {
+                notice
+                Divider()
+            }
             if entries.isEmpty && live?.livePreview == nil {
                 emptyState
             } else {

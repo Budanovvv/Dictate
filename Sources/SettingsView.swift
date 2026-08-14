@@ -316,7 +316,17 @@ struct SettingsView: View {
                     // does, where it runs (the whole positioning of this app),
                     // what it costs.
                     Text(Lf("Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.",
-                            LocalTextModelFile.sizeText))
+                            LocalTextModelFile.sizeText)
+                         // The same honesty the offer in the meetings window
+                         // gives: on a Mac with no Metal path this runs on the
+                         // CPU, measured 13.9 s per passage against 1.1 s.
+                         + (LocalTextModelFile.runsOnCPU
+                            ? " " + L("On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.")
+                            : "")
+                         // And the memory cost, on the Macs where it is felt.
+                         + (LocalTextModelFile.isMemoryTight
+                            ? " " + L("It holds about 4.7 GB of memory while it writes, which this Mac will feel.")
+                            : ""))
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

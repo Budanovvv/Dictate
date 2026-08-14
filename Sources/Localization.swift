@@ -101,6 +101,12 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Во время работы она держит около 4,7 ГБ памяти — на этом Mac это заметно.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Ваши митинги названы по дате. Разовая загрузка, которая остаётся на этом Mac, даст им названия, итоги и оглавление.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "Поиску по смыслу нужны итоги и разделы, а их пока никто на этом Mac не пишет. Разовая загрузка это делает — и остаётся здесь.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "Встроенная модель ничего не сказала об этом митинге. Разовая загрузка, которая остаётся на этом Mac, такими ограничениями не связана.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "На этом Mac всё считает процессор: примерно три минуты фоновой работы на 50-минутный митинг.",
+        "Not now": "Не сейчас",
         "Meeting titles & summaries": "Названия и итоги митингов",
         "Without it, meetings are saved with the date as their name.": "Без неё митинги сохраняются с датой вместо названия.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Даёт митингам названия, пишет краткий итог в одну строку и содержание — всё на этом Mac, ничего никуда не отправляется. Разовая загрузка, %@.",
@@ -315,6 +321,12 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Під час роботи вона тримає близько 4,7 ГБ пам’яті — на цьому Mac це помітно.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Ваші зустрічі названо за датою. Одноразове завантаження, що залишається на цьому Mac, дасть їм назви, підсумки та зміст.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "Пошуку за змістом потрібні підсумки та розділи, а їх поки що ніхто на цьому Mac не пише. Одноразове завантаження це робить — і залишається тут.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "Вбудована модель нічого не сказала про цю зустріч. Одноразове завантаження, що залишається на цьому Mac, такими обмеженнями не зв’язане.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "На цьому Mac усе рахує процесор: приблизно три хвилини фонової роботи на 50-хвилинну зустріч.",
+        "Not now": "Не зараз",
         "Meeting titles & summaries": "Назви та підсумки зустрічей",
         "Without it, meetings are saved with the date as their name.": "Без неї зустрічі зберігаються з датою замість назви.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Дає зустрічам назви, пише короткий підсумок в один рядок і зміст — усе на цьому Mac, нічого нікуди не надсилається. Одноразове завантаження, %@.",
@@ -520,6 +532,12 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Mientras escribe ocupa unos 4,7 GB de memoria, algo que este Mac notará.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Tus reuniones llevan la fecha por nombre. Una descarga única, que se queda en este Mac, les pone títulos, resúmenes y un índice.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "La búsqueda por significado necesita resúmenes y secciones, y nada en este Mac los escribe todavía. Una descarga única sí, y se queda aquí.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "El modelo integrado no supo describir esta reunión. Una descarga única, que se queda en este Mac, no tiene esa restricción.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "En este Mac funciona con la CPU: unos tres minutos de trabajo en segundo plano para una reunión de 50 minutos.",
+        "Not now": "Ahora no",
         "Meeting titles & summaries": "Títulos y resúmenes de reuniones",
         "Without it, meetings are saved with the date as their name.": "Sin él, las reuniones se guardan con la fecha como nombre.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Pone nombre a tus reuniones, escribe un resumen de una línea y un índice: todo en este Mac, no se envía nada a ninguna parte. Descarga única, %@.",
@@ -734,6 +752,12 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Enquanto escreve, ocupa cerca de 4,7 GB de memória, o que este Mac vai sentir.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Suas reuniões têm a data como nome. Um download único, que fica neste Mac, escreve títulos, resumos e um índice.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "A busca por significado precisa de resumos e seções, e nada neste Mac os escreve ainda. Um download único escreve — e fica aqui.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "O modelo integrado não teve nada a dizer sobre esta reunião. Um download único, que fica neste Mac, não tem essa restrição.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "Neste Mac ele roda na CPU: cerca de três minutos de trabalho em segundo plano para uma reunião de 50 minutos.",
+        "Not now": "Agora não",
         "Meeting titles & summaries": "Títulos e resumos de reuniões",
         "Without it, meetings are saved with the date as their name.": "Sem ele, as reuniões são salvas com a data como nome.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Dá nome às suas reuniões, escreve um resumo de uma linha e um índice — tudo neste Mac, nada é enviado para lugar nenhum. Download único, %@.",
@@ -948,6 +972,12 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Pendant qu’il écrit, il occupe environ 4,7 Go de mémoire, ce que ce Mac ressentira.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Vos réunions portent leur date comme nom. Un téléchargement unique, qui reste sur ce Mac, leur donne des titres, des résumés et un sommaire.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "La recherche par sens a besoin de résumés et de sections, et rien sur ce Mac ne les écrit encore. Un téléchargement unique le fait, et il reste ici.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "Le modèle intégré n’a rien eu à dire sur cette réunion. Un téléchargement unique, qui reste sur ce Mac, n’a pas cette restriction.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "Sur ce Mac, tout passe par le processeur : environ trois minutes de travail en arrière-plan pour une réunion de 50 minutes.",
+        "Not now": "Pas maintenant",
         "Meeting titles & summaries": "Titres et résumés de réunions",
         "Without it, meetings are saved with the date as their name.": "Sans lui, les réunions sont enregistrées avec la date pour nom.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Nomme vos réunions, écrit un résumé d'une ligne et un sommaire — tout sur ce Mac, rien n'est envoyé nulle part. Téléchargement unique, %@.",
@@ -1162,6 +1192,12 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Beim Schreiben belegt es rund 4,7 GB Arbeitsspeicher, was dieser Mac spüren wird.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Ihre Meetings tragen ihr Datum als Namen. Ein einmaliger Download, der auf diesem Mac bleibt, schreibt Titel, Zusammenfassungen und ein Inhaltsverzeichnis.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "Die Suche nach Bedeutung braucht Zusammenfassungen und Abschnitte, und auf diesem Mac schreibt sie noch niemand. Ein einmaliger Download tut es – und bleibt hier.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "Das eingebaute Modell hatte zu diesem Meeting nichts zu sagen. Ein einmaliger Download, der auf diesem Mac bleibt, hat diese Einschränkung nicht.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "Auf diesem Mac läuft es auf der CPU: etwa drei Minuten Hintergrundarbeit für ein 50-minütiges Meeting.",
+        "Not now": "Jetzt nicht",
         "Meeting titles & summaries": "Meeting-Titel & Zusammenfassungen",
         "Without it, meetings are saved with the date as their name.": "Ohne es werden Meetings mit dem Datum als Namen gespeichert.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Benennt Ihre Meetings, schreibt eine einzeilige Zusammenfassung und ein Inhaltsverzeichnis — alles auf diesem Mac, nichts wird irgendwohin gesendet. Einmaliger Download, %@.",
@@ -1376,6 +1412,12 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "写的时候它约占用 4.7 GB 内存，这台 Mac 会有感觉。",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "你的会议以日期命名。一次性下载后留在这台 Mac 上，为它们写标题、摘要和目录。",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "按意思搜索需要摘要和章节，而这台 Mac 上还没有东西来写它们。一次性下载可以做到，而且只留在本机。",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "内置模型对这场会议无话可说。一次性下载的模型留在这台 Mac 上，没有这种限制。",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "在这台 Mac 上它由 CPU 运行：50 分钟的会议约需三分钟后台处理。",
+        "Not now": "暂不",
         "Meeting titles & summaries": "会议标题与摘要",
         "Without it, meetings are saved with the date as their name.": "没有它，会议将以日期命名保存。",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "为会议命名，写出一句话摘要和目录——全部在这台 Mac 上完成，不会发送到任何地方。一次性下载，%@。",
@@ -1590,6 +1632,12 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "書いている間、約 4.7 GB のメモリを使います。この Mac では体感できる量です。",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "会議は日付で名前が付いています。一度だけダウンロードすればこの Mac に残り、タイトルと要約と目次を書きます。",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "意味での検索には要約とセクションが必要ですが、この Mac にはまだそれを書くものがありません。一度だけのダウンロードで書けるようになり、データはここに残ります。",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "内蔵モデルはこの会議について何も答えませんでした。一度だけダウンロードするモデルはこの Mac に残り、その制限がありません。",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "この Mac では CPU で動きます。50 分の会議でバックグラウンド処理が約 3 分です。",
+        "Not now": "今はしない",
         "Meeting titles & summaries": "会議のタイトルと要約",
         "Without it, meetings are saved with the date as their name.": "なければ、会議は日付が名前として保存されます。",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "会議に名前を付け、1行の要約と目次を作成します — すべてこの Mac 上で行われ、どこにも送信されません。一度だけのダウンロード、%@。",
@@ -1804,6 +1852,12 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "쓰는 동안 약 4.7GB의 메모리를 차지하며 이 Mac에서는 체감됩니다.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "회의 이름이 날짜로 되어 있습니다. 한 번만 내려받으면 이 Mac에 남아 제목과 요약, 목차를 씁니다.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "의미 검색에는 요약과 구간이 필요하지만 이 Mac에는 아직 그것을 쓰는 것이 없습니다. 한 번만 내려받으면 되고, 모두 이 Mac에 남습니다.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "내장 모델은 이 회의에 대해 아무 말도 하지 못했습니다. 한 번만 내려받는 모델은 이 Mac에 남으며 그런 제한이 없습니다.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "이 Mac에서는 CPU로 동작합니다. 50분짜리 회의에 백그라운드 작업 약 3분이 걸립니다.",
+        "Not now": "지금은 안 함",
         "Meeting titles & summaries": "회의 제목 및 요약",
         "Without it, meetings are saved with the date as their name.": "없으면 회의는 날짜가 이름으로 저장됩니다.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "회의에 이름을 붙이고 한 줄 요약과 목차를 만듭니다 — 모두 이 Mac에서 처리되며 어디로도 전송되지 않습니다. 한 번만 다운로드, %@.",
@@ -2018,6 +2072,12 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Khi viết, nó chiếm khoảng 4,7 GB bộ nhớ, máy Mac này sẽ cảm nhận được.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Các cuộc họp của bạn đang lấy ngày làm tên. Một lần tải về, giữ lại trên máy Mac này, sẽ viết tiêu đề, tóm tắt và mục lục.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "Tìm theo ý nghĩa cần tóm tắt và phần mục, mà trên máy Mac này chưa có gì viết chúng. Một lần tải về sẽ viết — và mọi thứ ở lại đây.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "Mô hình tích hợp không nói được gì về cuộc họp này. Một lần tải về, giữ trên máy Mac này, không bị hạn chế như vậy.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "Trên máy Mac này nó chạy bằng CPU: khoảng ba phút chạy nền cho cuộc họp 50 phút.",
+        "Not now": "Để sau",
         "Meeting titles & summaries": "Tiêu đề và tóm tắt cuộc họp",
         "Without it, meetings are saved with the date as their name.": "Không có nó, cuộc họp được lưu với ngày làm tên.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Đặt tên cho cuộc họp, viết tóm tắt một dòng và mục lục — tất cả trên chiếc Mac này, không gửi đi đâu cả. Tải một lần, %@.",
@@ -2232,6 +2292,12 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "It holds about 4.7 GB of memory while it writes, which this Mac will feel.": "Humahawak ito ng mga 4.7 GB ng memory habang nagsusulat, na mararamdaman ng Mac na ito.",
+        "Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents.": "Petsa ang pangalan ng mga meeting mo. Isang beses na download, na nananatili sa Mac na ito, ang magsusulat ng mga pamagat, buod at talaan ng nilalaman.",
+        "Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here.": "Kailangan ng paghahanap ayon sa kahulugan ang mga buod at seksyon, at wala pang sumusulat ng mga iyon sa Mac na ito. Kaya iyon ng isang beses na download — at dito lang nananatili ang lahat.",
+        "The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.": "Walang masabi ang built-in na modelo tungkol sa meeting na ito. Ang isang beses na download, na nananatili sa Mac na ito, ay walang ganoong limitasyon.",
+        "On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.": "Sa Mac na ito ay CPU ang nagpapatakbo nito: mga tatlong minutong background na trabaho para sa 50-minutong meeting.",
+        "Not now": "Hindi muna",
         "Meeting titles & summaries": "Mga pamagat at buod ng meeting",
         "Without it, meetings are saved with the date as their name.": "Kung wala ito, ang mga meeting ay nase-save gamit ang petsa bilang pangalan.",
         "Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.": "Pinapangalanan ang iyong mga meeting, sumusulat ng isang linyang buod at talaan ng nilalaman — lahat sa Mac na ito, walang ipinapadala kahit saan. Isang beses na download, %@.",

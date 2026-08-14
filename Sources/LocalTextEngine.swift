@@ -124,6 +124,58 @@ enum LocalTextModelFile {
     }
 
     static var isSupported: Bool { helper != nil }
+
+    /// How much memory this Mac must have before the download is OFFERED at
+    /// all.
+    ///
+    /// Measured: the helper holds 4.7 GB resident while generating (one slot;
+    /// four slots cost 7.6 GB, which is why there is one). Below 8 GB that is
+    /// most of the machine and then some — the download would be a trap, so
+    /// there is no card and no Settings row. Honest absence, the same
+    /// treatment a Mac with no helper binary gets.
+    static let memoryFloor: Int64 = 8 << 30
+
+    /// Where 4.7 GB is a guest rather than an eviction. Between the floor and
+    /// this the offer still stands — 8 GB is the base configuration of every
+    /// entry-level Mac, and refusing all of them outright decides for people
+    /// who would happily accept the cost — but the cost is stated in the same
+    /// breath, with the number in front of them.
+    static let comfortableMemory: Int64 = 16 << 30
+
+    private static var physicalMemory: Int64 {
+        Int64(ProcessInfo.processInfo.physicalMemory)
+    }
+
+    static var hasEnoughMemory: Bool { physicalMemory >= memoryFloor }
+
+    /// Enough to run it, not enough to run it unnoticed — the tier that gets
+    /// the extra clause of copy.
+    static var isMemoryTight: Bool {
+        physicalMemory >= memoryFloor && physicalMemory < comfortableMemory
+    }
+
+    /// Whether this Mac may be offered the download: it can run it, and it can
+    /// afford to. Separate from `isSupported`, which stays a question about
+    /// the BINARY — the engine still uses a model that is somehow already
+    /// installed, so nobody's 2.5 GB is stranded by a rule added after the
+    /// fact.
+    static var isOffered: Bool { isSupported && hasEnoughMemory }
+
+    /// Apple Silicon or not — asked of the hardware rather than of the build,
+    /// because the app ships universal and the answer is a PROMISE about
+    /// speed. Measured: 1.1 s per passage on Apple Silicon against 13.9 s on
+    /// Intel, where there is no Metal path and the helper runs on the CPU.
+    /// That is roughly three minutes of background work for a fifty-minute
+    /// meeting, and a user who is not told will report it as a hang.
+    static let isAppleSilicon: Bool = {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        return sysctlbyname("hw.optional.arm64", &value, &size, nil, 0) == 0 && value == 1
+    }()
+
+    /// Whether generation here runs on the CPU — the case the copy has to warn
+    /// about.
+    static var runsOnCPU: Bool { !isAppleSilicon }
 }
 
 /// The local generation engine: a downloaded model, run by a bundled

@@ -35,20 +35,31 @@ final class LocalTextModelDownload: ObservableObject {
     private var task: Task<Void, Never>?
 
     private init() {
-        state = !LocalTextModelFile.isSupported ? .unsupported
-            : (LocalTextModelFile.isInstalled ? .ready : .absent)
+        state = Self.onDisk()
     }
 
     /// Re-reads the disk. Cheap, and the window may have been open while the
     /// model was removed or finished arriving.
     func refresh() {
         guard task == nil else { return }
-        state = !LocalTextModelFile.isSupported ? .unsupported
-            : (LocalTextModelFile.isInstalled ? .ready : .absent)
+        state = Self.onDisk()
+    }
+
+    /// What the disk and the hardware say, with no download in flight.
+    ///
+    /// The order matters. An installed model is `.ready` before the memory
+    /// floor is consulted, so a Mac that already has one keeps its Remove
+    /// button — a rule added later must not strand 2.5 GB with no way to
+    /// delete it. Only the OFFER is gated: too little memory reads the same as
+    /// no helper at all, and nothing anywhere proposes the download.
+    private static func onDisk() -> State {
+        guard LocalTextModelFile.isSupported else { return .unsupported }
+        if LocalTextModelFile.isInstalled { return .ready }
+        return LocalTextModelFile.hasEnoughMemory ? .absent : .unsupported
     }
 
     func start() {
-        guard LocalTextModelFile.isSupported, task == nil else { return }
+        guard LocalTextModelFile.isOffered, task == nil else { return }
         state = .downloading(0)
         task = Task { [weak self] in
             do {
@@ -93,6 +104,64 @@ final class LocalTextModelDownload: ObservableObject {
         cancel()
         LocalTextModelFile.remove()
         refresh()
+    }
+}
+
+/// Whether the model may be OFFERED where the user is working, and how often.
+///
+/// Settings is not a signal. A row there is where somebody RETURNS on purpose,
+/// and a person who has never seen a named meeting has no reason to go looking
+/// for one — the owner found this himself on a clean install. So the offer also
+/// appears where the absence is physically visible: a library of meetings named
+/// by date, and a search by meaning with nothing to match against.
+///
+/// Everything about the appearance budget is defensive, because this app has no
+/// subscription to sell and a banner that keeps coming back would be the most
+/// foreign thing in it. Two runs of the app, then silence for good; "Not now"
+/// means never, in every surface at once, and it is written to disk so a
+/// relaunch does not forget it.
+@MainActor
+final class LocalTextModelOffer: ObservableObject {
+    static let shared = LocalTextModelOffer()
+
+    private static let dismissedKey = "textModelOfferDismissed"
+    private static let seenKey = "textModelOfferSeen"
+    /// How many runs of the app may show it. Two: one to plant the idea, one
+    /// to catch the person who was busy the first time. A third is nagging.
+    static let budget = 2
+
+    /// Dismissed for good. Published so all three surfaces vanish on the click
+    /// rather than on the next redraw.
+    @Published private(set) var dismissed: Bool
+    /// Runs that have already shown it, read ONCE at launch: counting live
+    /// would make the card disappear from under the pointer the moment it was
+    /// counted.
+    private let seenBefore: Int
+    private var countedThisRun = false
+
+    private init() {
+        dismissed = UserDefaults.standard.bool(forKey: Self.dismissedKey)
+        seenBefore = UserDefaults.standard.integer(forKey: Self.seenKey)
+    }
+
+    /// Whether a surface may offer the download right now.
+    var allowed: Bool {
+        !dismissed && seenBefore < Self.budget
+            && LocalTextModelFile.isOffered && !LocalTextModelFile.isInstalled
+    }
+
+    /// One appearance spent — once per run of the app, however many surfaces
+    /// showed it. The card stays on screen for the rest of this run.
+    func noteShown() {
+        guard !countedThisRun else { return }
+        countedThisRun = true
+        UserDefaults.standard.set(seenBefore + 1, forKey: Self.seenKey)
+    }
+
+    func dismiss() {
+        dismissed = true
+        UserDefaults.standard.set(true, forKey: Self.dismissedKey)
+        Log.d("text model: offer dismissed for good")
     }
 }
 
