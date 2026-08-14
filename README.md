@@ -20,6 +20,7 @@ Dictate is push-to-talk dictation for macOS. Everything runs on your Mac: Whispe
 - **Speak your language, send English** — hold a second key and your speech is typed as English (or another language you pick). Translated on your Mac, like everything else.
 - **Live text** — watch your words appear in the pill while you're still speaking.
 - **Voice snippets** — a replacement rule can insert a whole block: say “my signature” and get your full sign-off.
+- **Meeting transcripts** — record a browser call and get a Markdown transcript that names who spoke, written live to `~/Documents/Dictate Meetings`. Your microphone and the call's audio are captured separately, so the two sides are told apart. Local, like everything else.
 - **Private by architecture** — the microphone listens only during a dictation you started; recognition never touches the network. The one-time model download (~630 MB) is the only time Dictate needs the internet.
 - **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.
 - **Honest utility** — no settings maze, no account, no subscription. Auto-updates via Sparkle, cryptographically signed.
@@ -50,14 +51,17 @@ There are other good free, open dictation apps too — [Handy](https://github.co
 ## Build from source
 
 ```bash
-brew install xcodegen
+brew install xcodegen cmake
 git clone https://github.com/Budanovvv/Dictate.git && cd Dictate
+./tools/build-llama-server.sh   # once: builds the text helper (~5 min)
 xcodegen generate
 ./build.sh            # Release build (pick your signing Team in Xcode once)
 ./test.sh             # unit tests + bundle checks
 ```
 
-Stack: Swift / SwiftUI / AppKit, [WhisperKit](https://github.com/argmaxinc/WhisperKit) (Core ML), [Sparkle](https://sparkle-project.org) for updates. The Xcode project is generated from `project.yml`.
+The text helper is a universal [llama.cpp](https://github.com/ggml-org/llama.cpp) server binary, built from a pinned commit rather than committed here — 34 MB per copy would live in git history forever. `build.sh` refuses to build without it and prints the command above.
+
+Stack: Swift / SwiftUI / AppKit, [WhisperKit](https://github.com/argmaxinc/WhisperKit) (Core ML) for speech, [FluidAudio](https://github.com/FluidInference/FluidAudio) for voice activity and speaker separation, llama.cpp for on-device text generation, [Sparkle](https://sparkle-project.org) for updates. The Xcode project is generated from `project.yml`.
 
 ## License
 
