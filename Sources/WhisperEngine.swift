@@ -191,6 +191,24 @@ actor WhisperEngine {
         }
     }
 
+    /// What the model thought of what it just decoded. These are the very
+    /// signals openai/whisper uses internally to throw a segment away
+    /// (no_speech_prob, avg_logprob, compression_ratio); WhisperKit exposes
+    /// them per segment and leaves the call to the caller. The meeting
+    /// transcript uses them to reject phantom phrases without a blocklist of
+    /// words — see MeetingPolicy.phantomVerdict.
+    struct DecodeQuality: Sendable {
+        /// Duration-weighted across segments: one number for the whole result.
+        let noSpeechProb: Double
+        let avgLogprob: Double
+        /// Max across segments — one looping segment is enough to condemn.
+        let compressionRatio: Double
+        /// Highest temperature the decoder had to fall back to. Not part of
+        /// any rule yet (no calibration data), logged so it can become one.
+        let temperature: Double
+        let segments: Int
+    }
+
     /// Transcribes audio (16 kHz float) with the given tier's model.
     /// language "" → auto-detect. prompt — terms dictionary. Transcription
     /// only: translation is Apple Translation's job now, downstream.
@@ -201,6 +219,19 @@ actor WhisperEngine {
                     isCancelled: (@Sendable () -> Bool)? = nil,
                     onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
         -> (text: String, detectedLanguage: String) {
+        let r = try await transcribeScored(floats: floats, tier: tier, language: language,
+                                           prompt: prompt, isCancelled: isCancelled,
+                                           onProgress: onProgress)
+        return (r.text, r.detectedLanguage)
+    }
+
+    /// Same decode, plus the model's own confidence numbers. Separate entry
+    /// point rather than a wider return tuple so the dictation path — which
+    /// has no use for them — stays untouched.
+    func transcribeScored(floats: [Float], tier: ModelTier, language: String, prompt: String,
+                          isCancelled: (@Sendable () -> Bool)? = nil,
+                          onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
+        -> (text: String, detectedLanguage: String, quality: DecodeQuality) {
         guard let pipe = pipes[tier.variant] else {
             throw NSError(domain: "Dictate", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Whisper model not loaded"])
@@ -252,6 +283,32 @@ actor WhisperEngine {
         let results = try await pipe.transcribe(audioArray: floats, decodeOptions: options, callback: callback)
         let text = results.map { $0.text }.joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (text, results.first?.language ?? language)
+        return (text, results.first?.language ?? language, Self.quality(of: results))
+    }
+
+    /// Collapses the per-segment confidence signals into one verdict-ready
+    /// set. Probability-like values are weighted by segment duration (a
+    /// half-second segment must not outvote a ten-second one); the loop
+    /// detector takes the worst segment, since a single looping segment is
+    /// the whole symptom.
+    private static func quality(of results: [TranscriptionResult]) -> DecodeQuality {
+        let segments = results.flatMap { $0.segments }
+        guard !segments.isEmpty else {
+            // No segments at all means no text either — neutral numbers, and
+            // the caller's word count decides.
+            return DecodeQuality(noSpeechProb: 0, avgLogprob: 0, compressionRatio: 1,
+                                 temperature: 0, segments: 0)
+        }
+        let weights = segments.map { Double(max($0.duration, 0.01)) }
+        let total = weights.reduce(0, +)
+        func weighted(_ value: (TranscriptionSegment) -> Float) -> Double {
+            zip(segments, weights).reduce(0) { $0 + Double(value($1.0)) * $1.1 } / total
+        }
+        return DecodeQuality(
+            noSpeechProb: weighted { $0.noSpeechProb },
+            avgLogprob: weighted { $0.avgLogprob },
+            compressionRatio: Double(segments.map(\.compressionRatio).max() ?? 1),
+            temperature: Double(segments.map(\.temperature).max() ?? 0),
+            segments: segments.count)
     }
 }

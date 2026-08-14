@@ -27,6 +27,32 @@ actor MeetingDiarizer {
     /// Session-local numbering: first distinct voice → 1, next → 2…
     private var ordinals: [String: Int] = [:]
 
+    /// One voice's turn inside a window, ready to become its own transcript
+    /// entry. Times are session-absolute seconds.
+    struct SpeakerTurn: Sendable {
+        let ordinal: Int
+        let start: TimeInterval
+        let end: TimeInterval
+    }
+
+    /// End-of-session calibration data. The clustering threshold stays at
+    /// 0.62 until the owner supplies ground-truth participant counts; these
+    /// counters are what the NEXT meetings must produce so that call can
+    /// finally be made on numbers instead of a hunch.
+    struct SessionStats: Sendable {
+        var windows = 0
+        var failures = 0
+        /// Windows where the diarizer ran but heard no voice at all — the
+        /// entry then stays collective ("Them"). This is the counter that
+        /// showed 93 hits in the 2026-08-12 log.
+        var noVoice = 0
+        /// speaker-turns-per-window → how many windows had that many.
+        var turnHistogram: [Int: Int] = [:]
+    }
+    private var stats = SessionStats()
+
+    func sessionStats() -> SessionStats { stats }
+
     /// Loads (and on the very first run downloads) the CoreML models. Safe to
     /// call repeatedly; failures are logged and leave the diarizer disabled —
     /// the transcript then simply keeps the collective "Them" label.
@@ -66,27 +92,38 @@ actor MeetingDiarizer {
     /// deliberately kept — a voice it already knows just gets a fresh number.
     func startSession() {
         ordinals.removeAll()
+        stats = SessionStats()
     }
 
-    /// The session-local number of the voice dominating this utterance
-    /// window, or nil when the diarizer can't tell (not ready, no clear
-    /// voice). Windows are cut at pauses, so one window is almost always one
-    /// speaker; the dominant-voice rule handles brief overlaps.
-    func speakerOrdinal(floats: [Float], atTime offset: TimeInterval) -> Int? {
-        guard ready else { return nil }
+    /// Splits one Them window into the turns of the voices heard in it, in
+    /// time order — one entry per turn is what keeps two people from being
+    /// merged into a single line and chopped mid-sentence by the window cap.
+    ///
+    /// `windowStart` is the session time of the FIRST PCM sample handed in
+    /// (not the window's first-speech estimate): the returned times must map
+    /// back to sample offsets, so the diarizer is anchored to the buffer.
+    /// Returns [] when the diarizer can't say anything (not ready, failed, no
+    /// voice) — the caller then transcribes the window whole under the
+    /// collective label, exactly as before.
+    func speakerTurns(floats: [Float], windowStart: TimeInterval) -> [SpeakerTurn] {
+        guard ready else { return [] }
         let windowSeconds = Double(floats.count) / Double(AudioRecorder.sampleRate)
+        stats.windows += 1
         guard let result = try? manager.performCompleteDiarization(
-            floats, sampleRate: AudioRecorder.sampleRate, atTime: offset) else {
+            floats, sampleRate: AudioRecorder.sampleRate, atTime: windowStart) else {
+            stats.failures += 1
             Log.d(String(format: "diar: failed on %.1fs window", windowSeconds))
-            return nil
-        }
-        let durations = result.segments.reduce(into: [String: Double]()) {
-            $0[$1.speakerId, default: 0] += Double($1.durationSeconds)
+            return []
         }
         // Per-window diagnostics for threshold calibration: how much of the
         // window each voice got, and the quality the embedder reported. Two
         // real voices merging into one id shows up here as a single id
-        // covering a window that clearly held a dialogue.
+        // covering a window that clearly held a dialogue; ONE voice splitting
+        // (the opposite risk of the lowered threshold) shows up as ping-pong
+        // between two ids across the seams.
+        let durations = result.segments.reduce(into: [String: Double]()) {
+            $0[$1.speakerId, default: 0] += Double($1.durationSeconds)
+        }
         let quality = result.segments.map(\.qualityScore).max() ?? 0
         let shares = durations
             .sorted { $0.value > $1.value }
@@ -94,14 +131,39 @@ actor MeetingDiarizer {
             .joined(separator: " ")
         Log.d(String(format: "diar: %.1fs window, %d segment(s), quality %.2f [%@]",
                      windowSeconds, result.segments.count, quality, shares))
-        guard let dominant = MeetingPolicy.dominantSpeakerId(durations: durations) else {
-            Log.d("diar: no dominant voice — entry stays collective")
-            return nil
+
+        let slices = MeetingPolicy.speakerSlices(
+            spans: result.segments.map {
+                MeetingPolicy.SpeakerSpan(id: $0.speakerId,
+                                          start: Double($0.startTimeSeconds),
+                                          end: Double($0.endTimeSeconds))
+            },
+            windowStart: windowStart, windowEnd: windowStart + windowSeconds)
+        guard !slices.isEmpty else {
+            stats.noVoice += 1
+            stats.turnHistogram[0, default: 0] += 1
+            Log.d("diar: no voice in window — entry stays collective")
+            return []
         }
-        if let known = ordinals[dominant] { return known }
-        let next = ordinals.count + 1
-        ordinals[dominant] = next
-        Log.d("meeting: new voice -> speaker \(next) (id \(dominant))")
-        return next
+        stats.turnHistogram[slices.count, default: 0] += 1
+        let turns = slices.map { slice -> SpeakerTurn in
+            let ordinal: Int
+            if let known = ordinals[slice.id] {
+                ordinal = known
+            } else {
+                ordinal = ordinals.count + 1
+                ordinals[slice.id] = ordinal
+                Log.d("meeting: new voice -> speaker \(ordinal) (id \(slice.id))")
+            }
+            return SpeakerTurn(ordinal: ordinal, start: slice.start, end: slice.end)
+        }
+        if turns.count > 1 {
+            let plan = turns
+                .map { String(format: "spk%d %.1f-%.1f", $0.ordinal,
+                              $0.start - windowStart, $0.end - windowStart) }
+                .joined(separator: " | ")
+            Log.d("diar: window split into \(turns.count) turn(s) [\(plan)]")
+        }
+        return turns
     }
 }

@@ -32,16 +32,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// popover take keystrokes when they're actually clicked. Opening the
     /// library (the sidebar) turns it into an ordinary window and widens it,
     /// because browsing is a deliberate, focused activity.
-    private func showMeetingWindow() {
+    ///
+    /// `focus` is the user asking for the library by name (menu → Meetings…)
+    /// while nothing is being recorded — see applyMeetingWindowMode().
+    private func showMeetingWindow(focus: Bool = false) {
         if meetingWindow == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 420, height: 500),
                 styleMask: [.titled, .closable, .resizable,
-                            .nonactivatingPanel, .utilityWindow],
+                            .nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered, defer: false
             )
+            // One row of chrome, not two. The window used to stack a 34pt
+            // system title bar reading "Meetings" on top of the pane's own 46pt
+            // header — 80pt of window spent saying what the list underneath
+            // says better. The title bar is now transparent and empty, the
+            // content runs up under it, and the pane header IS the title bar:
+            // the traffic lights sit at its leading end and the meeting's name
+            // is the title.
+            //
+            // .utilityWindow is gone with it. A utility panel draws a shorter
+            // title bar with smaller buttons, which is a second set of chrome
+            // metrics to line the header up against for no gain — nothing about
+            // this window's behaviour came from it (floating over a call is the
+            // window LEVEL, and not stealing focus is .nonactivatingPanel).
+            panel.titlebarAppearsTransparent = true
+            panel.titleVisibility = .hidden
+            // The title still exists for the Window menu, for accessibility and
+            // for the screenshot tooling that finds this window by name.
             panel.title = L("Meetings")
-            panel.becomesKeyOnlyIfNeeded = true
+            // The header row's height is MeetingsChrome.headerHeight and it is
+            // chosen to sit on the band AppKit centres the traffic lights in
+            // (see there). Growing the title bar instead — an empty
+            // NSTitlebarAccessoryViewController of the height we want, which is
+            // the usual recipe — was tried and does not survive
+            // fullSizeContentView on this panel: the accessory reserved its
+            // height twice and pushed the whole header off the top of the
+            // window.
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             panel.minSize = NSSize(width: 360, height: 300)
@@ -51,23 +78,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 onStop: { [weak self] in self?.meeting.stop() },
                 onSidebarChange: { [weak self] shown in
                     self?.adjustMeetingWindow(sidebarShown: shown)
-                }))
+                })
+                // Without this the window is unified only in appearance: the
+                // backgrounds run to the top edge but SwiftUI keeps a title-bar
+                // safe area, so the header row is pushed 28pt down and the two
+                // rows are back — an empty one with the traffic lights, and
+                // ours under it. The header row IS the title bar here, so it
+                // has to be laid out in the title bar's own space.
+                .ignoresSafeArea(.container, edges: .top))
             panel.center()
             meetingWindow = panel
         }
-        applyMeetingWindowLevel()
+        applyMeetingWindowMode()
+        // Only an explicit "open the library" with no call running may take the
+        // keyboard. Everything else — the window appearing because a meeting
+        // started or finished — merely orders it in.
         meetingWindow?.orderFront(nil)
+        guard focus, !meeting.isActive else { return }
+        // On the next runloop turn, not now: this is called from the status
+        // menu's action, the menu is still tracking, and a window made key
+        // underneath it loses key status again the moment the menu closes —
+        // which is how the library ended up drawn in the inactive appearance
+        // every single time it was opened the normal way.
+        DispatchQueue.main.async { [weak self] in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.meetingWindow?.makeKeyAndOrderFront(nil)
+        }
     }
 
-    /// A floating panel is right while recording (glanceable over the call)
-    /// and wrong afterwards (a library that covers everything is rude).
-    private func applyMeetingWindowLevel() {
-        meetingWindow?.level = meeting.isActive ? .floating : .normal
+    /// Two windows in one, and the recording is what decides which.
+    ///
+    /// While a call is being transcribed this is the HUD's bigger sibling: a
+    /// floating panel that must NEVER hold the keyboard, or a glance at the
+    /// transcript would pull focus out of Zoom mid-sentence.
+    /// `becomesKeyOnlyIfNeeded` is what enforces that — the panel only takes
+    /// key status when something in it genuinely needs typing.
+    ///
+    /// Afterwards it is an ordinary library window, and the same flag becomes a
+    /// bug: a window that refuses to be key is drawn by AppKit in its INACTIVE
+    /// appearance forever — grey list, grey selection, grey title — which is
+    /// exactly the "permanently in fog" the sidebar was reported for. Browsing
+    /// an archive steals focus from nobody, so out of a call the panel behaves
+    /// like any other window: click it and it is key, and it looks it.
+    private func applyMeetingWindowMode() {
+        guard let panel = meetingWindow else { return }
+        let live = meeting.isActive
+        panel.level = live ? .floating : .normal
+        panel.becomesKeyOnlyIfNeeded = live
     }
 
     /// Opening the library needs room; closing it hands the space back.
     private func adjustMeetingWindow(sidebarShown: Bool) {
         guard let window = meetingWindow else { return }
+        // The library column is a fixed 240pt (MeetingsChrome.sidebarWidth), so
+        // with it open the window has to keep room for a readable transcript
+        // beside it; on its own the transcript is usable down to 360.
+        window.minSize = NSSize(width: sidebarShown ? 620 : 360, height: 300)
         let width = window.frame.width
         guard sidebarShown ? width < 720 : width > 720 else { return }
         var frame = window.frame
@@ -133,14 +199,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             },
             meetingActive: { [weak self] in self?.meeting.isActive ?? false },
             toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() },
-            showMeetingTranscript: { [weak self] in self?.showMeetingWindow() }
+            showMeetingTranscript: { [weak self] in self?.showMeetingWindow(focus: true) }
         )
         meeting.onFinished = { [weak self] _ in
             guard let self else { return }
             // The window IS the reader now: the finished transcript simply
             // becomes the newest item in the library, in place. No external
-            // editor, no file hunting.
-            self.applyMeetingWindowLevel()
+            // editor, no file hunting. Not `focus:` — the call itself may well
+            // still be running, and the moment a transcript closes is the worst
+            // possible one to grab the keyboard.
             self.showMeetingWindow()
             // Drop the red recording dot from the menu bar.
             self.statusController.applyState(self.dictation.state)

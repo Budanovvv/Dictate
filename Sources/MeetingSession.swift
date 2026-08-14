@@ -112,12 +112,25 @@ final class MeetingSession: ObservableObject {
     private var statWindows = 0
     private var statEntries = 0
     private var ticksSinceHeartbeat = 0
+    // End-of-session calibration data: how the transcript actually came out
+    // per voice. The clustering threshold stays at 0.62 until the owner gives
+    // ground-truth participant counts — these tallies plus the diarizer's own
+    // are what makes that call possible from the log of the next meeting
+    // instead of from a hunch. Keyed by the label as WRITTEN (a mid-session
+    // rename therefore splits a voice in two here — the tally follows the
+    // file, which is the record).
+    private var statSpeakerEntries: [String: Int] = [:]
+    private var statSpeakerSeconds: [String: Double] = [:]
+    private var statPhantomsRejected = 0
 
     private struct Entry {
         let start: TimeInterval
         let speaker: String
         let text: String
         let you: Bool
+        /// Seconds of audio this entry was decoded from — only feeds the
+        /// end-of-session per-speaker diagnostics.
+        let seconds: Double
     }
 
     /// Keeps the Mac awake while a session runs: the browser usually holds
@@ -203,6 +216,9 @@ final class MeetingSession: ObservableObject {
         statWindows = 0
         statEntries = 0
         ticksSinceHeartbeat = 0
+        statSpeakerEntries = [:]
+        statSpeakerSeconds = [:]
+        statPhantomsRejected = 0
         // The window's equalizer: mic level drives it directly (delivered on
         // main by AudioRecorder); the tap side feeds it from appendThem.
         mic.onLevel = { [weak self] level in
@@ -440,6 +456,7 @@ final class MeetingSession: ObservableObject {
         // (possibly silence-padded) start — honest timestamps, free-flowing
         // flush frontier.
         let start = youFirstSpeechAt ?? youWindowStart
+        let pcmStart = youWindowStart
         // Hot rollover: hands back the window and keeps recording — the same
         // no-teardown path the dictation key rollover uses.
         let (pcm, duration) = mic.rollover()
@@ -449,11 +466,12 @@ final class MeetingSession: ObservableObject {
         Log.d(String(format: "meeting: cut you %.1fs %@", duration,
                      shouldTranscribe ? "speech" : "silence"))
         guard shouldTranscribe, duration >= 0.5 else { return }
-        transcribeWindow(pcm: pcm, start: start, channel: .you)
+        transcribeWindow(pcm: pcm, pcmStart: pcmStart, start: start, channel: .you)
     }
 
     private func cutThemWindow(transcribe shouldTranscribe: Bool) {
         let start = themFirstSpeechAt ?? themWindowStart
+        let pcmStart = themWindowStart
         let pcm = themPCM
         themPCM = Data()
         themWindowStart = now
@@ -463,12 +481,33 @@ final class MeetingSession: ObservableObject {
         Log.d(String(format: "meeting: cut them %.1fs %@", duration,
                      shouldTranscribe ? "speech" : "silence"))
         guard shouldTranscribe, pcm.count >= AudioRecorder.sampleRate else { return } // ≥0.5s
-        transcribeWindow(pcm: pcm, start: start, channel: .them)
+        transcribeWindow(pcm: pcm, pcmStart: pcmStart, start: start, channel: .them)
     }
 
     // MARK: - Recognition
 
-    private func transcribeWindow(pcm: Data, start: TimeInterval, channel: Channel) {
+    /// One decoded piece of audio on its way to becoming an entry.
+    private struct Recognized {
+        let start: TimeInterval
+        let ordinal: Int?
+        let text: String
+        let seconds: Double
+    }
+
+    /// Recognizes one cut window. A Them window is first split into the turns
+    /// of the voices inside it and each turn is decoded separately, so a
+    /// window that held two people becomes two entries with the right labels
+    /// and the right start times.
+    ///
+    /// ORDERING INVARIANT: however many entries a window produces, the
+    /// channel keeps exactly ONE in-flight record, pinned at `start` — the
+    /// earliest moment anything from this window can carry. It is removed
+    /// only when every piece is done, and the pieces are appended to
+    /// `pending` together, so a window can never interleave with a later one
+    /// (see MeetingPolicy.flushableCount). Backpressure likewise still counts
+    /// WINDOWS, not pieces.
+    private func transcribeWindow(pcm: Data, pcmStart: TimeInterval,
+                                  start: TimeInterval, channel: Channel) {
         inflightSeq += 1
         statWindows += 1
         let key = "\(channel)#\(inflightSeq)"
@@ -481,76 +520,134 @@ final class MeetingSession: ObservableObject {
         let language = ""
         Task {
             let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+            let rate = Double(AudioRecorder.sampleRate)
             // Substantive-speech gate: a continuous channel's window needs
             // ENOUGH voiced audio, not just any speech-like blip — one breath
             // in ten silent seconds made Whisper hallucinate "Thank you."
-            // three times in the first real meeting. VAD unavailable → let it
-            // through (Whisper still sees trimmed audio).
-            let stats = await SpeechGate.shared.speechStats(floats)
-            let speech = stats.map {
+            // three times in the first real meeting. Checked here, before the
+            // diarizer, so a window of pure noise costs no ML at all. VAD
+            // unavailable → let it through (Whisper still sees trimmed audio).
+            let windowStats = await SpeechGate.shared.speechStats(floats)
+            let worth = windowStats.map {
                 MeetingPolicy.windowWorthTranscribing(voicedChunks: $0.voiced)
             } ?? true
-            if let stats, !speech {
-                Log.d("meeting: window skipped (voiced \(stats.voiced)/\(stats.chunks) — not enough speech)")
+            if let windowStats, !worth {
+                Log.d("meeting: window skipped (voiced \(windowStats.voiced)/\(windowStats.chunks) — not enough speech)")
             }
-            var text = ""
-            var ordinal: Int?
-            if speech, !self.cancelled.isCancelled {
-                // Who is talking (Them only): the diarizer numbers the mixed
-                // stream's voices — "Speaker 1/2…". You needs no ML: the mic
-                // channel IS the attribution.
-                if channel == .them {
-                    ordinal = await self.diarizer.speakerOrdinal(floats: floats, atTime: start)
-                }
+            var produced: [Recognized] = []
+            if worth, !self.cancelled.isCancelled {
                 // Late-start safety: if the model still isn't loaded (meeting
                 // started seconds after app launch), load it now instead of
                 // silently losing this window.
                 if !(await WhisperEngine.shared.isReady(for: .fast)) {
                     try? await WhisperEngine.shared.prepare(tier: .fast) { _ in }
                 }
-                // Edge silence is trimmed exactly like a dictation's (edge
-                // hallucinations, speed); the VAD gate above saw the FULL
-                // window, and the diarizer did too (its offsets stay honest).
-                let speechFloats = AudioRecorder.trimSilence(floats)
-                // No user prompt and no replacements: a meeting transcript is
-                // a verbatim record, not a dictation being typed.
-                text = (try? await WhisperEngine.shared.transcribe(
-                    floats: speechFloats, tier: .fast, language: language, prompt: "",
-                    isCancelled: { self.cancelled.isCancelled }))?.0 ?? ""
-                // Phantom-phrase forensics: one "Thank you." nobody said
-                // survived the input gate in the second real meeting, so it
-                // is NOT the silence class the gate closed. Log what such
-                // windows look like — speech ratio, trimmed length, word
-                // count — instead of guessing; a blocklist would also delete
-                // the real "Thank you" a participant does say.
-                if let stats {
-                    let words = text.split(whereSeparator: \.isWhitespace).count
-                    if words <= 3, !text.isEmpty {
-                        Log.d(String(format: "meeting: short result %d word(s) from %.1fs (voiced %d/%d) — %@",
-                                     words,
-                                     Double(speechFloats.count) / Double(AudioRecorder.sampleRate),
-                                     stats.voiced, stats.chunks,
-                                     text.trimmingCharacters(in: .whitespacesAndNewlines)))
+                // Who is talking (Them only): the diarizer numbers the mixed
+                // stream's voices — "Speaker 1/2…". You needs no ML and must
+                // NOT go through this: the mic channel IS one known voice,
+                // and diarizing it could only invent second speakers.
+                let turns = channel == .them
+                    ? await self.diarizer.speakerTurns(floats: floats, windowStart: pcmStart)
+                    : []
+                if turns.count > 1 {
+                    // The interesting case: a lively call has no pauses, so
+                    // this window was cut by the 15 s cap, not by a speaker
+                    // change — decode each voice's turn on its own.
+                    for turn in turns {
+                        guard !self.cancelled.isCancelled else { break }
+                        let from = max(0, Int((turn.start - pcmStart) * rate))
+                        let to = min(floats.count, Int((turn.end - pcmStart) * rate))
+                        // A turn too short to hold a word is not worth a
+                        // decode; speakerSlices already merged the blips, so
+                        // this only guards arithmetic at the window edges.
+                        guard to - from >= AudioRecorder.sampleRate / 2 else { continue }
+                        let piece = Array(floats[from..<to])
+                        let stats = await SpeechGate.shared.speechStats(piece)
+                        guard let text = await self.recognize(
+                            piece, stats: stats, language: language,
+                            tag: "turn spk\(turn.ordinal)") else { continue }
+                        // The turn's own start is the honest timestamp, but it
+                        // may never precede the window's flush pin.
+                        produced.append(Recognized(start: max(turn.start, start),
+                                                   ordinal: turn.ordinal, text: text,
+                                                   seconds: Double(piece.count) / rate))
                     }
+                } else if let text = await self.recognize(
+                    floats, stats: windowStats, language: language, tag: "window") {
+                    produced.append(Recognized(start: start, ordinal: turns.first?.ordinal,
+                                               text: text,
+                                               seconds: Double(floats.count) / rate))
                 }
             }
             await MainActor.run {
                 self.inflight.removeValue(forKey: key)
                 self.inflightCount = self.inflight.count
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
+                for item in produced {
                     let speaker: String
                     switch channel {
                     case .you: speaker = L("You")
-                    case .them: speaker = ordinal.map { Lf("Speaker %d", $0) } ?? L("Them")
+                    case .them: speaker = item.ordinal.map { Lf("Speaker %d", $0) } ?? L("Them")
                     }
-                    self.pending.append(Entry(start: start, speaker: speaker,
-                                              text: trimmed, you: channel == .you))
+                    self.pending.append(Entry(start: item.start, speaker: speaker,
+                                              text: item.text, you: channel == .you,
+                                              seconds: item.seconds))
                 }
                 self.flushReadyEntries()
                 self.finalizeIfDrained()
             }
         }
+    }
+
+    /// One recognition of one contiguous piece of audio: gate, trim, decode,
+    /// then let the pure rule decide whether the model just invented the
+    /// text. Returns nil when nothing should be written.
+    ///
+    /// The rejection is deliberately NOT a phrase blocklist (owner's call): it
+    /// reads the model's own confidence signals — no-speech probability,
+    /// average log-probability, compression ratio — together with what Silero
+    /// heard in the same audio. Every rejection AND every kept short result
+    /// goes to the log with its numbers, so the next real meeting is the
+    /// calibration set for the thresholds.
+    private func recognize(_ floats: [Float], stats: (chunks: Int, voiced: Int)?,
+                           language: String, tag: String) async -> String? {
+        if let stats, !MeetingPolicy.windowWorthTranscribing(voicedChunks: stats.voiced) {
+            Log.d("meeting: \(tag) skipped (voiced \(stats.voiced)/\(stats.chunks) — not enough speech)")
+            return nil
+        }
+        // Edge silence is trimmed exactly like a dictation's (edge
+        // hallucinations, speed); the VAD gate above saw the FULL piece, and
+        // the diarizer saw the full window (its offsets stay honest).
+        let speechFloats = AudioRecorder.trimSilence(floats)
+        // No user prompt and no replacements: a meeting transcript is a
+        // verbatim record, not a dictation being typed.
+        guard let result = try? await WhisperEngine.shared.transcribeScored(
+            floats: speechFloats, tier: .fast, language: language, prompt: "",
+            isCancelled: { self.cancelled.isCancelled }) else { return nil }
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let seconds = Double(speechFloats.count) / Double(AudioRecorder.sampleRate)
+        let words = text.split(whereSeparator: \.isWhitespace).count
+        let evidence = MeetingPolicy.SpeechEvidence(
+            noSpeechProb: result.quality.noSpeechProb,
+            avgLogprob: result.quality.avgLogprob,
+            compressionRatio: result.quality.compressionRatio,
+            words: words, audioSeconds: seconds, voicedChunks: stats?.voiced)
+        let numbers = String(
+            format: "noSpeech %.2f logprob %.2f compression %.2f temp %.1f voiced %@ %.1fs %d word(s)",
+            evidence.noSpeechProb, evidence.avgLogprob, evidence.compressionRatio,
+            result.quality.temperature,
+            stats.map { "\($0.voiced)/\($0.chunks)" } ?? "n/a", seconds, words)
+        if case .reject(let reason) = MeetingPolicy.phantomVerdict(evidence) {
+            await MainActor.run { self.statPhantomsRejected += 1 }
+            Log.d("meeting: \(tag) rejected [\(reason)] (\(numbers)) — \(text)")
+            return nil
+        }
+        // Both sides of the boundary go to the log: the short results we KEEP
+        // are what tells the next calibration whether the bars sit right.
+        if words <= 3 {
+            Log.d("meeting: \(tag) short result kept (\(numbers)) — \(text)")
+        }
+        return text
     }
 
     // MARK: - Ordered writing
@@ -576,6 +673,8 @@ final class MeetingSession: ObservableObject {
             // A voice the user has already named keeps that name for the rest
             // of the session — including in the file.
             let speaker = speakerNames[entry.speaker] ?? entry.speaker
+            statSpeakerEntries[speaker, default: 0] += 1
+            statSpeakerSeconds[speaker, default: 0] += entry.seconds
             write("**[\(clock(entry.start))] \(speaker):** \(entry.text)\n\n")
             displayEntries.append(TranscriptEntry(time: clock(entry.start),
                                                   speaker: speaker,
@@ -595,6 +694,7 @@ final class MeetingSession: ObservableObject {
         stopping = false
         try? fileHandle?.close()
         fileHandle = nil
+        logSessionDiagnostics()
         Log.d("meeting: transcript finished -> \(url.lastPathComponent)")
         let entries = displayEntries
         let stamp = sessionStart
@@ -604,15 +704,45 @@ final class MeetingSession: ObservableObject {
         // lands — so the meeting appears in the library immediately.
         onFinished?(url)
         Task { @MainActor in
-            guard let title = await MeetingTitler.title(for: entries) else { return }
-            MeetingArchive.setTitle(title, dateLine: Self.dateLine(stamp), in: url)
+            // Name and summary in ONE model call: the excerpt and the session
+            // (and, for a Russian meeting, the translation hop) are paid for
+            // once and answer both questions.
+            guard let brief = await MeetingTitler.brief(for: entries) else { return }
+            MeetingArchive.setTitle(brief.title, dateLine: Self.dateLine(stamp),
+                                    summary: brief.summary, in: url)
             // The file follows its title so the folder reads in Finder too;
             // the transcript's content stays the source of truth, so a failed
             // rename costs nothing but a plainer name.
             let renamed = MeetingArchive.renameFile(at: url, stamp: Self.fileStamp(stamp),
-                                                    title: title)
+                                                    title: brief.title)
             if self.fileURL == url { self.fileURL = renamed }
             self.onFinished?(renamed)
+        }
+    }
+
+    /// The calibration dump, written once per session. The diarizer's
+    /// clustering threshold is deliberately left at 0.62 (no ground-truth
+    /// participant counts yet), so what the next meetings must leave behind is
+    /// the EVIDENCE for that call: how the entries and the speech seconds
+    /// actually distributed across the voices, how often the diarizer heard
+    /// nothing, and how many turns it found per window. A single voice split
+    /// in two shows up here as two speakers with similar profiles; two people
+    /// merged shows up as one speaker holding most of the seconds while the
+    /// turn histogram stays at 1.
+    private func logSessionDiagnostics() {
+        Log.d(String(format: "meeting: summary — %.1f min, %d window(s), %d entries, %d phantom(s) rejected",
+                     Date().timeIntervalSince(sessionStart) / 60,
+                     statWindows, statEntries, statPhantomsRejected))
+        for (speaker, count) in statSpeakerEntries.sorted(by: { $0.value > $1.value }) {
+            Log.d(String(format: "meeting: %@ — %d entries, %.0fs of speech",
+                         speaker, count, statSpeakerSeconds[speaker] ?? 0))
+        }
+        Task { [diarizer] in
+            let s = await diarizer.sessionStats()
+            let histogram = s.turnHistogram.sorted { $0.key < $1.key }
+                .map { "\($0.key)×\($0.value)" }
+                .joined(separator: " ")
+            Log.d("diar: summary — \(s.windows) window(s) diarized, no voice \(s.noVoice), failed \(s.failures), turns-per-window [\(histogram)]")
         }
     }
 

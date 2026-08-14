@@ -48,13 +48,120 @@ enum MeetingPolicy {
     // windows are cut by Silero VAD verdicts over the window tail instead
     // (see MeetingSession.scheduleTailChecks and GRABLI).
 
-    /// The voice that talked most within one utterance window labels the
-    /// whole window — windows are cut at pauses, so mixtures are rare and
-    /// short. Deterministic tie-break (smaller id) keeps tests stable.
-    static func dominantSpeakerId(durations: [String: Double]) -> String? {
-        durations.min { a, b in
-            a.value > b.value || (a.value == b.value && a.key < b.key)
-        }?.key
+    // NOTE: the dominant-voice rule that used to live here is GONE
+    // (2026-08-12). It labelled a whole window with the ONE voice that talked
+    // most in it, on the assumption "windows are cut at pauses, so mixtures
+    // are rare". Four real meetings disproved the assumption: a lively call
+    // has no pauses, so the Them window is cut by the 15 s hard cap instead,
+    // and the cap falls wherever it falls. The transcripts show two people
+    // merged into one entry and chopped mid-sentence, with the continuation
+    // filed under a different speaker (2026-08-12 10:01:17 / 10:01:32), while
+    // the log said "no dominant voice" 93 times. The diarizer HAD the
+    // boundaries and we threw them away — now the window is cut at them
+    // (speakerSlices below).
+
+    /// One voice's stretch as the diarizer reported it, in session-absolute
+    /// seconds. Plain values so the rule stays free of FluidAudio types.
+    struct SpeakerSpan: Equatable {
+        let id: String
+        let start: Double
+        let end: Double
+
+        init(id: String, start: Double, end: Double) {
+            self.id = id; self.start = start; self.end = end
+        }
+    }
+
+    /// A piece of an audio window that becomes exactly ONE transcript entry:
+    /// one voice, its own start time, its own recognition.
+    struct SpeakerSlice: Equatable {
+        let id: String
+        let start: Double
+        let end: Double
+    }
+
+    /// Cuts one Them window into per-speaker slices.
+    ///
+    /// The slices PARTITION the window: no audio is dropped (a lost half-word
+    /// is a lost half-word) and none is duplicated (overlapping slices would
+    /// print the same sentence under two speakers). Boundaries land in the
+    /// middle of the gap between two voices — the diarizer's own edges are
+    /// approximate and the midpoint is the least-bad place to breathe.
+    ///
+    /// Spans shorter than `minSlice` are absorbed into a neighbour instead of
+    /// becoming entries: a 0.3 s blip is a back-channel "ага" or a
+    /// mis-attribution, and an entry per blip would shred the dialogue. The
+    /// LONGER neighbour wins it, because a long stretch is the better-founded
+    /// attribution of the two.
+    ///
+    /// Returns [] when the diarizer found no voice at all — the caller then
+    /// keeps today's behaviour (one entry, collective label).
+    static func speakerSlices(spans: [SpeakerSpan],
+                              windowStart: Double, windowEnd: Double,
+                              minSlice: Double = 1.0) -> [SpeakerSlice] {
+        guard windowEnd > windowStart else { return [] }
+        // Clamp to the window (the diarizer pads its last chunk) and drop
+        // anything that survives as empty.
+        let clamped = spans
+            .map { SpeakerSpan(id: $0.id,
+                               start: min(max($0.start, windowStart), windowEnd),
+                               end: min(max($0.end, windowStart), windowEnd)) }
+            .filter { $0.end > $0.start }
+            .sorted { $0.start < $1.start }
+        guard !clamped.isEmpty else { return [] }
+
+        var runs = coalesce(clamped)
+        // Absorb the too-short runs, one per pass: every absorption changes
+        // the neighbours' lengths, so the decision has to be re-taken.
+        while runs.count > 1, let i = runs.firstIndex(where: { $0.end - $0.start < minSlice }) {
+            let prev = i > 0 ? runs[i - 1] : nil
+            let next = i < runs.count - 1 ? runs[i + 1] : nil
+            let intoPrev: Bool
+            if prev == nil { intoPrev = false }
+            else if next == nil { intoPrev = true }
+            else { intoPrev = (prev!.end - prev!.start) >= (next!.end - next!.start) }
+            if intoPrev {
+                runs[i - 1] = SpeakerSlice(id: prev!.id, start: prev!.start, end: runs[i].end)
+            } else {
+                runs[i + 1] = SpeakerSlice(id: next!.id, start: runs[i].start, end: next!.end)
+            }
+            runs.remove(at: i)
+            // Absorbing can put two stretches of the same voice side by side.
+            runs = coalesce(runs.map { SpeakerSpan(id: $0.id, start: $0.start, end: $0.end) })
+        }
+
+        // Snap the boundaries: the first slice starts where the window does,
+        // the last ends where it ends, and every seam sits at the midpoint of
+        // the gap — the same value for both neighbours, so the partition is
+        // exact.
+        return runs.enumerated().map { i, run in
+            let start = i == 0 ? windowStart : (runs[i - 1].end + run.start) / 2
+            let end = i == runs.count - 1 ? windowEnd : (run.end + runs[i + 1].start) / 2
+            return SpeakerSlice(id: run.id, start: start, end: end)
+        }.filter { $0.end > $0.start }
+    }
+
+    /// Merges consecutive spans of one voice; a span swallowed by the one
+    /// before it (crosstalk — two voices reported over the same seconds) is
+    /// dropped, the voice already holding the floor keeps it.
+    private static func coalesce(_ spans: [SpeakerSpan]) -> [SpeakerSlice] {
+        var runs: [SpeakerSlice] = []
+        for span in spans {
+            guard let last = runs.last else {
+                runs.append(SpeakerSlice(id: span.id, start: span.start, end: span.end))
+                continue
+            }
+            if last.id == span.id {
+                runs[runs.count - 1] = SpeakerSlice(id: last.id, start: last.start,
+                                                    end: max(last.end, span.end))
+            } else if span.end <= last.end {
+                continue
+            } else {
+                runs.append(SpeakerSlice(id: span.id,
+                                         start: max(span.start, last.end), end: span.end))
+            }
+        }
+        return runs
     }
 
     /// Whether a cut window holds enough ACTUAL speech to be worth waking
@@ -67,6 +174,86 @@ enum MeetingPolicy {
     /// the fix is at the INPUT — no output blocklists.
     static func windowWorthTranscribing(voicedChunks: Int) -> Bool {
         voicedChunks >= 2
+    }
+
+    /// Everything the phantom rule is allowed to look at: what the DECODER
+    /// thought of its own output plus what Silero heard in the same audio.
+    /// Deliberately no words and no phrases — the owner rejected a blocklist
+    /// (2026-08-10) because it would also delete the real "Thank you" a
+    /// participant says, and a blocklist is a per-language chore forever.
+    struct SpeechEvidence: Equatable {
+        /// Whisper's own P(this audio contains no speech), duration-weighted
+        /// across the decoded segments.
+        let noSpeechProb: Double
+        /// Whisper's own mean token log-probability (0 = certain), likewise
+        /// duration-weighted.
+        let avgLogprob: Double
+        /// gzip-style ratio of the produced text — Whisper's own detector for
+        /// a decoder stuck in a loop.
+        let compressionRatio: Double
+        /// Words in the produced text.
+        let words: Int
+        /// Seconds of audio actually handed to the model.
+        let audioSeconds: Double
+        /// Silero's 256 ms chunk verdicts over the same audio; nil when the
+        /// VAD was unavailable (then only the model's own signals count).
+        let voicedChunks: Int?
+    }
+
+    enum PhantomVerdict: Equatable {
+        case keep
+        /// Rejected — the string is the reason, logged next to the numbers.
+        case reject(String)
+    }
+
+    /// Whether a finished recognition is a phantom: a phrase Whisper invented
+    /// to explain audio that held no speech. Real evidence from four meetings:
+    /// 14–20 micro-entries each, "Thank you." ×11–15, bare "you", bare "." —
+    /// and the 2026-08-12 10:00 transcript OPENS with two phantom "Thank you."
+    /// lines before anyone had spoken.
+    ///
+    /// Every rule below is a conjunction of independent signals, because the
+    /// asymmetry is not symmetric: dropping a real curt "Да." is worse than
+    /// keeping one phantom. Whisper's own numbers alone are not enough — a
+    /// phantom is often decoded CONFIDENTLY (that is what "hallucination"
+    /// means here) — so the model's no-speech estimate is the load-bearing
+    /// signal and the rest only guards it.
+    static func phantomVerdict(_ e: SpeechEvidence) -> PhantomVerdict {
+        // (1) Whisper's own reference rule, with its own default constants
+        // (no_speech_threshold 0.6, logprob_threshold −1.0): the model says
+        // "probably no speech" AND is unsure of what it wrote. openai/whisper
+        // drops such segments outright; WhisperKit hands us the numbers and
+        // leaves the call to us. Length-independent because the vendor's is:
+        // a long unsure passage over non-speech is noise either way.
+        if e.noSpeechProb >= 0.6, e.avgLogprob < -1.0 { return .reject("silence") }
+
+        // (2) The confident phantom, the class that actually reaches the
+        // owner's transcripts. The model itself puts ≥85% on "no speech
+        // here" and still produced a micro-phrase. 0.85 is far above the
+        // vendor's own 0.6 bar precisely so a real short reply — which the
+        // model scores well BELOW 0.6 — cannot land here; ≤3 words keeps the
+        // blast radius at one line.
+        if e.words <= 3, e.noSpeechProb >= 0.85 { return .reject("no speech") }
+
+        // (3) The breath signature, now caught at the OUTPUT. The input gate
+        // (windowWorthTranscribing) already refuses windows with fewer than 2
+        // voiced chunks; this catches the ones that squeak past with barely
+        // more: ≥3 s of audio in which Silero heard at most ~0.5 s of voice,
+        // and the model still produced one or two words. A genuine curt reply
+        // occupies a SHORT slice, which is why the 3 s floor is what protects
+        // it (and why this rule got safer once windows are cut per speaker).
+        if e.words <= 2, e.audioSeconds >= 3, let voiced = e.voicedChunks, voiced <= 2 {
+            return .reject("too little voice")
+        }
+
+        // (4) Decoder stuck in a loop ("okay okay okay…"). Whisper's own
+        // degenerate bar is 2.4; we take 3.0 — a 25% margin — because here it
+        // deletes a whole entry rather than triggering a re-decode, and
+        // ordinary prose sits at 1.2–2.0. ≥6 words because the ratio is noise
+        // on very short strings.
+        if e.words >= 6, e.compressionRatio >= 3.0 { return .reject("repetition") }
+
+        return .keep
     }
 
     /// What a channel contributes to the flush frontier. A window WITH

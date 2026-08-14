@@ -91,20 +91,213 @@ final class ChannelFrontierTests: XCTestCase {
 // NOTE: CallOverTests removed with the auto-stop feature itself
 // (2026-08-10, owner's call) — see the note in MeetingPolicy.
 
-/// Speaker attribution of one utterance window: the dominant voice wins,
-/// ties break deterministically, an empty window has no speaker.
-final class DominantSpeakerTests: XCTestCase {
+/// Speaker attribution of one Them window. The dominant-voice rule that used
+/// to live here labelled a whole window with ONE voice; four real meetings
+/// showed a lively call has no pauses, so the window is cut by the 15 s cap
+/// and holds several people (2026-08-12 10:01:17 — two speakers in one entry,
+/// chopped mid-sentence). The window is now cut at the diarizer's own
+/// boundaries instead.
+final class SpeakerSlicesTests: XCTestCase {
 
-    func testDominantVoiceWins() {
-        XCTAssertEqual(MeetingPolicy.dominantSpeakerId(durations: ["a": 1.2, "b": 4.5]), "b")
+    private func span(_ id: String, _ start: Double, _ end: Double) -> MeetingPolicy.SpeakerSpan {
+        MeetingPolicy.SpeakerSpan(id: id, start: start, end: end)
     }
 
-    func testTieBreaksBySmallerId() {
-        XCTAssertEqual(MeetingPolicy.dominantSpeakerId(durations: ["b": 2.0, "a": 2.0]), "a")
+    func testNoVoiceMeansNoSlices() {
+        XCTAssertTrue(MeetingPolicy.speakerSlices(spans: [], windowStart: 0, windowEnd: 15).isEmpty)
     }
 
-    func testEmptyWindowHasNoSpeaker() {
-        XCTAssertNil(MeetingPolicy.dominantSpeakerId(durations: [:]))
+    func testSingleVoiceCoversTheWholeWindow() {
+        // The common case must stay a single recognition of the whole window:
+        // one slice, window edges, no extra Whisper passes.
+        let slices = MeetingPolicy.speakerSlices(spans: [span("a", 1.0, 8.0)],
+                                                 windowStart: 0, windowEnd: 10)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 10)])
+    }
+
+    func testTwoVoicesSplitAtTheGapMidpoint() {
+        // The 2026-08-12 case: 15 s of nonstop call holding two people. The
+        // seam lands in the middle of the gap; the partition is exact — no
+        // audio lost, none duplicated.
+        let slices = MeetingPolicy.speakerSlices(spans: [span("a", 0.5, 7.0), span("b", 8.0, 14.5)],
+                                                 windowStart: 0, windowEnd: 15)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 7.5),
+                                MeetingPolicy.SpeakerSlice(id: "b", start: 7.5, end: 15)])
+    }
+
+    func testConsecutiveSpansOfOneVoiceMerge() {
+        // pyannote emits a span per chunk; three of the same voice in a row
+        // must not become three entries.
+        let slices = MeetingPolicy.speakerSlices(
+            spans: [span("a", 0, 4), span("a", 4, 8), span("a", 8, 12)],
+            windowStart: 0, windowEnd: 12)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 12)])
+    }
+
+    func testShortBlipIsAbsorbedByTheLongerNeighbour() {
+        // A 0.4 s back-channel ("ага") between two long stretches is not an
+        // entry — and the longer stretch, the better-founded attribution,
+        // takes it. Both neighbours are the same voice here, so the result is
+        // ONE slice: the classic "someone hummed mid-sentence" window.
+        let slices = MeetingPolicy.speakerSlices(
+            spans: [span("a", 0, 6), span("b", 6, 6.4), span("a", 6.4, 12)],
+            windowStart: 0, windowEnd: 12)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 12)])
+    }
+
+    func testBlipBetweenTwoDifferentVoicesGoesToTheLongerOne() {
+        // The 0.5 s "c" is swallowed by "b" (9.5 s) rather than "a" (2 s);
+        // two entries come out, not three.
+        let slices = MeetingPolicy.speakerSlices(
+            spans: [span("a", 0, 2), span("c", 2, 2.5), span("b", 2.5, 12)],
+            windowStart: 0, windowEnd: 12)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 2),
+                                MeetingPolicy.SpeakerSlice(id: "b", start: 2, end: 12)])
+    }
+
+    func testSlicesPartitionTheWindowExactly() {
+        // The invariant that protects the transcript: every sample belongs to
+        // exactly one entry. A gap would drop half a word, an overlap would
+        // print the same sentence under two speakers.
+        let slices = MeetingPolicy.speakerSlices(
+            spans: [span("a", 0.5, 4), span("b", 5, 9), span("a", 9.5, 14)],
+            windowStart: 0, windowEnd: 15)
+        XCTAssertEqual(slices.count, 3)
+        XCTAssertEqual(slices.first?.start, 0)
+        XCTAssertEqual(slices.last?.end, 15)
+        for (a, b) in zip(slices, slices.dropFirst()) {
+            XCTAssertEqual(a.end, b.start)
+        }
+    }
+
+    func testCrosstalkKeepsTheVoiceHoldingTheFloor() {
+        // Two voices reported over the same seconds: the one already holding
+        // the floor keeps it, and the interjection swallowed inside it never
+        // becomes its own entry.
+        let slices = MeetingPolicy.speakerSlices(
+            spans: [span("a", 0, 10), span("b", 3, 5)],
+            windowStart: 0, windowEnd: 10)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 10)])
+    }
+
+    func testSpansAreClampedToTheWindow() {
+        // The diarizer pads its last chunk; slice times must never point
+        // outside the PCM buffer they will index into.
+        let slices = MeetingPolicy.speakerSlices(spans: [span("a", -2, 20)],
+                                                 windowStart: 0, windowEnd: 10)
+        XCTAssertEqual(slices, [MeetingPolicy.SpeakerSlice(id: "a", start: 0, end: 10)])
+    }
+}
+
+/// Phantom rejection by the MODEL's own confidence signals. The owner
+/// explicitly rejected a phrase blocklist (it would also delete the real
+/// "Thank you" a participant says), so the rule reads no-speech probability,
+/// average log-probability and compression ratio — the very numbers
+/// openai/whisper uses internally — plus Silero's voiced-chunk counts.
+/// Conservative by design: losing a real short reply is worse than keeping a
+/// phantom, so every rule is a conjunction.
+final class PhantomVerdictTests: XCTestCase {
+
+    private func evidence(noSpeech: Double = 0.05, logprob: Double = -0.3,
+                          compression: Double = 1.4, words: Int = 5,
+                          seconds: Double = 4, voiced: Int? = 10)
+        -> MeetingPolicy.SpeechEvidence {
+        MeetingPolicy.SpeechEvidence(noSpeechProb: noSpeech, avgLogprob: logprob,
+                                     compressionRatio: compression, words: words,
+                                     audioSeconds: seconds, voicedChunks: voiced)
+    }
+
+    func testConfidentRealSpeechIsKept() {
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(evidence()), .keep)
+    }
+
+    func testCurtRealReplyIsKept() {
+        // "Да." — two words, short slice, the model heard it clearly. This is
+        // the case the whole rule set is built not to break.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.08, logprob: -0.5, words: 1, seconds: 1.2, voiced: 3)),
+                       .keep)
+    }
+
+    func testWhispersOwnSilenceRuleRejects() {
+        // no_speech_prob > 0.6 AND avg_logprob < −1.0: openai/whisper's own
+        // defaults, the case where the model itself would drop the segment.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.7, logprob: -1.4, words: 9)),
+                       .reject("silence"))
+    }
+
+    func testUnsureButSpeechfulIsKept() {
+        // Low no-speech probability: unsure decoding of real speech (accents,
+        // compressed call audio) must survive.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.2, logprob: -1.5, words: 9)),
+                       .keep)
+    }
+
+    func testConfidentPhantomOnNoSpeechIsRejected() {
+        // The class that actually reaches the transcripts: a fluent "Thank
+        // you." the model is sure about, over audio it is 91% sure holds no
+        // speech at all.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.91, logprob: -0.25, words: 2, seconds: 2, voiced: 4)),
+                       .reject("no speech"))
+    }
+
+    func testNoSpeechBarSitsWellAboveTheVendorDefault() {
+        // 0.7 alone must NOT reject a short reply — only the far side of the
+        // bar (0.85) does, because a real curt answer scores far below it.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.7, logprob: -0.25, words: 2, seconds: 2, voiced: 4)),
+                       .keep)
+    }
+
+    func testLongOutputSurvivesAHighNoSpeechScore() {
+        // A whole sentence is never dropped by rule (2) — the blast radius is
+        // capped at micro-entries.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.95, logprob: -0.3, words: 12)),
+                       .keep)
+    }
+
+    func testBreathSignatureIsRejected() {
+        // The GRABLI case at the OUTPUT: seconds of audio, ~0.5 s of voice in
+        // it, one word out. The input gate lets voiced==2 through on purpose;
+        // this catches what it costs.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.4, logprob: -0.6, words: 1, seconds: 6, voiced: 2)),
+                       .reject("too little voice"))
+    }
+
+    func testShortSliceWithLittleVoiceIsKept() {
+        // Same voiced count, but the audio is SHORT — that is a real curt
+        // reply, not a breath in a long silence. The 3 s floor is what tells
+        // them apart.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(noSpeech: 0.4, logprob: -0.6, words: 1, seconds: 1.5, voiced: 2)),
+                       .keep)
+    }
+
+    func testRepetitionLoopIsRejected() {
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(compression: 3.4, words: 40)),
+                       .reject("repetition"))
+    }
+
+    func testOrdinaryProseNearWhispersOwnBarIsKept() {
+        // Whisper's own degenerate bar is 2.4; we keep a margin so a
+        // repetitive but real passage ("да, да, да, конечно, да") survives.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(compression: 2.6, words: 40)),
+                       .keep)
+    }
+
+    func testMissingVadDoesNotRejectOnItsOwn() {
+        // VAD unavailable: only the model's numbers count, and they are fine
+        // here — nothing may be thrown away for lack of evidence.
+        XCTAssertEqual(MeetingPolicy.phantomVerdict(
+            evidence(words: 1, seconds: 8, voiced: nil)),
+                       .keep)
     }
 }
 

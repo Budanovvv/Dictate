@@ -40,6 +40,10 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// What the meeting was about, when the on-device model managed to name
     /// it; nil means the meeting is known by its date alone.
     let title: String?
+    /// One sentence saying what the meeting was about, written into the file
+    /// when the meeting was named. nil until the model has said something
+    /// usable about it — the library then shows nothing on that line.
+    let summary: String?
 
     var speakers: [String] {
         var seen = Set<String>(), ordered: [String] = []
@@ -52,9 +56,6 @@ struct ArchivedMeeting: Identifiable, Hashable {
               let a = MeetingArchive.seconds(fromClock: first),
               let b = MeetingArchive.seconds(fromClock: last), b >= a else { return nil }
         return TimeInterval(b - a)
-    }
-    var preview: String {
-        entries.first?.text ?? ""
     }
 }
 
@@ -71,9 +72,34 @@ enum MeetingArchive {
 
     // MARK: - Parsing (pure — unit-tested)
 
+    /// Every word Dictate has ever written for the owner's own turns.
+    ///
+    /// A transcript records the owner under the word that was current WHEN IT
+    /// WAS WRITTEN — "You" for a call recorded in English, "Вы" for one
+    /// recorded in Russian — and it keeps that word forever, because the file
+    /// is the source of truth and nothing rewrites it. Deciding "is this the
+    /// owner?" by comparing with `L("You")`, the CURRENT interface language,
+    /// therefore breaks every older transcript the moment the language is
+    /// switched: caught live while shooting the German UI, where every English
+    /// "You" became a stranger, took a colour out of the speaker palette and
+    /// painted the owner as someone else.
+    ///
+    /// So the question is asked of all eleven shipped words at once, and the
+    /// answer no longer depends on which language the window happens to be in.
+    /// (A real participant renamed by hand to exactly one of these words would
+    /// be mistaken for the owner. That is a stranger typing "Вы" as a person's
+    /// name — a price worth paying for an archive that reads correctly.)
+    static let youLabels: Set<String> = {
+        var labels: Set<String> = ["You"]
+        for language in AppLanguage.allCases where language != .system {
+            labels.insert(Localization.shared.string("You", in: language))
+        }
+        return labels
+    }()
+
     /// Entry lines look like `**[13:56:28] You:** text`; anything else is
-    /// either the title or a continuation of the previous entry's text (a
-    /// transcription can contain line breaks).
+    /// either the title, the summary, or a continuation of the previous
+    /// entry's text (a transcription can contain line breaks).
     static func parse(markdown: String, youLabel: String = L("You")) -> [TranscriptEntry] {
         var entries: [TranscriptEntry] = []
         for rawLine in markdown.components(separatedBy: .newlines) {
@@ -105,7 +131,7 @@ enum MeetingArchive {
         let text = rest[marker.upperBound...].trimmingCharacters(in: .whitespaces)
         guard !speaker.isEmpty else { return nil }
         return TranscriptEntry(time: time, speaker: speaker, text: text,
-                               isYou: speaker == youLabel)
+                               isYou: speaker == youLabel || youLabels.contains(speaker))
     }
 
     /// A named transcript looks like
@@ -126,6 +152,77 @@ enum MeetingArchive {
         else { return nil }
         let title = String(lines[0].dropFirst(2)).trimmingCharacters(in: .whitespaces)
         return title.isEmpty ? nil : title
+    }
+
+    /// A summary lives in the file, on its own line under the italic date:
+    ///
+    ///     # Release planning
+    ///     _August 10, 2026 at 9:17 AM_
+    ///
+    ///     2.4 slipped a week — notarization still fails on the CI box.
+    ///
+    ///     **[09:17:52] You:** …
+    ///
+    /// In the file rather than in a database beside it, for the same reason
+    /// the title is: renaming in Finder, editing by hand and reading the
+    /// transcript in any Markdown app all keep working, and nothing can
+    /// disagree with what the user sees.
+    ///
+    /// It is safe there because entry lines are the only lines that begin with
+    /// `**[`: a plain line before the first entry is not an entry, and the
+    /// continuation rule that would otherwise glue it to the previous entry
+    /// has no previous entry to glue it to. See `parse`.
+    static func parseSummary(markdown: String) -> String? {
+        let lines = markdown.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard lines.count >= 3, lines[0].hasPrefix("# "),
+              lines[1].hasPrefix("_"), lines[1].hasSuffix("_"), lines[1].count > 2,
+              isSummaryLine(lines[2]) else { return nil }
+        return lines[2]
+    }
+
+    /// A line that is neither an entry, nor a heading, nor the italic date —
+    /// which, in the third position of one of our files, is the summary.
+    private static func isSummaryLine(_ raw: String) -> Bool {
+        let line = raw.trimmingCharacters(in: .whitespaces)
+        return !line.isEmpty && !line.hasPrefix("**[")
+            && !line.hasPrefix("#") && !line.hasPrefix("_")
+    }
+
+    /// Writes the summary under the date line, replacing one already there.
+    /// `nil` leaves the file alone — which is what retitling needs, so that
+    /// renaming a meeting never silently throws its summary away.
+    static func applying(summary: String?, to markdown: String) -> String {
+        guard let summary, !summary.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return markdown
+        }
+        let clean = summary.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        var lines = markdown.components(separatedBy: .newlines)
+        // Only a titled transcript has the italic date line to hang it under;
+        // an unnamed one has no place to put it and is left as it is.
+        guard let h1 = lines.firstIndex(where: { $0.hasPrefix("# ") }),
+              let date = lines[(h1 + 1)...].firstIndex(where: {
+                  !$0.trimmingCharacters(in: .whitespaces).isEmpty
+              }),
+              lines[date].hasPrefix("_"), lines[date].hasSuffix("_")
+        else { return markdown }
+        if let next = lines[(date + 1)...].firstIndex(where: {
+            !$0.trimmingCharacters(in: .whitespaces).isEmpty
+        }), isSummaryLine(lines[next]) {
+            lines[next] = clean
+            return lines.joined(separator: "\n")
+        }
+        // A blank line either side, so the summary is its own paragraph in a
+        // Markdown reader instead of running on from the date.
+        let blankFollows = date + 1 < lines.count
+            && lines[date + 1].trimmingCharacters(in: .whitespaces).isEmpty
+        if blankFollows {
+            lines.insert(contentsOf: [clean, ""], at: date + 2)
+        } else {
+            lines.insert(contentsOf: ["", clean, ""], at: date + 1)
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Puts a title on a transcript, keeping the date visible underneath.
@@ -195,7 +292,8 @@ enum MeetingArchive {
                     ?? Date.distantPast
                 return ArchivedMeeting(id: url, url: url, started: created,
                                        entries: parse(markdown: text, youLabel: youLabel),
-                                       title: parseTitle(markdown: text))
+                                       title: parseTitle(markdown: text),
+                                       summary: parseSummary(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }
@@ -297,14 +395,31 @@ enum MeetingArchive {
         return renameFile(at: meeting.url, stamp: stamp.string(from: meeting.started), title: clean)
     }
 
+    /// Writes the title, and — when the model produced one in the same breath
+    /// — the summary that goes under it.
     @discardableResult
-    static func setTitle(_ title: String, dateLine: String, in url: URL) -> Bool {
+    static func setTitle(_ title: String, dateLine: String, summary: String? = nil,
+                         in url: URL) -> Bool {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
-        let updated = applying(title: title, dateLine: dateLine, to: text)
-        // An atomic write replaces the file, so the original creation date
-        // has to be carried over deliberately — Finder sorts by it, and a
-        // transcript that claims to be from the moment it was renamed is a
-        // small lie about the user's own history.
+        let titled = applying(title: title, dateLine: dateLine, to: text)
+        return rewrite(url, with: applying(summary: summary, to: titled))
+    }
+
+    @discardableResult
+    static func setSummary(_ summary: String, in url: URL) -> Bool {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        let updated = applying(summary: summary, to: text)
+        guard updated != text else { return false }
+        return rewrite(url, with: updated)
+    }
+
+    /// Replaces a transcript's content in place.
+    ///
+    /// An atomic write replaces the FILE, so the original creation date has to
+    /// be carried over deliberately — Finder sorts by it, and a transcript
+    /// that claims to be from the moment it was retitled is a small lie about
+    /// the user's own history.
+    private static func rewrite(_ url: URL, with updated: String) -> Bool {
         let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
         guard (try? updated.write(to: url, atomically: true, encoding: .utf8)) != nil else {
             return false

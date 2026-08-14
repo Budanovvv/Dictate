@@ -91,6 +91,11 @@ targets:
       - path: Sources/DictationPolicy.swift
       - path: Sources/MeetingPolicy.swift
       - path: Sources/MeetingArchive.swift
+      - path: Sources/MeetingSearch.swift
+      # MeetingSearch translates a foreign-language query through the app's one
+      # translation path rather than opening a second session of its own.
+      - path: Sources/AppleTranslator.swift
+      - path: Sources/TranscriptCopy.swift
       - path: Sources/MeetingTitler.swift
       - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift

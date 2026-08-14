@@ -53,6 +53,135 @@ final class TranscriptParsingTests: XCTestCase {
     }
 }
 
+/// The owner's own turns must be recognized in a transcript written in ANY of
+/// the shipped languages.
+///
+/// The archive used to compare the speaker label with `L("You")` — the word
+/// for "You" in the language the window happens to be in RIGHT NOW. A file
+/// carries whatever word was current when it was written and never changes, so
+/// switching the app to German turned every English "You" in the archive into
+/// a stranger: it took a colour out of the speaker palette and painted the
+/// owner as someone else. Found while shooting the German UI (2026-08-13).
+final class OwnerLabelTests: XCTestCase {
+
+    /// Written in English, read with the Russian label — and the other way
+    /// round. Neither the file nor the reader may have to agree on a language.
+    func testOwnerIsRecognizedAcrossLanguages() {
+        let english = "**[09:17:52] You:** hi\n"
+        XCTAssertTrue(MeetingArchive.parse(markdown: english, youLabel: "Вы")[0].isYou)
+
+        let russian = "**[09:17:52] Вы:** привет\n"
+        XCTAssertTrue(MeetingArchive.parse(markdown: russian, youLabel: "You")[0].isYou)
+
+        let german = "**[09:17:52] Sie:** hallo\n"
+        XCTAssertTrue(MeetingArchive.parse(markdown: german, youLabel: "You")[0].isYou)
+    }
+
+    /// …while everyone else stays a stranger, whatever the reader's language.
+    func testOtherSpeakersAreNotTheOwner() {
+        let text = "**[09:17:52] Speaker 1:** hi\n\n**[09:18:00] Anna:** hello\n"
+        let entries = MeetingArchive.parse(markdown: text, youLabel: "Вы")
+        XCTAssertFalse(entries[0].isYou)
+        XCTAssertFalse(entries[1].isYou)
+    }
+
+    /// Every language the app ships must contribute its word, or a transcript
+    /// recorded in that language would be the next German bug.
+    func testEveryShippedLanguageContributesItsWord() {
+        for language in AppLanguage.allCases where language != .system {
+            let word = Localization.shared.string("You", in: language)
+            XCTAssertTrue(MeetingArchive.youLabels.contains(word),
+                          "\"\(word)\" (\(language.rawValue)) is not recognized as the owner")
+        }
+    }
+}
+
+/// The summary lives in the .md, on its own line under the italic date — so
+/// renaming in Finder, reading in a Markdown app and hand-editing all keep
+/// working, exactly as they do for the title.
+final class MeetingSummaryFileTests: XCTestCase {
+
+    private let titled = """
+    # Release planning
+    _August 10, 2026 at 9:17 AM_
+
+    **[09:17:52] You:** Обсудим релиз.
+
+    **[09:18:26] Speaker 1:** Готов.
+
+    """
+
+    private let summary = "Release 2.4 slips a week; notarization still fails on the CI box."
+
+    func testSummarySurvivesARoundTrip() {
+        let written = MeetingArchive.applying(summary: summary, to: titled)
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: written), summary)
+    }
+
+    /// The whole hazard of putting a plain line in a file whose entries are
+    /// parsed by prefix: it must be neither an entry nor part of one.
+    func testSummaryNeverLeaksIntoTheTranscript() {
+        let written = MeetingArchive.applying(summary: summary, to: titled)
+        let entries = MeetingArchive.parse(markdown: written, youLabel: "You")
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries[0].text, "Обсудим релиз.")
+        XCTAssertFalse(entries.contains { $0.text.contains("notarization") })
+        XCTAssertFalse(entries.contains { $0.speaker.contains("Release") })
+    }
+
+    func testTitleAndDateAreUntouched() {
+        let written = MeetingArchive.applying(summary: summary, to: titled)
+        XCTAssertEqual(MeetingArchive.parseTitle(markdown: written), "Release planning")
+        XCTAssertTrue(written.contains("_August 10, 2026 at 9:17 AM_"))
+    }
+
+    func testASecondSummaryReplacesTheFirst() {
+        let once = MeetingArchive.applying(summary: summary, to: titled)
+        let twice = MeetingArchive.applying(summary: "Something else entirely, at length.",
+                                            to: once)
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: twice),
+                       "Something else entirely, at length.")
+        XCTAssertFalse(twice.contains("notarization"))
+        XCTAssertEqual(MeetingArchive.parse(markdown: twice, youLabel: "You").count, 2)
+    }
+
+    /// Renaming a meeting rewrites its header — and must not throw away the
+    /// sentence underneath while it is in there.
+    func testRetitlingKeepsTheSummary() {
+        let written = MeetingArchive.applying(summary: summary, to: titled)
+        let renamed = MeetingArchive.applying(title: "Release 2.4", dateLine: "D", to: written)
+        XCTAssertEqual(MeetingArchive.parseTitle(markdown: renamed), "Release 2.4")
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: renamed), summary)
+    }
+
+    /// nil means "leave whatever is there alone" — the case that makes
+    /// retitling safe.
+    func testNoSummaryChangesNothing() {
+        let written = MeetingArchive.applying(summary: summary, to: titled)
+        XCTAssertEqual(MeetingArchive.applying(summary: nil, to: written), written)
+    }
+
+    func testATranscriptWithoutOneHasNoSummary() {
+        XCTAssertNil(MeetingArchive.parseSummary(markdown: titled))
+    }
+
+    /// An unnamed transcript has no italic date line to hang a summary under,
+    /// so there is nowhere to put one — and nothing is written.
+    func testUnnamedTranscriptIsLeftAlone() {
+        let unnamed = "# Meeting transcript — August 10, 2026 at 9:17 AM\n\n**[09:17:52] You:** hi\n"
+        XCTAssertEqual(MeetingArchive.applying(summary: summary, to: unnamed), unnamed)
+        XCTAssertNil(MeetingArchive.parseSummary(markdown: unnamed))
+    }
+
+    /// A summary is one line by construction — a newline in it would leave its
+    /// tail sitting in the file as something the parser has to explain.
+    func testAMultiLineSummaryIsFlattened() {
+        let written = MeetingArchive.applying(summary: "First line\nsecond line", to: titled)
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: written), "First line second line")
+        XCTAssertEqual(MeetingArchive.parse(markdown: written, youLabel: "You").count, 2)
+    }
+}
+
 /// A meeting named by the on-device model keeps its date visible: the title
 /// goes on the H1, the date on an italic line right under it. That italic
 /// line is the marker — it tells a named transcript from one still known by
@@ -232,6 +361,130 @@ final class TitleSanitizingTests: XCTestCase {
     func testDominantLanguageIsDetected() {
         XCTAssertEqual(MeetingTitler.dominantLanguage(of: "Давайте обсудим релиз и планы на неделю"), "ru")
         XCTAssertEqual(MeetingTitler.dominantLanguage(of: "Let us discuss the release plan"), "en")
+    }
+}
+
+/// The summary is a sentence rather than a label, and it is written into the
+/// file as a single line above the first entry — so its cleaner has two jobs
+/// the title's does not: keep it on one line, and keep it off the three
+/// prefixes that mean something else in our own format.
+final class SummarySanitizingTests: XCTestCase {
+
+    private let good = "Slips to March; the lease runs out in February"
+
+    func testAGoodFragmentIsLeftAlone() {
+        XCTAssertEqual(MeetingTitler.sanitizeSummary(good), good)
+    }
+
+    /// A subject line, not prose — the full stop the model likes to add goes.
+    func testATrailingFullStopIsDropped() {
+        XCTAssertEqual(MeetingTitler.sanitizeSummary("Needs a second shift to hit March volumes."),
+                       "Needs a second shift to hit March volumes")
+    }
+
+    func testEverythingCollapsesToOneLine() {
+        let cleaned = MeetingTitler.sanitizeSummary("Slips to March;\nthe lease runs out in February")
+        XCTAssertEqual(cleaned, good)
+        XCTAssertFalse(cleaned?.contains("\n") ?? true)
+    }
+
+    func testStripsAModelAnnouncement() {
+        XCTAssertEqual(MeetingTitler.sanitizeSummary("Summary: \(good)"), good)
+    }
+
+    /// The line must never start with `#`, `_` or `**[` — the file's own
+    /// prefixes for a heading, the date and an entry.
+    func testNeverStartsWithAFormatPrefix() {
+        for noise in ["**\(good)**", "_\(good)_", "# \(good)", "\"\(good)\""] {
+            let cleaned = MeetingTitler.sanitizeSummary(noise)
+            XCTAssertNotNil(cleaned)
+            XCTAssertFalse(cleaned!.hasPrefix("#"))
+            XCTAssertFalse(cleaned!.hasPrefix("_"))
+            XCTAssertFalse(cleaned!.hasPrefix("*"))
+        }
+    }
+
+    /// "The meeting focused on…" is the filler this feature exists to avoid:
+    /// the prompt asks for the subject and mostly gets it, and this is the net
+    /// for the line in eight that still reports an event.
+    func testDropsAReportingOpening() {
+        XCTAssertEqual(
+            MeetingTitler.sanitizeSummary("The meeting focused on the progress of the release."),
+            "The progress of the release")
+        XCTAssertEqual(
+            MeetingTitler.sanitizeSummary("Participants discussed which supplier to keep this year."),
+            "Which supplier to keep this year")
+        // Seen live in the backfill of the owner's own archive (2026-08-13).
+        XCTAssertEqual(
+            MeetingTitler.sanitizeSummary("Discussed UI functionality and feedback, and the accuracy of it."),
+            "UI functionality and feedback, and the accuracy of it")
+    }
+
+    func testARealSubjectKeepsItsOpening() {
+        XCTAssertEqual(MeetingTitler.sanitizeSummary("The release slipped a week, and here is why"),
+                       "The release slipped a week, and here is why")
+    }
+
+    /// 90 characters, because the row is 240pt wide and shows two lines.
+    func testAnOverlongSummaryEndsOnASentence() {
+        let long = "Notarization fails on the CI box. The certificate also expired last " +
+                   "week and nothing can ship until somebody renews it."
+        let cleaned = MeetingTitler.sanitizeSummary(long)
+        XCTAssertNotNil(cleaned)
+        XCTAssertLessThanOrEqual(cleaned!.count, 90)
+        XCTAssertEqual(cleaned, "Notarization fails on the CI box")
+    }
+
+    /// One runaway fragment has no full stop to end on — it ends on a word,
+    /// and says so.
+    func testAnOverlongSingleSentenceIsCutOnAWord() {
+        let long = String(repeating: "warehouse lease renewal ", count: 20)
+        let cleaned = MeetingTitler.sanitizeSummary(long)
+        XCTAssertNotNil(cleaned)
+        XCTAssertLessThanOrEqual(cleaned!.count, 91)
+        XCTAssertTrue(cleaned!.hasSuffix("…"))
+        XCTAssertFalse(cleaned!.contains("warehous…"))
+    }
+
+    /// A line too short to say anything is worse than an empty line — the row
+    /// simply shows nothing.
+    func testRejectsNothingMuch() {
+        XCTAssertNil(MeetingTitler.sanitizeSummary("   "))
+        XCTAssertNil(MeetingTitler.sanitizeSummary("Blockchain call"))   // seen live
+        XCTAssertNil(MeetingTitler.sanitizeSummary("\"\""))
+    }
+}
+
+/// The summary sits one line under the title, so it has to say something the
+/// title does not. One that only repeats it spends two lines on one fact — and
+/// the row is better off showing nothing at all.
+final class SummaryRestatementTests: XCTestCase {
+
+    /// Both measured in the owner's own archive, 2026-08-13.
+    func testAnEchoOfTheTitleIsRejected() {
+        XCTAssertTrue(MeetingTitler.restates(title: "Log writing process",
+                                             summary: "Log writing process"))
+        XCTAssertTrue(MeetingTitler.restates(title: "UI transcription issues",
+                                             summary: "UI transcription issues"))
+    }
+
+    /// Case and punctuation must not be enough to smuggle a repeat past.
+    func testPunctuationAndCaseDoNotDisguiseIt() {
+        XCTAssertTrue(MeetingTitler.restates(title: "Phone system setup",
+                                             summary: "phone system setup, completed"))
+        XCTAssertTrue(MeetingTitler.restates(title: "System testing",
+                                             summary: "System testing!"))
+    }
+
+    /// A line that adds substance keeps its place, even when it repeats a word
+    /// or two of the title — which a real one usually does.
+    func testALineThatAddsSomethingSurvives() {
+        XCTAssertFalse(MeetingTitler.restates(
+            title: "Shannon demo",
+            summary: "Shannon wants to show the demo to Rus, but it is unclear without context"))
+        XCTAssertFalse(MeetingTitler.restates(
+            title: "Warehouse move",
+            summary: "Slips to March; the lease runs out in February"))
     }
 }
 
