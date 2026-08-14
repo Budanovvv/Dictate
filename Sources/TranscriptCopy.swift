@@ -22,13 +22,20 @@ enum TranscriptCopy {
         "[\(turn.time)] \(turn.speaker): \(text(of: turn))"
     }
 
-    /// The whole transcript, one line per entry — entries and not turns,
-    /// because that is what the .md file on disk contains and every line
-    /// keeps its own timestamp.
+    /// The whole transcript as it is READ: one paragraph per turn, blank line
+    /// between them, each stamped with the moment that turn began.
+    ///
+    /// It used to be one line per entry, exactly as the .md file has it — and
+    /// that is precisely what made a pasted transcript unusable. An entry is
+    /// not an utterance, it is a fifteen-second audio window: pasting one line
+    /// per window into a document reproduces the ticker tape, complete with
+    /// sentences cut in half by the cap and lines that are a lone full stop.
+    /// The file on disk keeps every one of those (it is the record); what
+    /// leaves on the clipboard is the conversation (TranscriptCleanup).
     static func transcript(_ entries: [TranscriptEntry]) -> String {
-        entries
-            .map { "[\($0.time)] \($0.speaker): \($0.text)" }
-            .joined(separator: "\n")
+        MeetingArchive.readable(entries)
+            .map(attributed)
+            .joined(separator: "\n\n")
     }
 
     /// Puts text on the general pasteboard, reporting whether there was

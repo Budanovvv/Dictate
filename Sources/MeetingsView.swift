@@ -13,6 +13,9 @@ struct MeetingsView: View {
     /// Summaries arriving for older meetings — each one is a row that has
     /// something to say where it had nothing.
     @ObservedObject private var summaries = MeetingSummaries.shared
+    /// Contents blocks arriving for older meetings — each one turns a
+    /// fifty-minute transcript into a dozen findable moments.
+    @ObservedObject private var sections = MeetingSections.shared
     /// The semantic index — meetings that match what was typed by MEANING,
     /// which is a different question from "contains these characters" and gets
     /// its own group in the list.
@@ -37,6 +40,24 @@ struct MeetingsView: View {
     enum Selection: Hashable {
         case live
         case archived(URL)
+        /// The same transcript, opened AT a moment — the clock time of the
+        /// section that matched. A separate case rather than an optional on
+        /// `archived` so the List can tell a moment hit apart from the plain
+        /// row for the same meeting, and so selecting one is an ordinary list
+        /// selection instead of a click handler bolted onto a row.
+        case moment(URL, String)
+
+        var url: URL? {
+            switch self {
+            case .live: return nil
+            case .archived(let url), .moment(let url, _): return url
+            }
+        }
+
+        var time: String? {
+            if case .moment(_, let time) = self { return time }
+            return nil
+        }
     }
 
     /// Two columns, built by hand rather than with NavigationSplitView.
@@ -93,6 +114,9 @@ struct MeetingsView: View {
         // Only ever a handful of times, and only while the backfill runs —
         // there is nothing here that ticks.
         .onChange(of: summaries.written) { _ in reload() }
+        // A contents block landed. Same story, and just as rare: only while
+        // the backfill runs, and nothing here ticks.
+        .onChange(of: sections.written) { _ in reload() }
     }
 
     // MARK: - Sidebar
@@ -133,8 +157,8 @@ struct MeetingsView: View {
             // that wasn't quite typed.
             if !related.isEmpty {
                 Section(L("Related by meaning")) {
-                    ForEach(related) { meeting in
-                        meetingRow(meeting).tag(Selection.archived(meeting.url))
+                    ForEach(related) { hit in
+                        relatedRow(hit).tag(hit.selection)
                     }
                 }
             }
@@ -301,6 +325,58 @@ struct MeetingsView: View {
         .padding(.vertical, 3)
     }
 
+    /// A row under "Related by meaning". Either the meeting as a whole (its
+    /// title or its summary was what matched) or a MOMENT inside it — a
+    /// section, with the line the model wrote about it and the time it starts.
+    struct RelatedHit: Identifiable {
+        let meeting: ArchivedMeeting
+        /// nil when the whole meeting matched rather than one passage of it.
+        let section: TranscriptSection?
+
+        var selection: Selection {
+            guard let section else { return .archived(meeting.url) }
+            return .moment(meeting.url, section.time)
+        }
+        var id: Selection { selection }
+    }
+
+    @ViewBuilder
+    private func relatedRow(_ hit: RelatedHit) -> some View {
+        if let section = hit.section {
+            // The section's line leads, because it is the answer; the meeting
+            // it came out of is the context underneath. The other way round —
+            // the meeting first — is what the row above the "Related" heading
+            // already does, and it is what makes a fifty-minute transcript
+            // look like the answer to a three-minute question.
+            VStack(alignment: .leading, spacing: 3) {
+                Text(section.line)
+                    .font(.callout.weight(.medium))
+                    .lineLimit(3)
+                HStack(spacing: 7) {
+                    // Monospaced, like every other time in this window, so a
+                    // column of them lines up.
+                    Text(clock(section.time))
+                        .font(.caption.monospacedDigit())
+                    Text(hit.meeting.title ?? dayAndTime(hit.meeting.started))
+                        .lineLimit(1)
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 3)
+            .help(section.line)
+        } else {
+            meetingRow(hit.meeting)
+        }
+    }
+
+    /// "10:26:17" as the hour and minute a person would say. The seconds are
+    /// in the transcript where they belong; in a list they are noise.
+    private func clock(_ time: String) -> String {
+        let parts = time.split(separator: ":")
+        return parts.count >= 2 ? "\(parts[0]):\(parts[1])" : time
+    }
+
     /// Time (unless it is already the row's title) and length — omitting a
     /// duration too short to state, so a one-line meeting doesn't advertise
     /// "0 s".
@@ -336,6 +412,7 @@ struct MeetingsView: View {
                            onRename: { old, new in session.renameSpeaker(from: old, to: new) },
                            onRetitle: nil,
                            openRename: .constant(false),
+                           jumpTo: nil,
                            sidebarShown: sidebarShown,
                            onToggleSidebar: toggleSidebar) {
                 // A meeting in progress has no file yet — but the text on
@@ -345,7 +422,7 @@ struct MeetingsView: View {
                     TranscriptCopy.put(TranscriptCopy.transcript(session.displayEntries))
                 }
             }
-        case .archived(let url):
+        case .archived(let url), .moment(let url, _):
             if let meeting = meetings.first(where: { $0.url == url }) {
                 TranscriptPane(entries: meeting.entries,
                                title: meeting.title ?? dayAndTime(meeting.started),
@@ -366,6 +443,10 @@ struct MeetingsView: View {
                                    selection = .archived(moved)
                                },
                                openRename: $renamingFromMenu,
+                               // The whole point of a section hit: the
+                               // transcript opens where the discussion was,
+                               // not at the top of a fifty-minute file.
+                               jumpTo: selection?.time,
                                sidebarShown: sidebarShown,
                                onToggleSidebar: toggleSidebar) {
                     Button(L("Rename meeting…")) { renamingFromMenu = true }
@@ -441,11 +522,23 @@ struct MeetingsView: View {
     /// only when it has an answer. The literal hits are excluded here rather
     /// than in the ranking: they are already on screen above, and the same
     /// meeting offered twice reads as two answers.
-    private var related: [ArchivedMeeting] {
+    private var related: [RelatedHit] {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
         let exact = Set(filtered.map(\.url))
-        return MeetingSearch.related(meaning.matches, excluding: exact)
-            .compactMap { match in meetings.first { $0.url == match.id } }
+        return MeetingSearch.related(meaning.matches, background: meaning.background,
+                                     excluding: exact)
+            .compactMap { match -> RelatedHit? in
+                guard let meeting = meetings.first(where: { $0.url == match.id })
+                else { return nil }
+                // The moment is only as good as the line that goes with it: a
+                // contents block rewritten between the query and the click
+                // would leave a timestamp pointing at nothing to say, and then
+                // the row is simply the meeting again.
+                let section = match.moment.flatMap { moment in
+                    meeting.sections.first { $0.time == moment }
+                }
+                return RelatedHit(meeting: meeting, section: section)
+            }
     }
 
     private var groupedMeetings: [(title: String, meetings: [ArchivedMeeting])] {
@@ -478,6 +571,12 @@ struct MeetingsView: View {
         // The same question again before every meeting in the queue — a call
         // can start halfway through, and then the rest waits.
         MeetingSummaries.shared.backfill(meetings) { [session] in !session.isActive }
+        // And the contents blocks, which are the same job an order of
+        // magnitude larger — a dozen model calls per meeting instead of one.
+        // Started in the same breath on purpose: it waits for the summaries to
+        // finish by itself (they share the one on-device model), and asks the
+        // same question again before every single call it makes.
+        MeetingSections.shared.backfill(meetings) { [session] in !session.isActive }
     }
 
     /// Who was in the meeting, in the order they first spoke — the same order
@@ -712,6 +811,10 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// Set by the header menu's Rename… — the same popover, opened from
     /// elsewhere.
     @Binding var openRename: Bool
+    /// The clock time this transcript should open AT — the start of a section
+    /// the owner picked out of the search results. nil is the ordinary case:
+    /// an archive opens at the top, a call at its newest line.
+    let jumpTo: String?
     let sidebarShown: Bool
     let onToggleSidebar: () -> Void
     /// What the ⋯ menu offers for this transcript. Passed as items rather than
@@ -749,6 +852,13 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// Entry count at the moment auto-scroll froze, so the jump button can say
     /// how many lines were missed since.
     @State private var frozenAt = 0
+    /// The turn the transcript was opened at, lit so the eye lands on it —
+    /// scrolling somebody to a moment without saying which line is the moment
+    /// leaves them looking at a screenful of dialogue. Cleared on a timer, so
+    /// nothing here animates or repeats.
+    @State private var marked: UUID?
+    /// Bumped per jump; only the newest jump gets to clear its own mark.
+    @State private var markFlash = 0
     @State private var copiedVisible = false
     /// Bumped per copy; only the newest flash gets to clear the badge.
     @State private var copyFlash = 0
@@ -968,7 +1078,7 @@ private struct TranscriptPane<MenuItems: View>: View {
                     ForEach(cache.turns) { turn in
                         TurnView(turn: turn,
                                  color: cache.color(for: turn),
-                                 selected: allSelected,
+                                 selected: allSelected || marked == turn.id,
                                  // The one and only answer to "is the pointer
                                  // on this turn": an id compared to an id.
                                  hovering: hovered == turn.id,
@@ -1051,15 +1161,25 @@ private struct TranscriptPane<MenuItems: View>: View {
                 interacting = false
                 pinned = true
                 hovered = nil
+                marked = nil
                 frames.clear()
                 if live != nil { scrollToNewest(proxy) }
             }
             .onAppear {
+                jump(to: jumpTo, proxy)
                 // A window opened in the middle of a call must show the last
                 // thing that was said, not the first.
-                guard live != nil else { return }
+                guard live != nil, jumpTo == nil else { return }
                 scrollToNewest(proxy)
             }
+            // Opening the transcript AT a moment — a section hit, or a second
+            // hit in the meeting already on screen. The moment is taken from
+            // the callback rather than read back off `jumpTo`, and that is not
+            // style: onChange runs the action closure captured by the PREVIOUS
+            // body, whose `jumpTo` is still the old one. Reading the property
+            // logged "jump(nil)" for a selection that plainly carried
+            // 10:03:57, and nothing moved (measured 2026-08-14).
+            .onChange(of: jumpTo) { moment in jump(to: moment, proxy) }
         }
     }
 
@@ -1105,6 +1225,42 @@ private struct TranscriptPane<MenuItems: View>: View {
                 .padding(10)
                 .transition(.opacity)
                 .allowsHitTesting(false)
+        }
+    }
+
+    /// Opens the transcript at the moment a section hit points to, and lights
+    /// the turn it lands on for a few seconds.
+    ///
+    /// Where the moment lands, and why it can no longer be asked here, is
+    /// `MeetingArchive.turn(at:in:)` — a pure rule, because it is the join
+    /// between the contents block (cut from the FILE's entries) and the
+    /// paragraphs the window actually shows, and that join has to be pinned by
+    /// a test rather than by this method reading correctly.
+    ///
+    /// It stays deliberately tolerant of not finding anything: the file is the
+    /// source of truth and a person may have edited it, and a jump that cannot
+    /// land is a transcript opened at the top, not an error.
+    ///
+    /// One run-loop turn late, because the pane is often being built in the
+    /// same pass — a scroll requested before the rows exist goes nowhere.
+    private func jump(to moment: String?, _ proxy: ScrollViewProxy) {
+        guard let moment else { return }
+        guard let turn = MeetingArchive.turn(at: moment, in: cache.turns) else {
+            Log.d("meetings: nothing at \(moment) in \(cache.turns.count) turn(s)")
+            return
+        }
+        markFlash += 1
+        let token = markFlash
+        DispatchQueue.main.async {
+            guard token == markFlash else { return }
+            proxy.scrollTo(turn.id, anchor: .top)
+            marked = turn.id
+        }
+        // Long enough to find with the eye, short enough that it is gone by the
+        // time it would be in the way of reading.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            guard token == markFlash else { return }   // a newer jump owns the mark
+            withAnimation(.easeIn(duration: 0.4)) { marked = nil }
         }
     }
 
@@ -1341,7 +1497,10 @@ private final class TurnCache {
         guard !loaded || new != entries else { return }
         loaded = true
         entries = new
-        turns = MeetingArchive.turns(new)
+        // The cleaned form is what is read, hovered, copied and jumped to —
+        // derived HERE and nowhere else, so the pane cannot end up showing one
+        // transcript and copying another.
+        turns = MeetingArchive.readable(new)
         colors = Self.palette(for: new)
     }
 

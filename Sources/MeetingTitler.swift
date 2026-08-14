@@ -45,7 +45,7 @@ enum MeetingTitler {
     /// reads as a conversation.
     static func excerpt(from entries: [TranscriptEntry], limit: Int = excerptLimit) -> String {
         guard !entries.isEmpty else { return "" }
-        let lines = entries.map { "\($0.speaker): \($0.text)" }
+        let lines = entries.map { "\(participant($0)): \($0.text)" }
         // Everything fits: no need to choose.
         let whole = lines.joined(separator: "\n")
         if whole.count <= limit { return whole }
@@ -70,6 +70,24 @@ enum MeetingTitler {
             total += cost
         }
         return kept.map { lines[$0] }.joined(separator: "\n")
+    }
+
+    /// What the model is told to call the owner.
+    ///
+    /// The transcript labels his turns "You" — or "Вы", or "Du", whichever
+    /// word was current when it was written — because that is what a person
+    /// reading the file should see. A model reading the same file sees a
+    /// PRONOUN, and writes sentences about it: "Shannon and You decide to
+    /// focus on developing the system" (measured 2026-08-14). Every prompt in
+    /// this file builds its text through `excerpt`, so substituting the label
+    /// here fixes the title, the summary and the sections at once — and it is
+    /// safe in every language, because `isYou` is decided by the parser
+    /// against all eleven shipped words rather than by matching the current
+    /// interface language (see MeetingArchive.youLabels).
+    static let ownerLabel = "Host"
+
+    private static func participant(_ entry: TranscriptEntry) -> String {
+        entry.isYou ? ownerLabel : entry.speaker
     }
 
     /// Languages Apple's on-device model handles. Anything else goes through
@@ -155,7 +173,10 @@ enum MeetingTitler {
                 text = String(text[colon.upperBound...])
             }
         }
-        text = text.trimmingCharacters(in: CharacterSet(charactersIn: " \"'«»*_#…"))
+        // The dash and the bullet are here for the section lines: they are
+        // written into the file AS a Markdown bullet, and a model that hands
+        // back "- Pricing" would put two of them on one line.
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: " \"'«»*_#…-–—•"))
         text = withoutReportingOpening(text)
         guard !text.isEmpty else { return nil }
         if text.count > maxCharacters {
@@ -391,7 +412,7 @@ enum MeetingTitler {
     /// the language pack installed (the same packs the translate key uses);
     /// without one this fails and the meeting keeps its date name.
     @available(macOS 26, *)
-    private static func translatedToEnglish(_ text: String, from language: String?) async -> String? {
+    static func translatedToEnglish(_ text: String, from language: String?) async -> String? {
         #if canImport(Translation)
         guard let language else { return nil }
         do {
@@ -413,7 +434,420 @@ enum MeetingTitler {
     }
 }
 
+/// Breaks a finished meeting into a table of contents: a few minutes at a
+/// time, each with one English line saying what was discussed there.
+///
+/// This exists because a meeting's own summary cannot answer the question the
+/// owner actually has. "We discussed somewhere how Shannon would test it —
+/// remind me what we said there" is three minutes out of fifty, and one line
+/// about the whole hour does not contain it. Nor can the model be handed the
+/// transcript and asked: its window is 4096 tokens against a 45–55 KB file,
+/// and we have already met `exceededContextWindowSize` doing far less. So the
+/// archive is cut into pieces small enough to describe AND small enough to
+/// feed — see MeetingPolicy.sectionStarts for where the cuts land and why.
+///
+/// Sections are ENGLISH for every meeting, in every language, and that is
+/// load-bearing rather than a default. It is the same construction the
+/// summaries rest on: `NLEmbedding.sentenceEmbedding` exists for English and
+/// not for Russian, so a Russian meeting is findable by meaning only because
+/// what is indexed about it was written in English. Translating a section back
+/// into the language it was spoken in would quietly end cross-language search.
+enum MeetingSectioner {
+
+    /// How much of a section the model reads.
+    ///
+    /// Larger than the whole-meeting excerpt (1200) because a section is one
+    /// subject and the point is to describe it precisely; small enough that
+    /// the whole call — instructions, passage and answer — stays well under
+    /// the 4096-token window. Measured on the archive: sections come out
+    /// 1.6–4.9 KB, so most are read whole and the longest are sampled evenly
+    /// end to end by the same excerpt rule the title uses.
+    static let excerptLimit = 2500
+
+    /// A section line is a subject line like the summary, so it passes through
+    /// the summary's cleaner — with a lower floor, because "Pricing for the
+    /// pharmacy pilot" is a perfectly good section and would not survive the
+    /// summary's 18-character minimum.
+    static let minimumCharacters = 12
+
+    /// …and a higher ceiling than the summary's 90.
+    ///
+    /// The summary's ceiling is set by a 240pt sidebar row showing two lines.
+    /// A section line has a second home the summary does not: it is written
+    /// into the .md, where a person reads it in a Markdown app with the whole
+    /// window to spare. 110 is what stops the CUTTING, which was the real
+    /// complaint — a third of the first run's lines ended in an ellipsis
+    /// mid-word, and a line that has to be amputated was too long to write
+    /// rather than too long to show.
+    static let maximumCharacters = 130
+
+    /// What the model is told to produce.
+    ///
+    /// The shape of this prompt is a correction twice over, and both
+    /// corrections came from reading what it actually wrote about the owner's
+    /// own meetings (2026-08-14).
+    ///
+    /// Written as the summary's instructions were — "every word must come from
+    /// the conversation you are given" — it produced COPIES: sentences lifted
+    /// out of the passage, speaker prefix and all ("Shanon: We're pat,
+    /// there's no onboarding. That's the beauty. It calls me"). The
+    /// instruction meant to prevent invention had invited quotation, and a
+    /// passage arriving as "Name: words" lines gave the model the format to
+    /// continue in.
+    ///
+    /// Then, told it could name two subjects "separated by a semicolon", it
+    /// stopped writing sentences at all and wrote LISTS: "Slavery; kidneys;
+    /// security; legal; responsibility; TECHO; yuzkis; Rails; agent; AI".
+    /// A pile of nouns is what this model produces when it cannot find a
+    /// thread, and the semicolon was the permission slip. So the semicolon is
+    /// gone, the ban on lists is stated outright, and the one thing the line
+    /// MUST have — a verb — is the first instruction rather than an
+    /// afterthought.
+    ///
+    /// (There is a second reason a list is the wrong shape, beyond reading
+    /// badly. The transcripts contain mistranscriptions — "yuzkis" is
+    /// Whisper's mangling of "юзкейс" — and a bad word inside a clause is
+    /// survivable, while a bad word in a list of seven is a seventh of the
+    /// line.)
+    private static let instructions = """
+        You are given a passage from the middle of a meeting transcript. Write \
+        ONE short line for a table of contents, saying what happened in that \
+        passage.
+
+        Your line must be a CLAUSE WITH A VERB — something happened, somebody \
+        decided something, somebody has to do something. Never a list of \
+        nouns, never words separated by semicolons or commas. If you cannot \
+        find one thing the passage is about, say what the people in it were \
+        trying to work out.
+
+        Your line is a label, not a continuation of the conversation. Never \
+        quote the transcript, never copy a sentence out of it, and never begin \
+        with a speaker's name.
+
+        Keep it under 100 characters and stop there — one clause, no full stop \
+        at the end, never two sentences. It has to be scannable in a list.
+
+        Say what was at stake — the problem raised, what was decided, or what \
+        somebody has to do next — using the concrete nouns the conversation \
+        used: the names, the products, the numbers. Never a genre word like \
+        "planning session" or "technical discussion", and never an \
+        abstraction like "system functionality" or "various topics".
+
+        If the passage really covers two subjects, join them in ONE clause \
+        with "and" or "before". Naming two things is honest; listing them is \
+        not a description of either.
+
+        Do not describe the meeting as a whole, and do not say that a \
+        conversation took place. Do not state any fact the passage does not \
+        state — no name, no date and no number that is not in it.
+
+        Write in English.
+        """
+
+    /// What the model is told on the ONE retry it gets, when its first answer
+    /// was a list or ran past the ceiling. Leading with the failure is what
+    /// makes a second attempt worth making: the same prompt at the same
+    /// temperature mostly produces the same shape again.
+    private static let stricterInstructions = """
+        You are given a passage from the middle of a meeting transcript. Write \
+        ONE short sentence-like line saying what happened in it.
+
+        Your last attempt was rejected. Do NOT write a list of words or \
+        topics. Do NOT separate things with semicolons. Do NOT quote the \
+        transcript.
+
+        Write ONE clause with a verb, AT MOST TWELVE WORDS, naming the \
+        people and the things the passage is actually about — what was wrong, \
+        what was decided, or what somebody has to do next. No full stop at \
+        the end.
+
+        Write in English.
+        """
+
+    /// The lines for one meeting, in order — or [] when the meeting is too
+    /// short to section, the model is unavailable, or it refused every piece.
+    ///
+    /// `progress` is called after each section so a backfill can be paced and
+    /// stopped between calls; returning false abandons the meeting, and a
+    /// meeting abandoned halfway writes nothing (a half-filled contents block
+    /// is worse than none, because nothing would ever come back to finish it).
+    static func sections(for entries: [TranscriptEntry],
+                         progress: @escaping @MainActor () async -> Bool = { true })
+        async -> [TranscriptSection] {
+        let ranges = MeetingArchive.sectionRanges(of: entries)
+        guard ranges.count >= 2 else { return [] }
+        #if canImport(FoundationModels)
+        guard #available(macOS 26, *) else { return [] }
+        switch SystemLanguageModel.default.availability {
+        case .available: break
+        case .unavailable(let reason):
+            Log.d("sections: system model unavailable (\(reason))")
+            return []
+        }
+        let started = Date()
+        var out: [TranscriptSection] = []
+        for range in ranges {
+            guard await progress() else {
+                Log.d("sections: abandoned after \(out.count)/\(ranges.count)")
+                return []
+            }
+            let slice = Array(entries[range])
+            guard let time = slice.first?.time,
+                  let line = await self.line(for: slice) else { continue }
+            out.append(TranscriptSection(time: time, line: line))
+        }
+        Log.d(String(format: "sections: %d of %d in %.1fs", out.count, ranges.count,
+                     Date().timeIntervalSince(started)))
+        // A block with holes in it is still a table of contents; a block with
+        // two lines in thirteen is a misleading one. Half is the bar, and it
+        // is set by what the model actually does rather than by taste: it
+        // declines whole passages outright ("Detected content likely to be
+        // unsafe" — a real answer, seen on ordinary business calls), and a
+        // meeting where that happens three times in eight is far better off
+        // with the five lines that worked than with nothing to search.
+        guard out.count >= 2, out.count * 2 >= ranges.count else { return [] }
+        return out
+        #else
+        return []
+        #endif
+    }
+
+    #if canImport(FoundationModels)
+    /// One section, one model call.
+    ///
+    /// A FRESH session every time, deliberately. A LanguageModelSession keeps
+    /// its transcript, so reusing one across a dozen sections would grow the
+    /// context by a passage each time and walk straight into the window we are
+    /// here to avoid. The response cap is the same one the brief needs and for
+    /// the same reason: without it the framework reserves the rest of the
+    /// window for an answer it will never need.
+    ///
+    /// 80 rather than the 40 a 90-character line needs, and that gap is the
+    /// bug this had on its first run against the archive: guided generation
+    /// spends tokens on the JSON around the value, so a cap sized to the
+    /// SENTENCE truncates the structure and every call comes back "Failed to
+    /// deserialize a Generable type from model output" (measured 2026-08-14,
+    /// four passages in a row). 80 is what the brief already uses for two
+    /// fields, so one field has room to spare.
+    @available(macOS 26, *)
+    private static func line(for slice: [TranscriptEntry]) async -> String? {
+        var text = MeetingTitler.excerpt(from: slice, limit: excerptLimit)
+        guard !text.isEmpty else { return nil }
+        let language = MeetingTitler.dominantLanguage(of: text)
+        // Asked per section rather than once per meeting: these calls really
+        // do switch language halfway through, and the passage in front of the
+        // model is the only text whose language matters to it.
+        if MeetingTitler.needsTranslation(language: language) {
+            guard let english = await MeetingTitler.translatedToEnglish(text, from: language)
+            else { return nil }
+            text = english
+        }
+        // Two attempts at most. The first is the ordinary prompt; the second
+        // is told what was wrong with the first, which is the only thing that
+        // makes a retry worth its second or two — the same prompt at the same
+        // temperature mostly produces the same shape again. A passage that
+        // fails twice gets NO line: a keyword list would find badly and read
+        // worse, and the block is allowed to have holes in it.
+        for attempt in 0..<2 {
+            guard let answer = await ask(text, strict: attempt > 0) else { continue }
+            let raw = withoutSpeakerPrefix(answer, spokenBy: slice)
+            let collapsed = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            // Too long to write, not too long to show: rather than amputate it
+            // mid-word with an ellipsis, ask again for a shorter one.
+            if collapsed.count > maximumCharacters, attempt == 0 {
+                Log.d("sections: retrying — \(collapsed.count) characters")
+                continue
+            }
+            guard let line = MeetingTitler.sanitizeSummary(shortened(collapsed),
+                                                           maxCharacters: maximumCharacters,
+                                                           minCharacters: minimumCharacters)
+            else { continue }
+            if readsAsAList(line) {
+                Log.d("sections: \(attempt == 0 ? "retrying" : "dropping") a list — \"\(line)\"")
+                continue
+            }
+            if quotesThePassage(line, passage: text) {
+                Log.d("sections: \(attempt == 0 ? "retrying" : "dropping") a quote — \"\(line)\"")
+                continue
+            }
+            return line
+        }
+        return nil
+    }
+
+    @available(macOS 26, *)
+    private static func ask(_ text: String, strict: Bool) async -> String? {
+        do {
+            let session = LanguageModelSession(
+                instructions: strict ? stricterInstructions : instructions)
+            return try await session.respond(
+                to: text, generating: ModelSection.self,
+                options: GenerationOptions(temperature: strict ? 0.1 : 0.3,
+                                           maximumResponseTokens: 80)).content.line
+        } catch {
+            Log.d("sections: one passage failed (\(error.localizedDescription))")
+            return nil
+        }
+    }
+    #endif
+
+    /// A line that ran past the ceiling, ended where a reader would end it.
+    ///
+    /// The retry asks for something shorter and usually gets it; when the
+    /// second answer is long too, the choice is between a line cut mid-phrase
+    /// ("…concerns about the non-deterministic nature of the…") and a shorter
+    /// line that is whole. A clause boundary — a full stop, then a semicolon,
+    /// then a comma — gives a whole one, and only a passage with no boundary
+    /// at all falls back to the ellipsis. The result is "Shannon and Yuri
+    /// discuss the AI onboarding process" instead of that, which says less and
+    /// reads like something a person wrote.
+    static func shortened(_ line: String, to limit: Int = maximumCharacters) -> String {
+        guard line.count > limit else { return line }
+        let head = String(line.prefix(limit))
+        for stop in [".!?", ";", ",—–"] {
+            guard let at = head.lastIndex(where: { stop.contains($0) }) else { continue }
+            let kept = String(head[head.startIndex..<at])
+                .trimmingCharacters(in: .whitespaces)
+            // A fragment so short it says nothing is worse than a long line.
+            // A third of the ceiling, not half: the boundary that saves this
+            // is usually the first comma of a two-clause sentence, and half
+            // of 130 rejected exactly the case this exists for — "Shannon and
+            // Yuri discuss the AI onboarding process" is 49 characters.
+            if kept.count >= max(minimumCharacters * 2, limit / 3) { return kept }
+        }
+        guard let space = head.lastIndex(of: " ") else { return head }
+        return String(head[head.startIndex..<space]) + "…"
+    }
+
+    /// Whether a line is a pile of nouns rather than a description.
+    ///
+    /// The failure mode this feature nearly shipped with, and the reason it is
+    /// caught HERE rather than only asked against in the prompt: a model that
+    /// has no thread to pull produces one of these reliably, and no wording
+    /// stops it every time. Every example below is verbatim from the first run
+    /// against the owner's archive.
+    ///
+    /// Three or more semicolon-separated pieces is a list whatever they say
+    /// ("demo with Yura; demo with Preoperation; demo with chatbot"). Two is
+    /// only a list when both are too short to be clauses — "agent onboarding;
+    /// conversation 3" is, while "Change assistant status to active; set up
+    /// onboarding" is a real line and survives. And four or more comma-
+    /// separated scraps with nothing else holding them together is the same
+    /// shape wearing different punctuation.
+    static func readsAsAList(_ line: String) -> Bool {
+        func pieces(_ separator: Character) -> [String] {
+            line.split(separator: separator)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+        func words(_ piece: String) -> Int {
+            piece.split(whereSeparator: \.isWhitespace).count
+        }
+        let semicolons = pieces(";")
+        if semicolons.count >= 3 { return true }
+        if semicolons.count == 2, semicolons.allSatisfy({ words($0) <= 3 }) { return true }
+        let commas = pieces(",")
+        if commas.count >= 4, commas.allSatisfy({ words($0) <= 3 }) { return true }
+        return false
+    }
+
+    /// Whether the line is lifted out of the passage rather than written
+    /// about it.
+    ///
+    /// The last of the three shapes this had to learn to refuse, and the one
+    /// no instruction reliably prevents: given a passage it cannot summarize,
+    /// the model returns a piece of it. Verbatim from the owner's archive —
+    /// "We have no options. Speaker 2: guys, let's do it for tomorrow. maybe
+    /// it will come out" and "Ruslan, you were flooding us with something...
+    /// You corrected what I... What did we talk about?" (2026-08-14). Neither
+    /// is a description of anything, and both would have been indexed as one.
+    ///
+    /// Eight consecutive words is the test, and the number was measured
+    /// rather than picked. At six it also refused lines that were real
+    /// descriptions which happened to reuse a phrase — "Ruslan and I have
+    /// everything according to plan" — and cost a short meeting its whole
+    /// block. At eight the dumps are still caught (they run to twelve words
+    /// and more) and the honest paraphrases survive. Compared
+    /// on letters and digits alone, so punctuation and case cannot smuggle one
+    /// past. `passage` must be the text the MODEL saw — for a Russian meeting
+    /// that is the translation, not the transcript.
+    static func quotesThePassage(_ line: String, passage: String) -> Bool {
+        func words(_ text: String) -> [String] {
+            text.lowercased().unicodeScalars
+                .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : " " }
+                .reduce(into: "") { $0.append($1) }
+                .split(whereSeparator: \.isWhitespace).map(String.init)
+        }
+        let shingle = 8
+        let needle = words(line), haystack = words(passage)
+        guard needle.count >= shingle, haystack.count >= shingle else { return false }
+        let text = " " + haystack.joined(separator: " ") + " "
+        for start in 0...(needle.count - shingle) {
+            let run = needle[start..<(start + shingle)].joined(separator: " ")
+            if text.contains(" " + run + " ") { return true }
+        }
+        return false
+    }
+
+    /// Drops a "Shanon:" the model put in front of its answer.
+    ///
+    /// The prompt now forbids it and the model mostly complies; this is the
+    /// net under the rope, and it is exact rather than a guess because the
+    /// names it will accept are the ones speaking in THIS passage. A line that
+    /// legitimately opens "Pricing: the pharmacy pilot" is untouched, because
+    /// "Pricing" is nobody in the room.
+    static func withoutSpeakerPrefix(_ line: String, spokenBy slice: [TranscriptEntry]) -> String {
+        guard let colon = line.firstIndex(of: ":") else { return line }
+        let head = line[line.startIndex..<colon].trimmingCharacters(in: .whitespaces)
+        guard !head.isEmpty, head.split(whereSeparator: \.isWhitespace).count <= 2,
+              slice.contains(where: { nearlyTheSameName($0.speaker, head) })
+        else { return line }
+        return String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The same person, allowing for the model spelling the name its own way.
+    ///
+    /// Not pedantry: the transcript calls her "Shanon" (one n, as Whisper
+    /// heard it) and the model writes "Shannon", so an exact comparison left
+    /// "Shannon: We're pat, there's no onboarding" in the file. One edit of
+    /// slack is enough for that class of difference and far too little to
+    /// mistake "Pricing" for anybody in the room.
+    static func nearlyTheSameName(_ a: String, _ b: String) -> Bool {
+        let x = Array(a.lowercased()), y = Array(b.lowercased())
+        if x == y { return true }
+        guard abs(x.count - y.count) <= 1, min(x.count, y.count) >= 4 else { return false }
+        var previous = Array(0...y.count)
+        for i in 1...x.count {
+            var row = [i] + Array(repeating: 0, count: y.count)
+            for j in 1...y.count {
+                row[j] = x[i - 1] == y[j - 1]
+                    ? previous[j - 1]
+                    : 1 + min(previous[j - 1], previous[j], row[j - 1])
+            }
+            previous = row
+        }
+        return previous[y.count] <= 1
+    }
+}
+
 #if canImport(FoundationModels)
+/// The shape a section line arrives in — one named field, so a chatty answer
+/// cannot smuggle a second sentence past the cleaner.
+@available(macOS 26, *)
+@Generable
+struct ModelSection {
+    @Guide(description: """
+        A table-of-contents label for this passage: the problem raised, what \
+        was decided, or what somebody has to do next, in the concrete nouns \
+        the conversation used. Never a quotation from the transcript and never \
+        prefixed with a speaker's name. Two subjects are named briefly and \
+        separated by a semicolon, never blurred into one vague phrase. ONE \
+        clause with a verb, never a list of nouns, with no full stop at the \
+        end and under 100 characters.
+        """)
+    var line: String
+}
+
 /// The shape the model must answer in. Guided generation means the two fields
 /// arrive separately instead of as a paragraph we would have to cut in half.
 @available(macOS 26, *)
@@ -457,7 +891,10 @@ final class MeetingSummaries: ObservableObject {
     /// Bumped each time a summary lands on disk — the library's cue to reload.
     @Published private(set) var written = 0
 
-    private var running = false
+    /// Whether the model is currently busy with a summary. Read by the section
+    /// backfill, which shares the one on-device model and must not race it
+    /// into the same 4096-token window from two directions.
+    private(set) var running = false
     /// Meetings the model has already declined once this run.
     private var refused: Set<URL> = []
 
@@ -528,6 +965,95 @@ final class MeetingSummaries: ObservableObject {
             // A one-shot, not a mode: whatever asked for the redo has had it.
             if redo { UserDefaults.standard.removeObject(forKey: Self.redoKey) }
             Log.d("summary: backfill done")
+        }
+    }
+}
+
+/// Gives the transcripts already on disk the contents block they were recorded
+/// without.
+///
+/// The same shape as MeetingSummaries above, and deliberately more timid,
+/// because the bill is an order of magnitude bigger: a summary is one model
+/// call, a contents block is eight to thirteen. A whole archive is minutes of
+/// inference, not seconds — so this is paced between sections as well as
+/// between meetings, and it asks permission to continue before every single
+/// call rather than once per meeting.
+///
+/// It never runs while a meeting is being recorded (the model and the Mac
+/// belong to the call), never touches a transcript that already has a block,
+/// never retries one the model refused for as long as the app is running, and
+/// does nothing at all when there is nothing to do — no timer, no polling.
+@MainActor
+final class MeetingSections: ObservableObject {
+    static let shared = MeetingSections()
+
+    /// Bumped each time a contents block lands on disk — the library's cue to
+    /// reload, and the search index's cue to pick the new lines up.
+    @Published private(set) var written = 0
+
+    private var running = false
+    private var refused: Set<URL> = []
+
+    /// Between meetings. Longer than the summaries' 400 ms because what
+    /// precedes it is a dozen model calls rather than one.
+    private let breather: Duration = .seconds(1)
+    /// Between sections of one meeting. Small, but not zero: back-to-back
+    /// inference for minutes on end is exactly what a library opened during
+    /// other work must not become.
+    private let pause: Duration = .milliseconds(250)
+
+    /// The one way to have every contents block REGENERATED:
+    ///
+    ///     defaults write com.valentynbudanov.Dictate resectionMeetings -bool YES
+    ///
+    /// Here for the same reason the summaries have one: the wording of these
+    /// lines is a product decision that will change, and without this the
+    /// meetings recorded under a worse prompt would keep it forever. The flag
+    /// clears itself when the run finishes, so it is a one-shot, not a mode.
+    private static let redoKey = "resectionMeetings"
+
+    private init() {}
+
+    func backfill(_ meetings: [ArchivedMeeting], while allowed: @escaping @MainActor () -> Bool) {
+        guard !running else { return }
+        let redo = UserDefaults.standard.bool(forKey: Self.redoKey)
+        if redo { refused.removeAll() }
+        let pending = meetings.filter {
+            ($0.sections.isEmpty || redo) && !$0.entries.isEmpty && !refused.contains($0.url)
+        }
+        guard !pending.isEmpty else { return }
+        running = true
+        Log.d("sections: \(redo ? "regenerating" : "backfilling") \(pending.count) meeting(s)")
+        Task { @MainActor in
+            defer { running = false }
+            for (index, meeting) in pending.enumerated() {
+                guard allowed() else {
+                    Log.d("sections: backfill paused — a meeting is being recorded")
+                    return
+                }
+                if index > 0 { try? await Task.sleep(for: breather) }
+                // One model, one queue: the summaries backfill runs first (its
+                // rows are what the library is showing), and this waits rather
+                // than competing with it.
+                while MeetingSummaries.shared.running {
+                    try? await Task.sleep(for: breather)
+                    guard allowed() else { return }
+                }
+                let sections = await MeetingSectioner.sections(for: meeting.entries) { [weak self] in
+                    guard let self else { return false }
+                    try? await Task.sleep(for: self.pause)
+                    return allowed()
+                }
+                guard !sections.isEmpty,
+                      MeetingArchive.setSections(sections, heading: L("Contents"),
+                                                 in: meeting.url) else {
+                    refused.insert(meeting.url)
+                    continue
+                }
+                written += 1
+            }
+            if redo { UserDefaults.standard.removeObject(forKey: Self.redoKey) }
+            Log.d("sections: backfill done")
         }
     }
 }

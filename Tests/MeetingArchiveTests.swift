@@ -346,7 +346,10 @@ final class TitleSanitizingTests: XCTestCase {
     func testShortMeetingIsQuotedWhole() {
         let entries = [TranscriptEntry(time: "09:00:00", speaker: "You", text: "привет", isYou: true),
                        TranscriptEntry(time: "09:00:05", speaker: "Speaker 1", text: "и тебе", isYou: false)]
-        XCTAssertEqual(MeetingTitler.excerpt(from: entries), "You: привет\nSpeaker 1: и тебе")
+        // The owner's turn arrives under the model-facing label, not the word
+        // the transcript shows a reader — see MeetingTitler.ownerLabel.
+        XCTAssertEqual(MeetingTitler.excerpt(from: entries),
+                       "\(MeetingTitler.ownerLabel): привет\nSpeaker 1: и тебе")
     }
 
     /// Russian is not one of the model's languages — it must be routed

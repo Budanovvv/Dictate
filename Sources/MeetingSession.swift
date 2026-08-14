@@ -113,14 +113,21 @@ final class MeetingSession: ObservableObject {
     private var statEntries = 0
     private var ticksSinceHeartbeat = 0
     // End-of-session calibration data: how the transcript actually came out
-    // per voice. The clustering threshold stays at 0.62 until the owner gives
-    // ground-truth participant counts — these tallies plus the diarizer's own
-    // are what makes that call possible from the log of the next meeting
-    // instead of from a hunch. Keyed by the label as WRITTEN (a mid-session
-    // rename therefore splits a voice in two here — the tally follows the
-    // file, which is the record).
+    // per voice. The clustering threshold moved back to 0.7 on three meetings
+    // with ground-truth head counts — these tallies plus the diarizer's own are
+    // what makes the NEXT such call possible from the log instead of from a
+    // hunch. Keyed by the label as WRITTEN (a mid-session rename therefore
+    // splits a voice in two here — the tally follows the file, which is the
+    // record), and rewritten after an end-of-session merge so the log and the
+    // file never disagree.
     private var statSpeakerEntries: [String: Int] = [:]
     private var statSpeakerSeconds: [String: Double] = [:]
+    // The same tallies keyed by the diarizer's ordinal instead of the label —
+    // the input the micro-cluster rule is fed with. Kept separately because a
+    // renamed voice loses its number in the label-keyed tallies, and the rule
+    // has to know which number it is judging.
+    private var statOrdinalEntries: [Int: Int] = [:]
+    private var statOrdinalSeconds: [Int: Double] = [:]
     private var statPhantomsRejected = 0
 
     private struct Entry {
@@ -131,6 +138,20 @@ final class MeetingSession: ObservableObject {
         /// Seconds of audio this entry was decoded from — only feeds the
         /// end-of-session per-speaker diagnostics.
         let seconds: Double
+        /// Which numbered voice produced it (Them only) — the link between an
+        /// entry in the file and a cluster in the voice database.
+        let ordinal: Int?
+    }
+
+    /// The label a numbered voice writes under, before any renaming.
+    private static func speakerLabel(_ ordinal: Int) -> String {
+        Lf("Speaker %d", ordinal)
+    }
+
+    /// The label that voice actually appears under in the file right now.
+    private func currentLabel(_ ordinal: Int) -> String {
+        let base = Self.speakerLabel(ordinal)
+        return speakerNames[base] ?? base
     }
 
     /// Keeps the Mac awake while a session runs: the browser usually holds
@@ -218,6 +239,8 @@ final class MeetingSession: ObservableObject {
         ticksSinceHeartbeat = 0
         statSpeakerEntries = [:]
         statSpeakerSeconds = [:]
+        statOrdinalEntries = [:]
+        statOrdinalSeconds = [:]
         statPhantomsRejected = 0
         // The window's equalizer: mic level drives it directly (delivered on
         // main by AudioRecorder); the tap side feeds it from appendThem.
@@ -586,11 +609,11 @@ final class MeetingSession: ObservableObject {
                     let speaker: String
                     switch channel {
                     case .you: speaker = L("You")
-                    case .them: speaker = item.ordinal.map { Lf("Speaker %d", $0) } ?? L("Them")
+                    case .them: speaker = item.ordinal.map { Self.speakerLabel($0) } ?? L("Them")
                     }
                     self.pending.append(Entry(start: item.start, speaker: speaker,
                                               text: item.text, you: channel == .you,
-                                              seconds: item.seconds))
+                                              seconds: item.seconds, ordinal: item.ordinal))
                 }
                 self.flushReadyEntries()
                 self.finalizeIfDrained()
@@ -675,6 +698,10 @@ final class MeetingSession: ObservableObject {
             let speaker = speakerNames[entry.speaker] ?? entry.speaker
             statSpeakerEntries[speaker, default: 0] += 1
             statSpeakerSeconds[speaker, default: 0] += entry.seconds
+            if let ordinal = entry.ordinal {
+                statOrdinalEntries[ordinal, default: 0] += 1
+                statOrdinalSeconds[ordinal, default: 0] += entry.seconds
+            }
             write("**[\(clock(entry.start))] \(speaker):** \(entry.text)\n\n")
             displayEntries.append(TranscriptEntry(time: clock(entry.start),
                                                   speaker: speaker,
@@ -694,16 +721,22 @@ final class MeetingSession: ObservableObject {
         stopping = false
         try? fileHandle?.close()
         fileHandle = nil
-        logSessionDiagnostics()
-        Log.d("meeting: transcript finished -> \(url.lastPathComponent)")
-        let entries = displayEntries
         let stamp = sessionStart
-        // The transcript is safe on disk before the model is asked for a
-        // name: titling is a finishing touch, never a step the recording
-        // depends on. The window is told twice — once now, once if a title
-        // lands — so the meeting appears in the library immediately.
-        onFinished?(url)
         Task { @MainActor in
+            // Voices that turned out to be fragments go back into the voice
+            // they came from BEFORE anything else looks at the file: the
+            // window, the diagnostics and the titler must all see the same
+            // transcript. This is also the last moment the diarizer's voice
+            // database exists, which is where the distances come from.
+            await self.mergeMicroSpeakers(in: url)
+            await self.logSessionDiagnostics()
+            Log.d("meeting: transcript finished -> \(url.lastPathComponent)")
+            // The transcript is safe on disk before the model is asked for a
+            // name: titling is a finishing touch, never a step the recording
+            // depends on. The window is told twice — once now, once if a title
+            // lands — so the meeting appears in the library immediately.
+            self.onFinished?(url)
+            let entries = self.displayEntries
             // Name and summary in ONE model call: the excerpt and the session
             // (and, for a Russian meeting, the translation hop) are paid for
             // once and answer both questions.
@@ -720,16 +753,58 @@ final class MeetingSession: ObservableObject {
         }
     }
 
-    /// The calibration dump, written once per session. The diarizer's
-    /// clustering threshold is deliberately left at 0.62 (no ground-truth
-    /// participant counts yet), so what the next meetings must leave behind is
-    /// the EVIDENCE for that call: how the entries and the speech seconds
-    /// actually distributed across the voices, how often the diarizer heard
-    /// nothing, and how many turns it found per window. A single voice split
-    /// in two shows up here as two speakers with similar profiles; two people
-    /// merged shows up as one speaker holding most of the seconds while the
-    /// turn histogram stays at 1.
-    private func logSessionDiagnostics() {
+    /// Hands the finished transcript's per-voice measurements to the diarizer,
+    /// which decides (through the pure `MeetingSpeakerPolicy` rule) which
+    /// voices were fragments, and then rewrites those labels in the file, on
+    /// screen and in the tallies — the three views of one meeting must not
+    /// drift apart.
+    ///
+    /// Why here and not at the moment the fragment appeared: a voice can only
+    /// be judged tiny once the meeting is over. One entry after five minutes
+    /// means nothing; one entry in fifty-one is the signature the owner's
+    /// ground truth showed us.
+    @MainActor
+    private func mergeMicroSpeakers(in url: URL) async {
+        let voices = statOrdinalEntries.keys.sorted().map { ordinal in
+            MeetingSpeakerPolicy.Voice(
+                ordinal: ordinal,
+                entries: statOrdinalEntries[ordinal] ?? 0,
+                seconds: statOrdinalSeconds[ordinal] ?? 0,
+                renamed: speakerNames[Self.speakerLabel(ordinal)] != nil)
+        }
+        guard !voices.isEmpty else { return }
+        for merge in await diarizer.mergeMicroClusters(voices: voices) {
+            let from = currentLabel(merge.source)
+            let into = currentLabel(merge.target)
+            guard from != into else { continue }
+            // The file first — it is the record; everything else follows it.
+            MeetingArchive.rename(speaker: from, to: into, in: url)
+            displayEntries = displayEntries.map {
+                $0.speaker == from
+                    ? TranscriptEntry(id: $0.id, time: $0.time, speaker: into,
+                                      text: $0.text, isYou: $0.isYou)
+                    : $0
+            }
+            speakerNames[Self.speakerLabel(merge.source)] = into
+            statSpeakerEntries[into, default: 0] += statSpeakerEntries.removeValue(forKey: from) ?? 0
+            statSpeakerSeconds[into, default: 0] += statSpeakerSeconds.removeValue(forKey: from) ?? 0
+            statOrdinalEntries[merge.target, default: 0] += statOrdinalEntries.removeValue(forKey: merge.source) ?? 0
+            statOrdinalSeconds[merge.target, default: 0] += statOrdinalSeconds.removeValue(forKey: merge.source) ?? 0
+        }
+    }
+
+    /// The calibration dump, written once per session — AFTER the micro-cluster
+    /// merges, so every number here is what the file actually says. The
+    /// clustering threshold is back at the library's 0.7 on the strength of
+    /// three meetings with confirmed head counts, and that value is still a
+    /// hypothesis, so what the next meetings must leave behind is the EVIDENCE
+    /// for the call after it: how the entries and the speech seconds actually
+    /// distributed across the voices, how often the diarizer heard nothing, and
+    /// how many turns it found per window. A single voice split in two shows up
+    /// here as two speakers with similar profiles; two people merged shows up as
+    /// one speaker holding most of the seconds while the turn histogram stays
+    /// at 1.
+    private func logSessionDiagnostics() async {
         Log.d(String(format: "meeting: summary — %.1f min, %d window(s), %d entries, %d phantom(s) rejected",
                      Date().timeIntervalSince(sessionStart) / 60,
                      statWindows, statEntries, statPhantomsRejected))
@@ -737,13 +812,21 @@ final class MeetingSession: ObservableObject {
             Log.d(String(format: "meeting: %@ — %d entries, %.0fs of speech",
                          speaker, count, statSpeakerSeconds[speaker] ?? 0))
         }
-        Task { [diarizer] in
-            let s = await diarizer.sessionStats()
-            let histogram = s.turnHistogram.sorted { $0.key < $1.key }
-                .map { "\($0.key)×\($0.value)" }
-                .joined(separator: " ")
-            Log.d("diar: summary — \(s.windows) window(s) diarized, no voice \(s.noVoice), failed \(s.failures), turns-per-window [\(histogram)]")
-        }
+        // How far apart the clusters actually ended up, measured on the live
+        // voice database while it still exists. Purely a reading — see
+        // MeetingDiarizer.logSpeakerDistances for what the numbers decide. The
+        // voices are the POST-merge ones, so the matrix describes the speakers
+        // the finished file actually shows.
+        await diarizer.logSpeakerDistances(voices: statOrdinalEntries.keys.sorted().map {
+            MeetingSpeakerPolicy.Voice(ordinal: $0,
+                                       entries: statOrdinalEntries[$0] ?? 0,
+                                       seconds: statOrdinalSeconds[$0] ?? 0)
+        })
+        let s = await diarizer.sessionStats()
+        let histogram = s.turnHistogram.sorted { $0.key < $1.key }
+            .map { "\($0.key)×\($0.value)" }
+            .joined(separator: " ")
+        Log.d("diar: summary — threshold \(s.thresholdNote), \(s.windows) window(s) diarized, no voice \(s.noVoice), failed \(s.failures), merged \(s.merged) micro-cluster(s), turns-per-window [\(histogram)]")
     }
 
     static func dateLine(_ date: Date) -> String {

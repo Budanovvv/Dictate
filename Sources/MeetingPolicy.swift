@@ -256,6 +256,123 @@ enum MeetingPolicy {
         return .keep
     }
 
+    // MARK: - Cutting a finished meeting into sections
+
+    /// Everything the section rule is allowed to look at about one transcript
+    /// line. Plain values, like SpeakerSpan above: the rule is a pure decision
+    /// and must be testable without a transcript, a file or a model.
+    struct SectionMark: Equatable {
+        /// Seconds since midnight — the stamp the entry carries in the file.
+        let start: Double
+        let speaker: String
+        /// Words in the entry, the only thing standing in for its duration.
+        let words: Int
+        /// The text ends on `.`, `!`, `?` or `…` — a thought that finished.
+        let endsSentence: Bool
+        /// The text's first letter is a capital — a thought that begins.
+        let startsSentence: Bool
+    }
+
+    /// How long a section wants to be. Four minutes is what the owner asked
+    /// for ("~3–5 min"), and it is also what makes the excerpt of a section
+    /// fit the model's window whole: the densest meeting in the archive runs
+    /// at 140 words a minute, so four minutes is ~560 words — about 3.4 KB,
+    /// where a whole meeting is 45–55 KB and cannot be read at all.
+    static let sectionTarget: Double = 240
+    /// Shorter than this and a section is a paragraph, not a subject; the
+    /// meeting's own summary already covers that ground.
+    static let sectionMinimum: Double = 150
+    /// Longer than this and one line cannot honestly describe it.
+    static let sectionMaximum: Double = 390
+
+    /// Where the sections of a finished meeting start — indices into `marks`,
+    /// the first of which is always 0.
+    ///
+    /// A note on what this rule does NOT use, because the obvious design does
+    /// not survive contact with our own transcripts. Entry timestamps are
+    /// WINDOW starts, and a window is cut either at a VAD pause or at the 15 s
+    /// hard cap, so the interval between two entries is mostly the length of
+    /// the first one rather than a silence. Measured across the archive
+    /// (2026-08-14): median gap 5–9 s, p95 15–16 s — which is the cap — and
+    /// exactly three gaps in eighteen transcripts exceed 20 s. The biggest
+    /// "silences" that do exist are artifacts: a one-word phantom ("Thank
+    /// you.", "Merci.") alone in a 15 s window. Speaker turnover is no better:
+    /// 56–79% of adjacent entries already change speaker in a live call.
+    ///
+    /// So the BUDGET is load-bearing and the text signals only choose between
+    /// the candidates it allows. Among the entries that would make a section
+    /// of an acceptable length, the one with the best seam wins — and the seam
+    /// that earned its keep is "the next entry starts with a capital": adding
+    /// it removed most of the sections that used to open mid-sentence.
+    ///
+    /// Returns [] when the meeting cannot yield at least two sections. One
+    /// section is the whole-meeting summary again, written twice.
+    static func sectionStarts(_ marks: [SectionMark],
+                              target: Double = sectionTarget,
+                              minimum: Double = sectionMinimum,
+                              maximum: Double = sectionMaximum) -> [Int] {
+        guard marks.count >= 2, let first = marks.first, let last = marks.last,
+              last.start - first.start >= 2 * minimum else { return [] }
+        var starts = [0]
+        var current = 0
+        while true {
+            let from = marks[current].start
+            var best: Int?
+            var bestScore = -Double.infinity
+            var index = current + 1
+            while index < marks.count {
+                let length = marks[index].start - from
+                if length > maximum { break }
+                if length >= minimum {
+                    let score = seam(marks, at: index)
+                        - deviationWeight * abs(length - target) / target
+                    if score > bestScore { bestScore = score; best = index }
+                }
+                index += 1
+            }
+            guard let cut = best else { break }
+            // Never leave a stub behind: what follows the cut has to be worth
+            // a line of its own, or the cut is not worth making.
+            guard last.start - marks[cut].start >= minimum * tailShare else { break }
+            starts.append(cut)
+            current = cut
+        }
+        return starts.count >= 2 ? starts : []
+    }
+
+    /// How hard the budget pulls the cut back towards `target`. High enough
+    /// that a perfect seam cannot drag a section to either extreme of the
+    /// admissible range on its own (the seam is worth at most 2.5).
+    private static let deviationWeight = 1.5
+    /// The last section may be shorter than `minimum` — but not by much, or
+    /// it is a stub with nothing to say.
+    private static let tailShare = 0.6
+
+    /// How good a place this is to start a new section, 0 to 2.5. Every term
+    /// is something the transcript already carries; none of it is a guess the
+    /// model makes.
+    private static func seam(_ marks: [SectionMark], at index: Int) -> Double {
+        let previous = marks[index - 1], next = marks[index]
+        var score = 0.0
+        // Whatever silence can be inferred: the interval minus the speech the
+        // previous entry plausibly holds. Weak evidence (see above), so it is
+        // worth at most as much as the two punctuation signals together.
+        let gap = next.start - previous.start
+        let spoken = min(windowCap, Double(previous.words) / wordsPerSecond)
+        score += min(1, max(0, (gap - spoken) / silenceSpread))
+        if previous.speaker != next.speaker { score += 0.5 }
+        if previous.endsSentence { score += 0.5 }
+        if next.startsSentence { score += 0.5 }
+        return score
+    }
+
+    /// Ordinary speech, for turning a word count back into seconds.
+    private static let wordsPerSecond = 2.6
+    /// No entry can hold more speech than the window cap that produced it.
+    private static let windowCap: Double = 15
+    /// The inferred silence at which the term is worth its full point.
+    private static let silenceSpread: Double = 8
+
     /// What a channel contributes to the flush frontier. A window WITH
     /// speech pins it at the first speech moment — that is the start its
     /// eventual entry will carry. A silent window must NOT pin anything to

@@ -9,13 +9,32 @@ struct TranscriptEntry: Identifiable, Hashable {
     let speaker: String
     let text: String
     let isYou: Bool
+    /// The stamps of the entries this one swallowed when the transcript was
+    /// cleaned up for reading (TranscriptCleanup) — empty for an entry as the
+    /// file has it, which is every entry until then.
+    ///
+    /// Load-bearing rather than bookkeeping: the contents block, the search
+    /// index and every section hit point at the stamp the FILE carries, and a
+    /// merged paragraph shows only the first of them. Without this, opening a
+    /// transcript at 10:26:17 would find nothing the moment 10:26:17 became
+    /// the second sentence of a paragraph that starts at 10:26:04.
+    let absorbed: [String]
 
-    init(id: UUID = UUID(), time: String, speaker: String, text: String, isYou: Bool) {
+    init(id: UUID = UUID(), time: String, speaker: String, text: String, isYou: Bool,
+         absorbed: [String] = []) {
         self.id = id
         self.time = time
         self.speaker = speaker
         self.text = text
         self.isYou = isYou
+        self.absorbed = absorbed
+    }
+
+    /// Every clock stamp this entry now speaks for, its own first.
+    var covers: [String] { absorbed.isEmpty ? [time] : [time] + absorbed }
+
+    func speaks(for clock: String) -> Bool {
+        time == clock || absorbed.contains(clock)
     }
 }
 
@@ -29,6 +48,31 @@ struct TranscriptTurn: Identifiable {
     let time: String        // start of the turn
     let entries: [TranscriptEntry]
     var text: String { entries.map(\.text).joined(separator: " ") }
+
+    /// True when one of the stamps the FILE carries falls inside this turn —
+    /// including the ones a cleaned-up paragraph swallowed. This is how a
+    /// section hit ("open at 10:26:17") finds where to land once the transcript
+    /// is read as paragraphs rather than as windows.
+    func speaks(for clock: String) -> Bool {
+        entries.contains { $0.speaks(for: clock) }
+    }
+}
+
+/// One stretch of a meeting — a few minutes of it — and the English line the
+/// on-device model wrote about it.
+///
+/// The unit that makes an archive answerable. A meeting carries ONE summary
+/// for its whole hour, which is too coarse to find anything by: the three
+/// minutes the owner is looking for are not in it. A section is small enough
+/// to describe honestly, small enough to feed to a model whose window is 4096
+/// tokens, and — because it carries the timestamp it starts at — small enough
+/// to be a place rather than a document.
+struct TranscriptSection: Equatable, Hashable {
+    /// "10:26:17", the stamp of the entry the section starts at, so a hit can
+    /// be turned back into a position in the transcript.
+    let time: String
+    /// What was discussed there, in English, always — see MeetingSectioner.
+    let line: String
 }
 
 /// A transcript on disk.
@@ -44,6 +88,10 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// when the meeting was named. nil until the model has said something
     /// usable about it — the library then shows nothing on that line.
     let summary: String?
+    /// The contents block: a line per few minutes, with the moment it starts
+    /// at. Empty for a meeting too short to have one, and for every meeting
+    /// recorded before sections existed until the backfill reaches it.
+    var sections: [TranscriptSection] = []
 
     var speakers: [String] {
         var seen = Set<String>(), ordered: [String] = []
@@ -225,6 +273,139 @@ enum MeetingArchive {
         return lines.joined(separator: "\n")
     }
 
+    // MARK: - The contents block
+
+    /// How a section reads in the file:
+    ///
+    ///     ## Contents
+    ///
+    ///     - **[10:26:17]** Yury wants a simple database for the demo
+    ///
+    /// A bullet, so a Markdown reader lays it out as the list it is; the time
+    /// in the same `**[…]**` shape the entries below use, so the eye connects
+    /// the two without being told.
+    static func sectionLine(_ section: TranscriptSection) -> String {
+        "- **[\(section.time)]** \(section.line)"
+    }
+
+    /// True for one of our own contents bullets. This is the marker the block
+    /// is found by — NOT the heading above it, which is written in the user's
+    /// interface language and can therefore be a different string tomorrow
+    /// than it was yesterday.
+    static func isSectionLine(_ raw: String) -> Bool {
+        parseSectionLine(raw.trimmingCharacters(in: .whitespaces)) != nil
+    }
+
+    private static func parseSectionLine(_ line: String) -> TranscriptSection? {
+        guard line.hasPrefix("- **["), let close = line.range(of: "]**") else { return nil }
+        let start = line.index(line.startIndex, offsetBy: 5)
+        let time = String(line[start..<close.lowerBound])
+        guard seconds(fromClock: time) != nil else { return nil }
+        let text = line[close.upperBound...].trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        return TranscriptSection(time: time, line: text)
+    }
+
+    /// The contents block as the file has it.
+    ///
+    /// Safe to keep in the transcript for the same reason the summary is: an
+    /// entry is the only line that starts with `**[`, so a bullet is not an
+    /// entry, and a plain line before the first entry has no previous entry
+    /// for `parse` to glue it onto. Proven by round-trip test rather than by
+    /// that argument — see MeetingArchiveTests.
+    static func parseSections(markdown: String) -> [TranscriptSection] {
+        var sections: [TranscriptSection] = []
+        for raw in markdown.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            // Only ever the block at the top: an entry means the transcript
+            // has begun and nothing below is contents.
+            if line.hasPrefix("**[") { break }
+            if let section = parseSectionLine(line) { sections.append(section) }
+        }
+        return sections
+    }
+
+    /// Writes the contents block under the summary, replacing one already
+    /// there. Empty sections leave the file alone — which is what retitling
+    /// and renaming a speaker need, so neither can throw the block away.
+    static func applying(sections: [TranscriptSection], heading: String,
+                         to markdown: String) -> String {
+        guard !sections.isEmpty else { return markdown }
+        var lines = markdown.components(separatedBy: .newlines)
+        // Where the old block was, heading included: the bullets, plus a
+        // heading line immediately above the first of them (in whatever
+        // language it was written).
+        let existing = lines.indices.filter { isSectionLine(lines[$0]) }
+        if let first = existing.first, let last = existing.last {
+            var from = first
+            var above = first - 1
+            while above >= 0, lines[above].trimmingCharacters(in: .whitespaces).isEmpty {
+                above -= 1
+            }
+            if above >= 0, lines[above].hasPrefix("#") { from = above }
+            lines.replaceSubrange(from...last, with: block(sections, heading: heading))
+            return lines.joined(separator: "\n")
+        }
+        // No block yet: it goes after the title, the date and the summary —
+        // everything that describes the meeting as a whole — and before the
+        // first entry.
+        guard let h1 = lines.firstIndex(where: { $0.hasPrefix("# ") }) else { return markdown }
+        var at = lines.count
+        for index in (h1 + 1)..<lines.count where lines[index].hasPrefix("**[") {
+            at = index
+            break
+        }
+        lines.insert(contentsOf: block(sections, heading: heading) + [""], at: at)
+        return lines.joined(separator: "\n")
+    }
+
+    private static func block(_ sections: [TranscriptSection], heading: String) -> [String] {
+        ["## \(heading)", ""] + sections.map(sectionLine)
+    }
+
+    @discardableResult
+    static func setSections(_ sections: [TranscriptSection], heading: String,
+                            in url: URL) -> Bool {
+        guard !sections.isEmpty,
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        let updated = applying(sections: sections, heading: heading, to: text)
+        guard updated != text else { return false }
+        return rewrite(url, with: updated)
+    }
+
+    /// The entries of each section, in order — the bridge between the pure cut
+    /// rule and the transcript it is cut from. Empty when the meeting is too
+    /// short to be worth sectioning at all.
+    static func sectionRanges(of entries: [TranscriptEntry]) -> [Range<Int>] {
+        let marks = entries.map { entry in
+            MeetingPolicy.SectionMark(
+                start: Double(seconds(fromClock: entry.time) ?? 0),
+                speaker: entry.speaker,
+                words: entry.text.split(whereSeparator: \.isWhitespace).count,
+                endsSentence: endsSentence(entry.text),
+                startsSentence: startsSentence(entry.text))
+        }
+        let starts = MeetingPolicy.sectionStarts(marks)
+        guard !starts.isEmpty else { return [] }
+        return starts.indices.map { i in
+            starts[i]..<(i + 1 < starts.count ? starts[i + 1] : entries.count)
+        }
+    }
+
+    private static func endsSentence(_ text: String) -> Bool {
+        guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
+        return ".!?…。？！".contains(last)
+    }
+
+    /// The first LETTER is a capital. Asked of letters only, so a line opening
+    /// with a dash or a number is judged on the word that follows it; and true
+    /// for Cyrillic as readily as for Latin, which matters because half of this
+    /// archive is Russian.
+    private static func startsSentence(_ text: String) -> Bool {
+        guard let first = text.first(where: \.isLetter) else { return false }
+        return first.isUppercase
+    }
+
     /// Puts a title on a transcript, keeping the date visible underneath.
     static func applying(title: String, dateLine: String, to markdown: String) -> String {
         var lines = markdown.components(separatedBy: .newlines)
@@ -240,6 +421,45 @@ enum MeetingArchive {
             lines.insert("_\(dateLine)_", at: h1 + 1)
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// The transcript as it is READ: the file's windows cleaned up into
+    /// paragraphs (TranscriptCleanup) and then grouped by voice. The file
+    /// itself is untouched — this is the view, computed every time.
+    static func readable(_ entries: [TranscriptEntry]) -> [TranscriptTurn] {
+        turns(TranscriptCleanup.clean(entries))
+    }
+
+    /// Where a moment from the contents block lands once the transcript is
+    /// read as paragraphs — the join between Phase A (which cuts sections from
+    /// the FILE's entries) and the cleanup (which reads them as turns).
+    ///
+    /// The two agree far more often than they had to. A section boundary is
+    /// scored by `MeetingPolicy.seam`, which rewards exactly the two things
+    /// that also STOP a paragraph — the speaker changing, and the next line
+    /// opening on a capital — so a section usually starts where a paragraph
+    /// starts. Measured over the whole archive (25 sections in 18 transcripts):
+    /// 23 land on the paragraph that begins at the section's own stamp, and
+    /// none is missed.
+    ///
+    /// The other two land EARLY, by 6 s and by 16 s, and early is the only
+    /// direction this can err in:
+    ///
+    ///  * the stamp is inside a merged paragraph → the paragraph that speaks
+    ///    for it, whose first line is up to one window (15 s) earlier per
+    ///    swallowed entry. The reader is not lost: that whole paragraph is the
+    ///    one the jump highlights, and the section's own moment is inside it.
+    ///  * the stamp belonged to an entry the cleanup dropped (a phantom) →
+    ///    nothing speaks for it, so the next paragraph takes it instead.
+    ///    That one lands late, by less than a window; it has never happened in
+    ///    the archive, because a section never starts on a phantom.
+    ///
+    /// nil only when the transcript has nothing at or after that time at all —
+    /// a hand-edited file, and then the transcript simply opens at the top.
+    static func turn(at clock: String, in turns: [TranscriptTurn]) -> TranscriptTurn? {
+        if let exact = turns.first(where: { $0.speaks(for: clock) }) { return exact }
+        guard let wanted = seconds(fromClock: clock) else { return nil }
+        return turns.first { (seconds(fromClock: $0.time) ?? .min) >= wanted }
     }
 
     /// Merges consecutive entries of the same voice into one turn.
@@ -293,7 +513,8 @@ enum MeetingArchive {
                 return ArchivedMeeting(id: url, url: url, started: created,
                                        entries: parse(markdown: text, youLabel: youLabel),
                                        title: parseTitle(markdown: text),
-                                       summary: parseSummary(markdown: text))
+                                       summary: parseSummary(markdown: text),
+                                       sections: parseSections(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }

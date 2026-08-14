@@ -90,7 +90,11 @@ targets:
       - path: Sources/AudioDevices.swift
       - path: Sources/DictationPolicy.swift
       - path: Sources/MeetingPolicy.swift
+      # The micro-cluster rule is dependency-free precisely so it can be tested
+      # here: MeetingDiarizer itself imports FluidAudio and cannot come along.
+      - path: Sources/MeetingSpeakerPolicy.swift
       - path: Sources/MeetingArchive.swift
+      - path: Sources/TranscriptCleanup.swift
       - path: Sources/MeetingSearch.swift
       # MeetingSearch translates a foreign-language query through the app's one
       # translation path rather than opening a second session of its own.

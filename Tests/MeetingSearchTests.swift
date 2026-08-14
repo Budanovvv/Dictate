@@ -12,14 +12,24 @@ final class MeetingSearchTests: XCTestCase {
     // MARK: - Fixtures
 
     private func meeting(_ name: String, title: String?, summary: String?,
-                         says: [String] = [], speaker: String = "Speaker 1") -> ArchivedMeeting {
+                         says: [String] = [], speaker: String = "Speaker 1",
+                         sections: [TranscriptSection] = []) -> ArchivedMeeting {
         let entries = says.map {
             TranscriptEntry(time: "09:17:52", speaker: speaker, text: $0, isYou: false)
         }
         return ArchivedMeeting(id: URL(fileURLWithPath: "/tmp/\(name).md"),
                                url: URL(fileURLWithPath: "/tmp/\(name).md"),
                                started: Date(timeIntervalSince1970: 0),
-                               entries: entries, title: title, summary: summary)
+                               entries: entries, title: title, summary: summary,
+                               sections: sections)
+    }
+
+    private func subject(_ text: String, _ moment: String? = nil) -> MeetingSearch.Subject {
+        MeetingSearch.Subject(text: text, moment: moment)
+    }
+
+    private func vector(_ v: [Double], _ moment: String? = nil) -> MeetingSearch.SubjectVector {
+        MeetingSearch.SubjectVector(vector: v, moment: moment)
     }
 
     private func url(_ name: String) -> URL { URL(fileURLWithPath: "/tmp/\(name).md") }
@@ -69,14 +79,30 @@ final class MeetingSearchTests: XCTestCase {
     /// ranked an unrelated meeting above the right one).
     func testSubjectsAreTitleAndSummarySeparately() {
         let m = meeting("a", title: "Release planning", summary: "2.4 slipped a week")
-        XCTAssertEqual(MeetingSearch.subjects(of: m), ["Release planning", "2.4 slipped a week"])
+        XCTAssertEqual(MeetingSearch.subjects(of: m),
+                       [subject("Release planning"), subject("2.4 slipped a week")])
+    }
+
+    /// …and every section, each carrying the moment it starts at. This is what
+    /// turns a hit into a place: the title and the summary describe the whole
+    /// hour and point nowhere, a section points at three minutes.
+    func testSubjectsIncludeSectionsWithTheirMoments() {
+        let m = meeting("a", title: "Release planning", summary: "2.4 slipped a week",
+                        sections: [TranscriptSection(time: "09:20:11", line: "Notarization fails on CI"),
+                                   TranscriptSection(time: "09:24:03", line: "Pricing for the pilot")])
+        XCTAssertEqual(MeetingSearch.subjects(of: m), [
+            subject("Release planning"),
+            subject("2.4 slipped a week"),
+            subject("Notarization fails on CI", "09:20:11"),
+            subject("Pricing for the pilot", "09:24:03"),
+        ])
     }
 
     /// A meeting the model never named or summarized has nothing to score, and
     /// must not be scored on an empty string.
     func testSubjectsSkipMissingAndBlankParts() {
         XCTAssertEqual(MeetingSearch.subjects(of: meeting("a", title: "Standup", summary: nil)),
-                       ["Standup"])
+                       [subject("Standup")])
         XCTAssertTrue(MeetingSearch.subjects(of: meeting("b", title: nil, summary: nil)).isEmpty)
         XCTAssertTrue(MeetingSearch.subjects(of: meeting("c", title: "  ", summary: "\n")).isEmpty)
     }
@@ -85,12 +111,27 @@ final class MeetingSearchTests: XCTestCase {
     /// summary must not be dragged down by an unrelated title.
     func testScoreTakesTheBestPart() {
         let query = [1.0, 0.0]
-        let subjects = [[0.0, 1.0], [1.0, 0.0]]   // title unrelated, summary exact
-        XCTAssertEqual(MeetingSearch.score(query: query, subjects: subjects)!, 1.0, accuracy: 1e-9)
+        let subjects = [vector([0.0, 1.0]), vector([1.0, 0.0])]   // title unrelated, summary exact
+        XCTAssertEqual(MeetingSearch.best(query: query, subjects: subjects)!.score, 1.0, accuracy: 1e-9)
     }
 
     func testScoreOfNothingIsNil() {
-        XCTAssertNil(MeetingSearch.score(query: [1.0, 0.0], subjects: []))
+        XCTAssertNil(MeetingSearch.best(query: [1.0, 0.0], subjects: []))
+    }
+
+    /// A meeting answers with the part that won: a section hit brings its
+    /// moment along, so the click can land there.
+    func testBestReportsTheMomentOfTheWinningSubject() {
+        let subjects = [vector([0.0, 1.0]), vector([0.9, 0.1], "10:26:17"), vector([0.5, 0.5], "10:31:02")]
+        XCTAssertEqual(MeetingSearch.best(query: [1.0, 0.0], subjects: subjects)?.moment, "10:26:17")
+    }
+
+    /// A tie goes to the meeting as a whole, not to whichever section happens
+    /// to phrase it the same way — a meeting that IS the answer opens at the
+    /// beginning.
+    func testTieGoesToTheWholeMeeting() {
+        let subjects = [vector([1.0, 0.0]), vector([1.0, 0.0], "10:26:17")]
+        XCTAssertNil(MeetingSearch.best(query: [1.0, 0.0], subjects: subjects)?.moment)
     }
 
     // MARK: - Cosine
@@ -126,10 +167,18 @@ final class MeetingSearchTests: XCTestCase {
 
     private func topURLs(_ count: Int) -> [URL] { (0..<count).map { url("top\($0)") } }
 
+    /// Every ranking test below passes the archive's BACKGROUND — the median
+    /// score of every indexed subject for that query — because that is what
+    /// the app passes, and the standout threshold is calibrated against it.
+    /// The numbers are the measured ones (2026-08-14).
+    private func related(_ scored: [MeetingMatch], background: Double) -> [URL] {
+        MeetingSearch.related(scored, background: background).map(\.id)
+    }
+
     /// The floor: a query with no answer in the archive shows no group at all,
     /// rather than the least-bad meeting the archive happens to hold.
     func testNothingIsRelatedWhenEverythingScoresBadly() {
-        XCTAssertTrue(MeetingSearch.related(archive([0.39, 0.30, 0.12])).isEmpty)
+        XCTAssertTrue(related(archive([0.39, 0.30, 0.12]), background: 0.22).isEmpty)
     }
 
     /// The relative cut, which is one of the rules doing the real work: two
@@ -138,7 +187,7 @@ final class MeetingSearchTests: XCTestCase {
     /// archive.
     func testRelativeCutKeepsTheClusterAndDropsTheTail() {
         let scored = archive([0.702, 0.685, 0.496, 0.452])
-        XCTAssertEqual(MeetingSearch.related(scored).map(\.id), topURLs(2))
+        XCTAssertEqual(related(scored, background: 0.295), topURLs(2))
     }
 
     /// …and a weak-but-real best answer still brings its cluster, which a
@@ -147,7 +196,26 @@ final class MeetingSearchTests: XCTestCase {
     /// FALSE positive reached on another query.
     func testAWeakBestAnswerStillBringsItsCluster() {
         let scored = archive([0.473, 0.466, 0.450, 0.335], from: 0.30)
-        XCTAssertEqual(MeetingSearch.related(scored).map(\.id), topURLs(3))
+        XCTAssertEqual(related(scored, background: 0.128), topURLs(3))
+    }
+
+    /// The background is the median of every SUBJECT, not of every meeting —
+    /// the change sections forced. A meeting is scored by its best part, so a
+    /// meeting with thirteen sections gets thirteen chances; a median over
+    /// meetings would then move with how much of the archive the backfill has
+    /// reached, which is not a property of the query.
+    func testBackgroundIsTheMedianSubjectScore() {
+        XCTAssertEqual(MeetingSearch.background(of: [0.1, 0.5, 0.9])!, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(MeetingSearch.background(of: [0.9, 0.1])!, 0.9, accuracy: 1e-9)
+        XCTAssertNil(MeetingSearch.background(of: []))
+    }
+
+    /// With no background to judge against — an archive nothing is indexed for
+    /// — the rule falls back to the median meeting rather than admitting
+    /// everything.
+    func testWithoutABackgroundTheMedianMeetingIsStillUsed() {
+        let scored = archive([0.702, 0.685, 0.496, 0.452])
+        XCTAssertFalse(MeetingSearch.related(scored).isEmpty)
     }
 
     /// The standout rule, and the reason it exists: a query the archive has no
@@ -158,14 +226,14 @@ final class MeetingSearchTests: XCTestCase {
     func testAQueryThatIsMildlyLikeEverythingIsRelatedToNothing() {
         let scored = archive([0.527, 0.527, 0.521, 0.508, 0.473, 0.467, 0.458],
                              tail: 11, from: 0.442)
-        XCTAssertTrue(MeetingSearch.related(scored).isEmpty)
+        XCTAssertTrue(related(scored, background: 0.38).isEmpty)
     }
 
     /// The same shape with the archive's mass pulled down — the top has
     /// something to stand out FROM, and now it does.
     func testTheSameTopScoreStandsOutOverAQuieterArchive() {
         let scored = archive([0.527, 0.520], tail: 16, from: 0.30)
-        XCTAssertEqual(MeetingSearch.related(scored).map(\.id), topURLs(2))
+        XCTAssertEqual(related(scored, background: 0.20), topURLs(2))
     }
 
     /// A median says nothing about an archive of three, where it IS one of the

@@ -43,13 +43,31 @@ final class TranscriptCopyTests: XCTestCase {
 
     // MARK: - Copying a transcript
 
-    func testTranscriptIsOneLinePerEntry() {
+    /// One paragraph per turn, not one line per fifteen-second audio window.
+    /// Pasting the raw windows into a document reproduced the ticker tape —
+    /// sentences halved by the cap, lines that were a lone full stop — which is
+    /// the thing "easier to work with" was actually about. See
+    /// TranscriptCleanup; the .md file still has every window.
+    func testTranscriptIsOneParagraphPerTurn() {
         let entries = [
             TranscriptEntry(time: "09:17:52", speaker: "You", text: "Let's start.", isYou: true),
             TranscriptEntry(time: "09:18:26", speaker: "Speaker 1", text: "Ready.", isYou: false),
         ]
         XCTAssertEqual(TranscriptCopy.transcript(entries),
-                       "[09:17:52] You: Let's start.\n[09:18:26] Speaker 1: Ready.")
+                       "[09:17:52] You: Let's start.\n\n[09:18:26] Speaker 1: Ready.")
+    }
+
+    func testTranscriptJoinsAWindowTheCapCutInHalf() {
+        let entries = [
+            TranscriptEntry(time: "09:17:52", speaker: "You",
+                            text: "so we build the prototype and you", isYou: true),
+            TranscriptEntry(time: "09:18:04", speaker: "You",
+                            text: "give me feedback on it.", isYou: true),
+            TranscriptEntry(time: "09:18:09", speaker: "Speaker 1", text: ".", isYou: false),
+        ]
+        XCTAssertEqual(TranscriptCopy.transcript(entries),
+                       "[09:17:52] You: so we build the prototype and you "
+                       + "give me feedback on it.")
     }
 
     /// An empty transcript must not wipe the clipboard the user is carrying
