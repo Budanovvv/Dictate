@@ -288,3 +288,89 @@ final class MeetingSpeakerPolicyTests: XCTestCase {
         XCTAssertTrue(refused.contains("2"), refused)
     }
 }
+
+/// Lexical label inheritance: a tap-channel entry that finishes the previous
+/// voice's unfinished sentence is written under that voice.
+///
+/// The strings are real fragments from the 2026-08-17 meeting (ground truth:
+/// two people on the tap channel, four labels written) — the meeting that
+/// proved acoustics cannot heal a split voice: the split pair's distance
+/// (0.847) matched the two real people's (0.844). The refusal cases matter
+/// more than the joins, because a wrong inheritance steals words from a real
+/// person.
+final class LabelInheritanceTests: XCTestCase {
+
+    func testTornSentenceInheritsTheVoice() {
+        // "And I have like a hundred thousand / debit in my checking account…"
+        // — one monologue the diarizer wrote under two labels.
+        XCTAssertEqual(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "And I have like a hundred thousand", previousOrdinal: 2,
+            nextText: "debit in my in my checking account or whatever but I'm fine",
+            nextOrdinal: 1, secondsApart: 6), 2)
+    }
+
+    func testFinishedSentenceHandsOverNothing() {
+        // The previous line closed with a full stop: whoever speaks next —
+        // even in lower case — is not finishing it.
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "It's all together.", previousOrdinal: 2,
+            nextText: "like $8,000 to get from my account", nextOrdinal: 1,
+            secondsApart: 6))
+    }
+
+    func testCapitalStartIsARealSpeakerChange() {
+        // An unfinished line followed by a capital is somebody being
+        // interrupted — the diarizer's label stands.
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "and we start looking for those", previousOrdinal: 2,
+            nextText: "Okay, next week I have a playbook.", nextOrdinal: 1,
+            secondsApart: 6))
+    }
+
+    func testCollectiveEntryHandsOverNothing() {
+        // "Them" (no ordinal) is not a voice — there is nothing to inherit,
+        // and the chain breaks there by design.
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "and I have like a hundred thousand", previousOrdinal: nil,
+            nextText: "debit in my checking account", nextOrdinal: 1,
+            secondsApart: 6))
+    }
+
+    func testCollectiveNextEntryCanInherit() {
+        // The reverse is allowed: a window where the diarizer heard no voice
+        // still carries words, and the words say whose they are.
+        XCTAssertEqual(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "we can get the number of us, look,", previousOrdinal: 3,
+            nextText: "local DIT, blah, blah, blah", nextOrdinal: nil,
+            secondsApart: 7), 3)
+    }
+
+    func testSameVoiceNeedsNoInheritance() {
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "and I have like a hundred thousand", previousOrdinal: 2,
+            nextText: "debit in my checking account", nextOrdinal: 2,
+            secondsApart: 6))
+    }
+
+    func testFarApartEntriesStayApart() {
+        // Beyond the cap-split window the "continuation" is coincidence; and
+        // a negative gap means the order is not what the rule assumes.
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "and I have like a hundred thousand", previousOrdinal: 2,
+            nextText: "debit in my checking account", nextOrdinal: 1,
+            secondsApart: TranscriptCleanup.capSplitWindow + 1))
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "and I have like a hundred thousand", previousOrdinal: 2,
+            nextText: "debit in my checking account", nextOrdinal: 1,
+            secondsApart: -1))
+    }
+
+    func testCaselessScriptGivesNoEvidence() {
+        // No lower case exists in the script — no signal, no join (the
+        // conservative answer, same as TranscriptCleanup's).
+        XCTAssertNil(MeetingSpeakerPolicy.inheritedOrdinal(
+            previousText: "それで私たちは", previousOrdinal: 2,
+            nextText: "続けました", nextOrdinal: 1,
+            secondsApart: 6))
+    }
+}

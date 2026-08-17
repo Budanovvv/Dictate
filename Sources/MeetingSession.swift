@@ -129,6 +129,13 @@ final class MeetingSession: ObservableObject {
     private var statOrdinalEntries: [Int: Int] = [:]
     private var statOrdinalSeconds: [Int: Double] = [:]
     private var statPhantomsRejected = 0
+    private var statLabelsInherited = 0
+
+    /// The last entry written on the tap channel, in file order — what the
+    /// lexical inheritance rule reads. You-entries pass it by untouched: the
+    /// channels are separate audio, and a remark of the owner's does not
+    /// interrupt a sentence arriving from the call.
+    private var lastThem: (text: String, ordinal: Int?, start: TimeInterval)?
 
     private struct Entry {
         let start: TimeInterval
@@ -692,7 +699,27 @@ final class MeetingSession: ObservableObject {
                                              channelFrontiers: frontiers,
                                              inflightStarts: Array(inflight.values))
         guard n > 0 else { return }
-        for entry in pending.prefix(n) {
+        for var entry in pending.prefix(n) {
+            // The words overrule the embeddings: a tap-channel entry that
+            // finishes the previous voice's unfinished sentence belongs to
+            // that voice, whatever the diarizer measured (the 2026-08-17
+            // ground truth: a split voice sits at the same distance as two
+            // real people, so this is the only signal that can heal it).
+            if !entry.you {
+                if let last = lastThem,
+                   let host = MeetingSpeakerPolicy.inheritedOrdinal(
+                       previousText: last.text, previousOrdinal: last.ordinal,
+                       nextText: entry.text, nextOrdinal: entry.ordinal,
+                       secondsApart: entry.start - last.start) {
+                    statLabelsInherited += 1
+                    Log.d("diar: label inherited — spk\(entry.ordinal.map(String.init) ?? "?") "
+                          + "finishes spk\(host)'s sentence at \(clock(entry.start))")
+                    entry = Entry(start: entry.start, speaker: Self.speakerLabel(host),
+                                  text: entry.text, you: false,
+                                  seconds: entry.seconds, ordinal: host)
+                }
+                lastThem = (entry.text, entry.ordinal, entry.start)
+            }
             // A voice the user has already named keeps that name for the rest
             // of the session — including in the file.
             let speaker = speakerNames[entry.speaker] ?? entry.speaker
@@ -826,7 +853,7 @@ final class MeetingSession: ObservableObject {
         let histogram = s.turnHistogram.sorted { $0.key < $1.key }
             .map { "\($0.key)×\($0.value)" }
             .joined(separator: " ")
-        Log.d("diar: summary — threshold \(s.thresholdNote), \(s.windows) window(s) diarized, no voice \(s.noVoice), failed \(s.failures), merged \(s.merged) micro-cluster(s), turns-per-window [\(histogram)]")
+        Log.d("diar: summary — threshold \(s.thresholdNote), \(s.windows) window(s) diarized, no voice \(s.noVoice), failed \(s.failures), merged \(s.merged) micro-cluster(s), \(statLabelsInherited) label(s) inherited, turns-per-window [\(histogram)]")
     }
 
     static func dateLine(_ date: Date) -> String {

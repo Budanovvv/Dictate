@@ -143,6 +143,45 @@ enum MeetingSpeakerPolicy {
             }
     }
 
+    // MARK: - Lexical label inheritance
+
+    /// The words themselves overrule the embeddings: when one voice stops
+    /// mid-sentence and the "other" voice finishes that very sentence, they
+    /// are one person the diarizer tore in two.
+    ///
+    /// Measured on the live meeting of 2026-08-17 (owner's ground truth:
+    /// two people on the tap channel, the diarizer wrote four): the split
+    /// pair sat at cosine distance 0.847 while the two REAL people sat at
+    /// 0.844 — acoustics cannot tell these cases apart even in hindsight,
+    /// so no threshold and no re-clustering can fix it. The transcript
+    /// could: ten of the torn fragments opened in lower case, most of the
+    /// rest continued a line that had stopped without a full stop.
+    ///
+    /// The evidence read here is exactly `TranscriptCleanup.isCapSplit`'s —
+    /// the rule behind 144 correct joins and zero wrong ones — applied
+    /// across a label boundary instead of within one. All three signals are
+    /// required, because a wrong inheritance steals words from a real
+    /// person: an unfinished line followed by a CAPITAL is somebody being
+    /// interrupted, and that is a genuine speaker change.
+    ///
+    /// - Parameters:
+    ///   - previousText/previousOrdinal: the last entry written on the tap
+    ///     channel. A collective entry (nil ordinal) inherits nothing and
+    ///     breaks the chain — there is no voice to hand over.
+    ///   - nextText/nextOrdinal: the entry about to be written.
+    ///   - secondsApart: start-to-start, the same clock `isCapSplit` reads.
+    /// - Returns: the ordinal the next entry should be written under, or
+    ///   nil to leave it exactly as the diarizer said.
+    static func inheritedOrdinal(previousText: String, previousOrdinal: Int?,
+                                 nextText: String, nextOrdinal: Int?,
+                                 secondsApart: TimeInterval) -> Int? {
+        guard let host = previousOrdinal, nextOrdinal != host,
+              secondsApart >= 0, secondsApart <= TranscriptCleanup.capSplitWindow,
+              !TranscriptCleanup.endsSentence(previousText),
+              TranscriptCleanup.startsLowercase(nextText) else { return nil }
+        return host
+    }
+
     // MARK: - The clustering threshold (hidden calibration knob)
 
     /// The compiled clustering threshold — FluidAudio's own default.
