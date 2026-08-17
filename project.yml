@@ -119,6 +119,9 @@ targets:
       # translation path rather than opening a second session of its own.
       - path: Sources/AppleTranslator.swift
       - path: Sources/TranscriptCopy.swift
+      # The WAV plumbing of the dump/replay debug instruments: a dumped file
+      # must be replayable by construction, and the round trip is the proof.
+      - path: Sources/MeetingReplay.swift
       - path: Sources/MeetingTitler.swift
       # The generation engines the titler now goes through. Compiled in so the
       # filter tests keep testing the code the app actually runs — the filters

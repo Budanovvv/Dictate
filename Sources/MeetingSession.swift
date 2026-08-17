@@ -137,6 +137,29 @@ final class MeetingSession: ObservableObject {
     /// interrupt a sentence arriving from the call.
     private var lastThem: (text: String, ordinal: Int?, start: TimeInterval)?
 
+    // Debug instruments (hidden defaults, see MeetingReplay.swift): a live
+    // session may dump both channels to disk; a replay session takes both
+    // channels FROM disk and never touches the mic or the tap. The pipeline
+    // between those edges is identical on purpose.
+    private var dump: MeetingAudioDump?
+    private var replay: MeetingReplay?
+    /// The replay's stand-in for the recorder's rolling buffer — the You
+    /// channel's audio lives in AudioRecorder during a live session, and the
+    /// session cannot inject bytes into it (nor should it: that capture path
+    /// is the most grabla-laden code in the project).
+    private var replayYouPCM = Data()
+
+    private func currentYouPCM() -> Data {
+        replay != nil ? replayYouPCM : mic.currentPCM()
+    }
+
+    private func rolloverYou() -> (pcm: Data, duration: Double) {
+        guard replay != nil else { return mic.rollover() }
+        let pcm = replayYouPCM
+        replayYouPCM = Data()
+        return (pcm, Double(pcm.count) / Double(AudioRecorder.sampleRate * 2))
+    }
+
     private struct Entry {
         let start: TimeInterval
         let speaker: String
@@ -221,23 +244,46 @@ final class MeetingSession: ObservableObject {
             options: [.idleSystemSleepDisabled, .userInitiated],
             reason: "Meeting transcript recording")
         backpressureLogged = false
-        try tap.start()   // first run triggers the system-audio TCC prompt
-        tap.onBuffer = { [weak self] pcm, peak in
-            DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
-        }
-        // The recorder retries a failing input for ~4.5 s on its own; this
-        // fires only when it truly gave up (device vanished). One delayed
-        // restart attempt — a meeting must not lose its You channel to a
-        // transient device hiccup, and must not spin on a permanent one.
-        mic.onRecoveryFailed = { [weak self] _ in
-            guard let self, self.isActive else { return }
-            Log.d("meeting: mic channel failed — retrying in 3s")
-            _ = self.mic.stop()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                guard let self, self.isActive else { return }
-                self.youWindowStart = self.now
-                self.mic.start()
+        replayYouPCM = Data()
+        replay = MeetingReplay.ifRequested()
+        if let replay {
+            // Canned channels: the mic and the tap are never started, so a
+            // replay run needs no devices, no TCC and no meeting actually
+            // happening. Everything downstream of the append paths is the
+            // real pipeline.
+            replay.onYou = { [weak self] pcm, peak in
+                guard let self, self.isActive, !self.stopping else { return }
+                self.replayYouPCM.append(pcm)
+                let level = min(1.0, peak * 3)
+                if level > self.audioLevel { self.audioLevel = level }
             }
+            replay.onThem = { [weak self] pcm, peak in
+                self?.appendThem(pcm, peak: peak)
+            }
+            replay.start()
+        } else {
+            try tap.start()   // first run triggers the system-audio TCC prompt
+            tap.onBuffer = { [weak self] pcm, peak in
+                DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
+            }
+            // The recorder retries a failing input for ~4.5 s on its own; this
+            // fires only when it truly gave up (device vanished). One delayed
+            // restart attempt — a meeting must not lose its You channel to a
+            // transient device hiccup, and must not spin on a permanent one.
+            mic.onRecoveryFailed = { [weak self] _ in
+                guard let self, self.isActive else { return }
+                Log.d("meeting: mic channel failed — retrying in 3s")
+                _ = self.mic.stop()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    guard let self, self.isActive else { return }
+                    self.youWindowStart = self.now
+                    self.mic.start()
+                }
+            }
+            // A dump only ever records a LIVE meeting — dumping a replay
+            // would copy the source files at worse fidelity.
+            dump = MeetingAudioDump.ifRequested(
+                stem: fileURL?.deletingPathExtension().lastPathComponent ?? "meeting")
         }
         lastTapBufferAt = Date()
         lastTapRestartAt = .distantPast
@@ -249,13 +295,17 @@ final class MeetingSession: ObservableObject {
         statOrdinalEntries = [:]
         statOrdinalSeconds = [:]
         statPhantomsRejected = 0
+        statLabelsInherited = 0
+        lastThem = nil
         // The window's equalizer: mic level drives it directly (delivered on
         // main by AudioRecorder); the tap side feeds it from appendThem.
-        mic.onLevel = { [weak self] level in
-            guard let self, self.isActive else { return }
-            self.audioLevel = max(level, self.audioLevel * 0.7)
+        if replay == nil {
+            mic.onLevel = { [weak self] level in
+                guard let self, self.isActive else { return }
+                self.audioLevel = max(level, self.audioLevel * 0.7)
+            }
+            mic.start()
         }
-        mic.start()
         isActive = true
         // 0.5 s cadence is the window-cut resolution — half the shortest
         // silence gap we cut on.
@@ -277,8 +327,15 @@ final class MeetingSession: ObservableObject {
         // transcribing (a tail VAD check may simply not have run yet).
         cutYouWindow(transcribe: (youLastSpeechAt ?? youWindowStart) >= youWindowStart)
         cutThemWindow(transcribe: (themLastSpeechAt ?? -1) >= themWindowStart)
-        _ = mic.stop()
-        tap.stop()
+        if let replay {
+            replay.stop()
+            self.replay = nil
+        } else {
+            _ = mic.stop()
+            tap.stop()
+        }
+        dump?.close()
+        dump = nil
         isActive = false
         listeningFor = nil
         livePreview = nil
@@ -298,6 +355,7 @@ final class MeetingSession: ObservableObject {
         guard isActive, !stopping else { return }
         lastTapBufferAt = Date()
         themPCM.append(pcm)
+        dump?.appendThem(pcm)
         // Their voices move the equalizer too — "hearing the call" is as
         // important a signal as "hearing you".
         let level = min(1.0, peak * 3)
@@ -311,7 +369,10 @@ final class MeetingSession: ObservableObject {
         // Dead-tap self-healing: no buffers at all for 5 s = the tap is gone
         // (an output-device change can kill the aggregate). Restart it, at
         // most once per 30 s so a permanently broken tap doesn't thrash.
-        if Date().timeIntervalSince(lastTapBufferAt) > 5,
+        // Not while replaying: there is no tap, and a drained file pair would
+        // otherwise "heal" its way into a live capture mid-bench.
+        if replay == nil,
+           Date().timeIntervalSince(lastTapBufferAt) > 5,
            Date().timeIntervalSince(lastTapRestartAt) > 30 {
             lastTapRestartAt = Date()
             Log.d("meeting: tap buffer flow stalled — recreating the tap")
@@ -398,7 +459,7 @@ final class MeetingSession: ObservableObject {
         let tailBytes = AudioRecorder.sampleRate * 2   // 1 s of Int16 mono
         if !youTailBusy, t - youWindowStart >= 1.0 {
             youTailBusy = true
-            let tail = Data(mic.currentPCM().suffix(tailBytes))
+            let tail = Data(currentYouPCM().suffix(tailBytes))
             Task {
                 let speech = await SpeechGate.shared.hasSpeech(
                     AudioRecorder.floatSamples(fromPCM: tail)) ?? true
@@ -449,7 +510,7 @@ final class MeetingSession: ObservableObject {
             return
         }
         let useYou = youActive && (!themActive || (youLastSpeechAt ?? 0) >= (themLastSpeechAt ?? 0))
-        let pcm = useYou ? mic.currentPCM() : themPCM
+        let pcm = useYou ? currentYouPCM() : themPCM
         // 0.7 s of audio is enough for a first hypothesis — a 3-second
         // phrase deserves at least one shot at the live line.
         guard pcm.count >= Int(Double(AudioRecorder.sampleRate) * 1.4) else { return }
@@ -489,7 +550,8 @@ final class MeetingSession: ObservableObject {
         let pcmStart = youWindowStart
         // Hot rollover: hands back the window and keeps recording — the same
         // no-teardown path the dictation key rollover uses.
-        let (pcm, duration) = mic.rollover()
+        let (pcm, duration) = rolloverYou()
+        dump?.appendYou(pcm)
         youWindowStart = now
         youFirstSpeechAt = nil
         livePreview = nil   // the final entry supersedes the hypothesis
