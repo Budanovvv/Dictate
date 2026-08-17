@@ -59,6 +59,9 @@ struct MeetingsView: View {
     @FocusState private var searchFocused: Bool
     @State private var selection: Selection?
     @State private var meetings: [ArchivedMeeting] = []
+    /// Which `reload()` is the current one. Loads run in the background and
+    /// may finish out of order; only the latest is allowed to land.
+    @State private var reloadGeneration = 0
     @State private var query = ""
     /// The toolbar's Rename… routes to the same popover the title carries,
     /// so there is one editing surface no matter how you get to it.
@@ -107,32 +110,39 @@ struct MeetingsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            reload()
             // During a call the window is a glanceable strip over the call;
-            // opened afterwards it is a library. The sidebar decides which.
+            // opened afterwards it is a library. The sidebar decides which —
+            // and does so before the archive has loaded, so the window is on
+            // screen immediately even when the disk (iCloud) is slow.
             if session.isActive {
                 selection = .live
                 sidebarShown = false
             } else {
                 sidebarShown = true
-                selection = meetings.first.map { .archived($0.url) }
                 // After the window has actually taken key status (AppDelegate
                 // defers that by a runloop turn), or the request lands on a
                 // window that cannot hold focus yet and is dropped.
                 DispatchQueue.main.async { listFocused = true }
             }
-            // A meeting picked in the menu wins over both defaults — the window
-            // is opening BECAUSE of it.
-            applyRequest()
-            backfillSummaries()
+            reload {
+                if !session.isActive, selection == nil {
+                    selection = meetings.first.map { .archived($0.url) }
+                }
+                // A meeting picked in the menu wins over both defaults — the
+                // window is opening BECAUSE of it.
+                applyRequest()
+                backfillSummaries()
+            }
         }
         // The same request arriving at a window that already exists.
         .onChange(of: navigator.requests) { _ in applyRequest() }
         .onChange(of: session.isActive) { active in
-            // A finished session becomes a file: refresh and follow it.
-            reload()
+            // A session that has just started needs no list to be shown.
             if active { selection = .live }
-            else if let newest = meetings.first { selection = .archived(newest.url) }
+            // A finished session becomes a file: refresh and follow it.
+            reload {
+                if !active, let newest = meetings.first { selection = .archived(newest.url) }
+            }
             // Deliberately NOT backfilling here. A session that has just gone
             // inactive is still being titled and summarized by finalizeIfDrained,
             // and a backfill started in the same breath would ask the model
@@ -696,11 +706,31 @@ struct MeetingsView: View {
         selection = .archived(url)
     }
 
-    private func reload() {
-        meetings = MeetingArchive.list()
-        // Eighteen short strings: cheap enough to do inline, and cheapest of
-        // all on a reload that changed nothing (the vectors are kept).
-        meaning.index(meetings)
+    /// Reads the archive off the main thread. `MeetingArchive.list()` opens
+    /// every transcript in the folder, and the folder lives in iCloud-synced
+    /// Documents — reading a file iCloud has evicted blocks on a network
+    /// download, and on the main thread that froze the whole app for 16
+    /// seconds at the start of a live meeting (caught by the hang watchdog,
+    /// 2026-08-17). The window opens on what it has; the list lands when the
+    /// disk answers, and whatever needed the list runs in `done`.
+    private func reload(then done: @escaping () -> Void = {}) {
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        let youLabel = L("You")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let loaded = MeetingArchive.list(youLabel: youLabel)
+            DispatchQueue.main.async {
+                // A reload started later has fresher facts (a rename, a
+                // delete) — an older read arriving after it must not win.
+                guard generation == reloadGeneration else { return }
+                meetings = loaded
+                // Eighteen short strings: cheap enough to do inline, and
+                // cheapest of all on a reload that changed nothing (the
+                // vectors are kept).
+                meaning.index(meetings)
+                done()
+            }
+        }
     }
 
     /// Fills in the summaries of meetings recorded before there were any.

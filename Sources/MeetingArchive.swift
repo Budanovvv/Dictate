@@ -497,12 +497,14 @@ enum MeetingArchive {
 
     // MARK: - Disk
 
-    static func list() -> [ArchivedMeeting] {
+    /// `youLabel` is taken as a parameter so a background caller can capture
+    /// it on the main thread first — the localization table is not something
+    /// to read while the user may be switching languages on main.
+    static func list(youLabel: String) -> [ArchivedMeeting] {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.creationDateKey],
             options: [.skipsHiddenFiles]) else { return [] }
-        let youLabel = L("You")
         return files
             .filter { $0.pathExtension == "md" }
             .compactMap { url -> ArchivedMeeting? in
