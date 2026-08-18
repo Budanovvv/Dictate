@@ -56,6 +56,24 @@ final class MeetingReplayTests: XCTestCase {
         XCTAssertEqual(MeetingWAV.pcm(fromWAV: wav), pcm)
     }
 
+    func testAFalseStartDoesNotSpendTheOneShot() {
+        // The dump is armed, not switched on, so the shot must land on a real
+        // meeting. A session opened and closed in seconds — one happened
+        // during the first replay test — leaves it armed.
+        let second = MeetingWAV.bytesPerSecond
+        XCTAssertFalse(MeetingAudioDump.spendsTheShot(youBytes: 4 * second, themBytes: 0))
+        XCTAssertFalse(MeetingAudioDump.spendsTheShot(youBytes: 0, themBytes: 0))
+        XCTAssertFalse(MeetingAudioDump.spendsTheShot(youBytes: 59 * second, themBytes: 59 * second))
+    }
+
+    func testTheLongerChannelDecides() {
+        // A call the owner mostly listened to still yields material, and so
+        // does one where the tap never came up.
+        let minimum = Int(MeetingAudioDump.minimumUsefulSeconds) * MeetingWAV.bytesPerSecond
+        XCTAssertTrue(MeetingAudioDump.spendsTheShot(youBytes: 0, themBytes: minimum))
+        XCTAssertTrue(MeetingAudioDump.spendsTheShot(youBytes: minimum, themBytes: 0))
+    }
+
     func testPeakMatchesTheLiveTapsScale() {
         // The live tap reports max |sample| / 32768 — the replay must move
         // the same equalizer the same way.

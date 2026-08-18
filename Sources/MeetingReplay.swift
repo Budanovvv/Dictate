@@ -93,6 +93,29 @@ final class MeetingAudioDump {
     let youURL: URL
     let themURL: URL
 
+    /// A dump is ARMED, not switched on: it captures the next meeting worth
+    /// capturing and disarms itself.
+    ///
+    /// The switch semantics failed on their first outing (2026-08-18): the
+    /// owner meant to record test material and forgot to arm it before the
+    /// call — the same class of miss as forgetting to STOP a recording, and
+    /// unfixable by remembering harder. One-shot removes both halves: arm it
+    /// whenever it comes to mind, and the next real meeting is the one that
+    /// lands. It also bounds the blast radius — a forgotten switch would put
+    /// the audio of every future meeting on disk at ~115 MB an hour.
+    ///
+    /// "Worth capturing" is measured, not assumed: a false start (a session
+    /// opened and closed in seconds — one happened during the very first
+    /// replay test) must not consume the shot.
+    static let minimumUsefulSeconds: Double = 60
+
+    /// Did this capture earn the one shot? Measured on the LONGER channel:
+    /// a call where the owner mostly listened still yields material, and one
+    /// where the tap never came up is still worth having for the You side.
+    static func spendsTheShot(youBytes: Int, themBytes: Int) -> Bool {
+        Double(max(youBytes, themBytes)) / Double(MeetingWAV.bytesPerSecond) >= minimumUsefulSeconds
+    }
+
     /// nil unless the hidden default asks for a dump. Files live in
     /// App Support (NOT in Documents — iCloud has no business syncing debug
     /// audio), named after the transcript so they find each other later.
@@ -121,7 +144,7 @@ final class MeetingAudioDump {
         them = try FileHandle(forWritingTo: themURL)
         you.seekToEndOfFile()
         them.seekToEndOfFile()
-        Log.d("dump: recording channels -> \(youURL.lastPathComponent), \(themURL.lastPathComponent)")
+        Log.d("dump: armed — recording \(youURL.lastPathComponent), \(themURL.lastPathComponent)")
     }
 
     func appendYou(_ pcm: Data) {
@@ -133,7 +156,10 @@ final class MeetingAudioDump {
     }
 
     /// Patches the header sizes and closes. After this the files are ordinary
-    /// WAVs — playable in QuickTime, replayable here.
+    /// WAVs — playable in QuickTime, replayable here. A capture long enough
+    /// to be test material spends the one shot; a false start leaves it armed
+    /// and deletes its own stub files, so the replay folder never holds a
+    /// pair too short to bench.
     func close() {
         queue.async {
             for (handle, bytes) in [(self.you, self.youBytes), (self.them, self.themBytes)] {
@@ -141,9 +167,16 @@ final class MeetingAudioDump {
                 handle.write(MeetingWAV.header(dataBytes: bytes))
                 try? handle.close()
             }
-            Log.d(String(format: "dump: closed — you %.1fs, them %.1fs",
-                         Double(self.youBytes) / Double(MeetingWAV.bytesPerSecond),
-                         Double(self.themBytes) / Double(MeetingWAV.bytesPerSecond)))
+            let note = String(format: "dump: closed — you %.1fs, them %.1fs",
+                              Double(self.youBytes) / Double(MeetingWAV.bytesPerSecond),
+                              Double(self.themBytes) / Double(MeetingWAV.bytesPerSecond))
+            guard Self.spendsTheShot(youBytes: self.youBytes, themBytes: self.themBytes) else {
+                for url in [self.youURL, self.themURL] { try? FileManager.default.removeItem(at: url) }
+                Log.d(note + " — too short to be material, files removed, still armed")
+                return
+            }
+            UserDefaults.standard.removeObject(forKey: MeetingReplayDefaults.dumpKey)
+            Log.d(note + " — one shot spent, dump disarmed")
         }
     }
 }
