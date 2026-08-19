@@ -93,6 +93,17 @@ final class Settings {
 
     /// The translate key produced a result at least once (incl. onboarding) —
     /// the user knows the feature, the tip stays silent forever.
+    /// The consent reminder has been shown once. Recording other people
+    /// without their knowledge is illegal in many places, so the app says so —
+    /// but it says it ONCE, on the first meeting ever recorded. Before every
+    /// session it was friction that taught nothing after the first time
+    /// (owner's call, 2026-08-19); never at all would leave a public app
+    /// silent on the one thing about it that carries legal weight.
+    var meetingConsentSeen: Bool {
+        get { d.bool(forKey: "meetingConsentSeen") }
+        set { d.set(newValue, forKey: "meetingConsentSeen") }
+    }
+
     var translateUsedEver: Bool {
         get { d.bool(forKey: "translateUsedEver") }
         set { d.set(newValue, forKey: "translateUsedEver") }

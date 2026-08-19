@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// Local meeting transcription (mic = You, system audio tap = Them).
     private let meeting = MeetingSession()
     private var meetingWindow: NSPanel?
+    private var meetingPill: MeetingPill?
+    private var meetingCloseGuard: WindowCloseGuard?
+    /// The transcript is folded into the pill. Only meaningful while a session
+    /// is live — a finished meeting is a library, and a library has no
+    /// minimized form.
+    private var meetingMinimized = false
     /// Which transcript the meetings window should show. The window is created
     /// once and reused, so "open this one" has to be state the view watches
     /// (see MeetingsNavigator) rather than an argument it would only ever read
@@ -48,7 +54,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if meetingWindow == nil {
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 420, height: 500),
-                styleMask: [.titled, .closable, .resizable,
+                // .miniaturizable so the middle traffic light EXISTS: folding
+                // a window away is what that button is for on this platform,
+                // and a bespoke chevron elsewhere in the window is a second
+                // vocabulary for a word macOS already has (the owner went
+                // looking for the yellow button and found nothing there).
+                styleMask: [.titled, .closable, .miniaturizable, .resizable,
                             .nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered, defer: false
             )
@@ -97,8 +108,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 // has to be laid out in the title bar's own space.
                 .ignoresSafeArea(.container, edges: .top))
             panel.center()
+            // Closing is the gesture people already reach for, so it has to
+            // mean the safest thing it could mean. While a session is live the
+            // close button folds the transcript into the pill instead of
+            // shutting it: the recording keeps running and says so, visibly,
+            // one step smaller. (Field test 2026-08-19: the owner closed the
+            // window looking for a way to minimize it and read the result as
+            // "everything stopped" — a recorder that LOOKS stopped while it
+            // records is the worst outcome of the three.) With no session it
+            // is an ordinary library window and closes.
+            meetingCloseGuard = WindowCloseGuard { [weak self] in
+                guard let self, self.meeting.isActive else { return true }
+                self.minimizeMeeting()
+                return false
+            }
+            panel.delegate = meetingCloseGuard
+            // The yellow button means the pill, not the Dock: this app has no
+            // permanent Dock icon to minimize INTO, and a recording parked on
+            // the Dock's shelf is a recording nobody can see is running.
+            //
+            // Re-targeting the button itself, because there is no delegate hook
+            // for this: NSWindowDelegate has windowShouldClose but nothing
+            // corresponding for miniaturize — only windowWillMiniaturize, which
+            // cannot say no. (Written as a delegate method first; it compiled,
+            // was never called, and the window went to the Dock exactly as
+            // before.)
+            if let yellow = panel.standardWindowButton(.miniaturizeButton) {
+                yellow.target = self
+                yellow.action = #selector(meetingMiniaturizeClicked)
+            }
             meetingWindow = panel
         }
+        // Showing the transcript IS leaving the minimized state, whichever
+        // door was used to get here — the window button, the pill's chevron, or
+        // the menu's "Show Live Transcript". Doing it here rather than in the
+        // expand path is what keeps the two from being shown at once, which is
+        // exactly what the menu route did (found 2026-08-19).
+        meetingMinimized = false
+        meetingPill?.hide()
         applyMeetingWindowMode()
         // Only an explicit "open the library" with no call running may take the
         // keyboard. Everything else — the window appearing because a meeting
@@ -130,6 +177,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// exactly the "permanently in fog" the sidebar was reported for. Browsing
     /// an archive steals focus from nobody, so out of a call the panel behaves
     /// like any other window: click it and it is key, and it looks it.
+    /// Fold the transcript into the pill, and back.
+    ///
+    /// Two windows rather than one window resizing: the transcript is a titled,
+    /// resizable panel and the pill is a borderless capsule that must float
+    /// over full-screen calls without ever taking the keyboard. Those are
+    /// different windows in AppKit's terms, and morphing one into the other
+    /// would mean rewriting its style mask under the user mid-call.
+    private func minimizeMeeting() {
+        guard meeting.isActive else { return }
+        meetingMinimized = true
+        // Read the frame BEFORE hiding it — that is where the pill goes.
+        let frame = meetingWindow?.frame
+        meetingWindow?.orderOut(nil)
+        meetingPillController().show(from: frame)
+        Log.d("meeting: transcript minimized to the pill")
+    }
+
+    @objc private func meetingMiniaturizeClicked() {
+        guard meeting.isActive else {
+            meetingWindow?.miniaturize(nil)
+            return
+        }
+        minimizeMeeting()
+    }
+
+    private func expandMeeting() {
+        showMeetingWindow()
+        Log.d("meeting: pill expanded back to the transcript")
+    }
+
+    private func meetingPillController() -> MeetingPill {
+        if let meetingPill { return meetingPill }
+        let pill = MeetingPill(
+            session: meeting,
+            onStop: { [weak self] in self?.meeting.stop() },
+            onExpand: { [weak self] in self?.expandMeeting() },
+            onHide: { [weak self] in
+                self?.meetingPill?.hide()
+                Log.d("meeting: pill hidden — menu bar only")
+            })
+        meetingPill = pill
+        return pill
+    }
+
     private func applyMeetingWindowMode() {
         guard let panel = meetingWindow else { return }
         let live = meeting.isActive
@@ -154,26 +245,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         window.setFrame(frame, display: true, animate: true)
     }
 
-    /// Menu toggle for the meeting transcript. The first start of every
-    /// session shows a consent reminder: recording call participants without
-    /// their knowledge is illegal in many jurisdictions, and a menu click
-    /// must not silently become a law problem. Everything is processed
-    /// locally — the dialog says so.
+    /// Menu toggle for the meeting transcript.
+    ///
+    /// The consent reminder appears ONCE, before the first meeting this
+    /// installation ever records.
+    ///
+    /// It used to appear before every session. Recording other people without
+    /// their knowledge is illegal in many places, so a menu click should not
+    /// quietly become a legal problem — but somebody who reaches for "Record
+    /// Meeting" for the tenth time has already been told, and a dialog that
+    /// repeats itself weekly is dismissed unread, which is the opposite of
+    /// informed (owner's call, 2026-08-19). Said once, at the moment it is
+    /// news, it is a notice; said every time, it is only friction.
     private func toggleMeetingTranscript() {
         if meeting.isActive {
             meeting.stop()
             return
         }
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = L("Record this meeting?")
-        alert.informativeText = L("Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.")
-        alert.addButton(withTitle: L("Start"))
-        alert.addButton(withTitle: L("Cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if !Settings.shared.meetingConsentSeen {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = L("Record this meeting?")
+            alert.informativeText = L("Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.")
+            alert.addButton(withTitle: L("Start"))
+            alert.addButton(withTitle: L("Cancel"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            // Only after they agreed: someone who cancels has not been told
+            // anything they acted on, and deserves the notice again.
+            Settings.shared.meetingConsentSeen = true
+        }
         do {
             try meeting.start()
-            statusController.applyState(dictation.state)   // show the red dot
+            statusController.applyState(dictation.state)   // show the red mark
             showMeetingWindow()
         } catch {
             statusController.showError(Lf("Couldn't start the meeting transcript: %@",
@@ -218,8 +321,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // editor, no file hunting. Not `focus:` — the call itself may well
             // still be running, and the moment a transcript closes is the worst
             // possible one to grab the keyboard.
-            self.showMeetingWindow()
-            // Drop the red recording dot from the menu bar.
+            // Someone who folded the transcript away asked not to look at it;
+            // finishing is not a reason to overrule that. The meeting is in the
+            // library either way, one menu click from here.
+            let wasMinimized = self.meetingMinimized
+            self.meetingMinimized = false
+            self.meetingPill?.hide()
+            if !wasMinimized { self.showMeetingWindow() }
+            // Drop the red recording indicator from the menu bar.
             self.statusController.applyState(self.dictation.state)
         }
         dictation.onError = { [weak self] message in

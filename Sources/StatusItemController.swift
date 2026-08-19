@@ -69,15 +69,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func updateIcon(for state: DictationController.State) {
         guard let button = item.button else { return }
         stopRipple()
+        stopMeetingPulse()
         switch state {
         case .idle:
-            // A live meeting transcript shows as a red dot the whole time —
-            // an armed recording must never be invisible, and it doubles as
-            // the "don't forget to stop" reminder. Dictation states (below)
-            // still take over while a dictation is actually running.
-            button.image = meetingActive()
-                ? coloredSymbol("record.circle.fill", color: .systemRed)
-                : Self.waveIcon
+            // A live meeting shows as a RED WAVE the whole time — an armed
+            // recording must never be invisible, and it doubles as the "don't
+            // forget to stop" reminder. It was a static red dot, and a dot is
+            // only proof that the app INTENDS to record; bars that move with
+            // the room are proof that it is hearing something, which is the
+            // question actually being asked when the transcript is hidden.
+            // Dictation states (below) still take over while a dictation runs.
+            if meetingActive() {
+                startMeetingPulse()
+            } else {
+                button.image = Self.waveIcon
+                button.toolTip = nil
+            }
         case .recording:
             smoothedLevel = 0
             button.image = Self.waveImage(scale: { _ in 0.3 })
@@ -92,6 +99,62 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         smoothedLevel = smoothedLevel * 0.6 + level * 0.4
         let l = smoothedLevel
         item.button?.image = Self.waveImage(scale: { _ in 0.3 + 0.7 * l })
+    }
+
+    /// The running meeting's mark: a red wave breathing on a fixed cycle.
+    ///
+    /// Mechanical on purpose, and it started out the other way. Driving the
+    /// bars from the meeting's audio level was the obvious idea — the dictation
+    /// mark does exactly that — but it answers a question nobody is asking. A
+    /// glance at the menu bar during a call asks "is this thing still
+    /// recording", not "how loud is the room right now"; and level-driven bars
+    /// go flat during every pause, which is the one moment the answer must not
+    /// look like "no". A steady breath says "running" and cannot say anything
+    /// misleading.
+    ///
+    /// Cost is why the period is what it is: a dictation lasts seconds, a
+    /// meeting runs for forty minutes, and this project has twice paid a
+    /// double-digit percentage of a core for motion that never settled
+    /// (GRABLI). Five redraws a second of an 18pt image is a different order of
+    /// thing from a SwiftUI animation asking the window for sixty frames — but
+    /// it is not free either, which is why it steps five times a second and not
+    /// twelve like the ripple it sits next to.
+    private var pulseTimer: Timer?
+    private var pulsePhase: Double = 0
+    private static let pulseStep: TimeInterval = 0.2
+    private static let pulsePeriod: Double = 2.0
+
+    private func startMeetingPulse() {
+        stopMeetingPulse()
+        pulsePhase = 0
+        drawPulse()
+        pulseTimer = Timer.scheduledTimer(withTimeInterval: Self.pulseStep, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.pulsePhase += Self.pulseStep / Self.pulsePeriod * 2 * .pi
+            self.drawPulse()
+        }
+    }
+
+    private func drawPulse() {
+        // 0.35…0.95 — never flat (flat would read as "not recording") and never
+        // at full height (that is the idle mark's size, and the two must not
+        // look the same at a glance).
+        let breath = 0.65 + 0.30 * sin(pulsePhase)
+        item.button?.image = Self.waveImage(scale: { _ in breath }, color: .systemRed)
+        item.button?.toolTip = meetingTip()
+    }
+
+    private func stopMeetingPulse() {
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+    }
+
+    /// What hovering the mark says. The wave proves the app is hearing
+    /// something; the tooltip answers the two questions it cannot — how long
+    /// this has been running, and whether anything is being written down.
+    private func meetingTip() -> String {
+        guard let start = meetingStarted() else { return L("Recording") }
+        return Lf("Recording · %@", Self.elapsed(since: start))
     }
 
     private func startRipple() {
@@ -124,11 +187,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private static let waveIcon = waveImage(scale: { _ in 1 })
 
     /// Brand wave with per-bar height multipliers (0…1) for the animated states.
-    private static func waveImage(scale: (Int) -> Double) -> NSImage {
+    ///
+    /// `color` breaks the template rule on purpose, and only for one state: a
+    /// live meeting. HIG wants menu bar icons monochrome so the system can
+    /// recolor them, and every state here obeys that — except the one that says
+    /// a recording is running, where red is the convention every recorder on
+    /// this platform (and the system's own privacy dot) already uses. It
+    /// replaced a red `record.circle.fill`, so the colour is not new; what is
+    /// new is that the mark now moves with the voices it is recording.
+    private static func waveImage(scale: (Int) -> Double, color: NSColor? = nil) -> NSImage {
         let s: CGFloat = 18
         let image = NSImage(size: NSSize(width: s, height: s))
         image.lockFocus()
-        NSColor.black.setFill()
+        (color ?? .black).setFill()
         let profile: [CGFloat] = [0.36, 0.64, 1.0, 0.64, 0.36]
         let barW: CGFloat = 2.4
         let gap: CGFloat = 3.5
@@ -139,7 +210,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSBezierPath(roundedRect: r, xRadius: barW / 2, yRadius: barW / 2).fill()
         }
         image.unlockFocus()
-        image.isTemplate = true
+        image.isTemplate = color == nil
         return image
     }
 
@@ -203,6 +274,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         record.image = Self.redSymbol(recording ? "stop.circle.fill" : "record.circle")
         record.target = self
         menu.addItem(record)
+
+        // The way BACK to a running transcript belongs at the top level, next
+        // to the way to stop it. It also lives inside the Meetings submenu
+        // below, and that was the whole of it until a field test found the
+        // hole: with the window closed and the pill hidden, the menu is the
+        // only door left, and a door behind a submenu is a door nobody finds
+        // ("there was only Stop Recording" — 2026-08-19).
+        if recording {
+            let show = NSMenuItem(title: L("Show Live Transcript"),
+                                  action: #selector(showLiveMeeting), keyEquivalent: "")
+            show.target = self
+            menu.addItem(show)
+        }
 
         addMeetingsItem(to: menu)
 

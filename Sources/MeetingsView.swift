@@ -886,18 +886,59 @@ enum MeetingsChrome {
 /// 22pt chip behind it on hover — deliberately the same geometry as the
 /// per-turn copy control (TurnCopy), so the ⋯ in the header and the copy chips
 /// down the transcript share a centre line instead of being two ideas.
-private struct ChromeButton: View {
-    let icon: String
-    let help: String
+/// Stop, in this window's own idiom rather than the system's default push
+/// button.
+///
+/// It was `Button("Stop")` with the standard bordered style, and next to a
+/// header made of quiet glyphs and dim monospaced digits it read as a piece of
+/// a different application — the one loud rectangle on the surface. The chrome
+/// here has a shape already: a compact label that carries no weight at rest and
+/// fills faintly under the pointer (ChromeGlyph). This is that shape, in red,
+/// because red is what this app already uses for "a recording is running" —
+/// the menu's stop item, the live row's dot, the menu bar mark. The button
+/// ending the recording and the mark announcing it now say the same colour.
+///
+/// Semantic `.red` rather than a brand colour on purpose: the brand gradient
+/// means Dictate, and stopping a recording is not a moment to advertise.
+private struct StopButton: View {
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            ChromeGlyph(icon: icon, hovering: hovering)
+            HStack(spacing: 4) {
+                Image(systemName: "stop.fill").imageScale(.small)
+                Text(L("Stop")).font(.callout)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.red.opacity(hovering ? 0.18 : 0.10)))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.red)
+        .help(L("Stop recording"))
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.1), value: hovering)
+    }
+}
+
+private struct ChromeButton: View {
+    let icon: String
+    let help: String
+    /// nil = the chrome's own quiet grey. A colour here is reserved for the
+    /// one control that ends something (stop), so the exception keeps its
+    /// meaning: if every glyph were tinted, none of them would read.
+    var tint: Color? = nil
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ChromeGlyph(icon: icon, hovering: hovering, tint: tint)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(tint ?? .secondary)
         .help(help)
         .onHover { hovering = $0 }
     }
@@ -908,6 +949,7 @@ private struct ChromeButton: View {
 private struct ChromeGlyph: View {
     let icon: String
     let hovering: Bool
+    var tint: Color? = nil
 
     var body: some View {
         Image(systemName: icon)
@@ -915,7 +957,7 @@ private struct ChromeGlyph: View {
             .frame(width: TurnCopy.chipSize, height: TurnCopy.chipSize)
             .background(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(hovering ? 0.08 : 0))
+                    .fill((tint ?? Color.primary).opacity(hovering ? (tint == nil ? 0.08 : 0.16) : 0))
             )
             // Same rule as the copy chip: the target is the square around the
             // chip, so most of what takes the click is invisible padding.
@@ -1213,7 +1255,7 @@ private struct TranscriptPane<MenuItems: View>: View {
                         .foregroundStyle(.secondary)
                 }
                 if let onStop {
-                    Button(L("Stop"), action: onStop).controlSize(.small)
+                    StopButton(action: onStop)
                 }
             }
             menuButton
@@ -2358,5 +2400,85 @@ private struct PulsingDot: View {
 
     private func lit(_ date: Date) -> Bool {
         Int(date.timeIntervalSinceReferenceDate / Self.beat) % 2 == 0
+    }
+}
+
+/// The meeting, minimized: proof that it is still recording, how long it has
+/// run, and the two controls that matter — stop, and back to the transcript.
+///
+/// Deliberately the dictation pill's shape, material and corner radius: the
+/// app already has one word for "something is being recorded right now", and a
+/// second dialect would only make the two look like different products. It is
+/// the same object at a different size, not a new one.
+///
+/// What it does NOT show is the speaker's name, and that is a decision rather
+/// than an omission. A glanceable badge is read without context and believed;
+/// a diarizer label is a guess that this project has repeatedly had to correct
+/// (a monologue was split across two names as recently as this week). The
+/// transcript is where a label can be seen next to the words that justify it,
+/// and renamed when it is wrong — a pill is not.
+struct MeetingPillView: View {
+    @ObservedObject var session: MeetingSession
+    @ObservedObject private var loc = Localization.shared
+    let onStop: () -> Void
+    let onExpand: () -> Void
+    /// Put even this away: the recording carries on, and the menu bar's red
+    /// wave becomes the only thing saying so. The third step of one gesture —
+    /// close the transcript to get the pill, close the pill to get the menu
+    /// bar — rather than a separate idea to be discovered.
+    let onHide: () -> Void
+
+    static let size = CGSize(width: 280, height: 64)
+
+    var body: some View {
+        // Two rows, and the second one spans the whole width on purpose.
+        // With the state text sharing a column beside the buttons it had 97pt
+        // to live in, and "Warming up the model…" needs 127 in English, 135 in
+        // German and 137 in French — every language truncated, measured rather
+        // than eyeballed. Given its own line it has 250, which fits the longest
+        // string in all thirteen with room left.
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                LevelWave(level: session.audioLevel)
+                // One tick a second, and only while the pill is on screen —
+                // the TimelineView stops itself when the view goes away. The
+                // house pattern for anything periodic here (see PulsingDot);
+                // a repeating animation would bill sixty frames a second for
+                // the whole length of the call.
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(elapsed).font(.body.monospacedDigit())
+                }
+                Spacer(minLength: 0)
+                ChromeButton(icon: "stop.fill", help: L("Stop recording"),
+                             tint: .red, action: onStop)
+                ChromeButton(icon: "chevron.up", help: L("Show transcript"), action: onExpand)
+                ChromeButton(icon: "xmark", help: L("Hide"), action: onHide)
+            }
+            Text(state)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var elapsed: String {
+        let s = max(0, Int(Date().timeIntervalSince(session.startedAt)))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// The same three phrases the full window's status strip uses, so the two
+    /// sizes of the same window never disagree about what is happening.
+    private var state: String {
+        if session.modelWarming { return L("Warming up the model…") }
+        if session.inflightCount > 0 { return L("Recognizing…") }
+        if session.listeningFor != nil { return L("Listening…") }
+        return L("Recording")
     }
 }
