@@ -23,13 +23,30 @@ enum Log {
         return f
     }()
 
+    /// Size at which the log rotates. Raised from 2 MB because one meeting
+    /// can fill that: a 70-minute session writes previews, VAD verdicts and
+    /// window cuts several times a second, and the diagnostics are only worth
+    /// having if a whole session fits in them. Two files of this size is the
+    /// most the log will ever occupy.
+    private static let maxSize = 8_000_000
+
     static func d(_ message: String) {
         guard enabled else { return }
         let line = "\(time.string(from: Date()))  \(message)\n"
         queue.async {
             if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
-               size > 2_000_000 {
-                try? FileManager.default.removeItem(at: url)   // keep it small: drop and start over
+               size > maxSize {
+                // Rotate, do NOT delete. Deleting cost us the first 45 minutes
+                // of a 70-minute webinar (2026-08-19) — including the one line
+                // that said WHEN a spurious voice was born, which was the whole
+                // question being investigated. A meeting logs a few lines a
+                // second, so the file that matters is the one that just filled
+                // up, and the previous one is exactly where a long session's
+                // beginning lives.
+                let previous = url.deletingLastPathComponent()
+                    .appendingPathComponent(url.lastPathComponent + ".1")
+                try? FileManager.default.removeItem(at: previous)
+                try? FileManager.default.moveItem(at: url, to: previous)
             }
             if let h = FileHandle(forWritingAtPath: url.path) {
                 defer { try? h.close() }
