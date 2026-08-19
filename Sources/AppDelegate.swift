@@ -314,7 +314,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() },
             showMeetings: { [weak self] url in self?.showMeetingWindow(select: url, focus: true) }
         )
-        meeting.onFinished = { [weak self] _ in
+        // The URL is USED, not ignored: onFinished fires twice — once when the
+        // transcript is closed on disk, and again after the model has named it
+        // and the file has been RENAMED to carry that name. Dropping the second
+        // URL left the window holding a path that no longer existed, so "Show
+        // in Finder" revealed nothing, and Rename and Move to Trash were
+        // pointed at a ghost (found 2026-08-19, right after a webinar).
+        // Passing it through as `select:` makes the window notice the file is
+        // not in its list, reload, and land on it.
+        meeting.onFinished = { [weak self] url in
             guard let self else { return }
             // The window IS the reader now: the finished transcript simply
             // becomes the newest item in the library, in place. No external
@@ -327,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             let wasMinimized = self.meetingMinimized
             self.meetingMinimized = false
             self.meetingPill?.hide()
-            if !wasMinimized { self.showMeetingWindow() }
+            if !wasMinimized { self.showMeetingWindow(select: url) }
             // Drop the red recording indicator from the menu bar.
             self.statusController.applyState(self.dictation.state)
         }
