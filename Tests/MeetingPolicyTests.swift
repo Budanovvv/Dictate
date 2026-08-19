@@ -329,3 +329,50 @@ final class MeetingFlushTests: XCTestCase {
                        2)
     }
 }
+
+/// The Them window cap is the segmentation model's input length, and the
+/// reason it is not a matter of taste: a window longer than the model's fixed
+/// 10.0 s input gets chunked, the last chunk is zero-padded, and a short
+/// padded chunk's embedding clusters as a different person. Measured on a
+/// dumped meeting (bench: internal/claude-tooling/diar-bench): the old 15 s
+/// cap split 70% of windows and invented a second near-equal speaker; 10 s
+/// splits 6% and reproduces the meeting as it happened.
+final class ThemWindowCapTests: XCTestCase {
+
+    func testTheCapIsTheModelsInputLength() {
+        // 160000 samples at 16 kHz. If this ever changes, the reason has to
+        // change with it — the number is not tuning, it is the model.
+        XCTAssertEqual(MeetingPolicy.themWindowCap, 10)
+    }
+
+    func testAMonologueIsCutAtTheCap() {
+        // Continuous speech, no pause in sight: the cap is what cuts, and it
+        // must cut before the diarizer would need a second chunk.
+        XCTAssertEqual(
+            MeetingPolicy.windowVerdict(accumulated: MeetingPolicy.themWindowCap,
+                                        hadSpeech: true, sinceLoud: 0.1,
+                                        hardCap: MeetingPolicy.themWindowCap),
+            .cutTranscribe)
+        XCTAssertEqual(
+            MeetingPolicy.windowVerdict(accumulated: 9.5, hadSpeech: true, sinceLoud: 0.1,
+                                        hardCap: MeetingPolicy.themWindowCap),
+            .keep)
+    }
+
+    func testTheYouChannelKeepsTheLongerCap() {
+        // You never reaches the diarizer, so it keeps the default: cutting it
+        // at 10 s would only chop the owner's entries for no benefit.
+        XCTAssertEqual(
+            MeetingPolicy.windowVerdict(accumulated: 12.0, hadSpeech: true, sinceLoud: 0.1),
+            .keep)
+    }
+
+    func testPausesStillWinOverTheCap() {
+        // The cap is a ceiling, not the primary rule: a natural pause cuts
+        // earlier, which is what keeps utterances whole.
+        XCTAssertEqual(
+            MeetingPolicy.windowVerdict(accumulated: 4.0, hadSpeech: true, sinceLoud: 1.2,
+                                        hardCap: MeetingPolicy.themWindowCap),
+            .cutTranscribe)
+    }
+}

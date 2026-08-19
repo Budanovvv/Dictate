@@ -432,7 +432,10 @@ final class MeetingSession: ObservableObject {
         let themVerdict = MeetingPolicy.windowVerdict(
             accumulated: t - themWindowStart,
             hadSpeech: (themLastSpeechAt ?? -1) >= themWindowStart,
-            sinceLoud: t - (themLastSpeechAt ?? -.infinity))
+            sinceLoud: t - (themLastSpeechAt ?? -.infinity),
+            // This channel is the one the diarizer sees, and its cap is the
+            // segmentation model's input length — see MeetingPolicy.
+            hardCap: MeetingPolicy.themWindowCap)
         switch themVerdict {
         case .keep: break
         case .cutTranscribe: if !saturated { cutThemWindow(transcribe: true) }

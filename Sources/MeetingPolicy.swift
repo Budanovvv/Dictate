@@ -23,6 +23,37 @@ enum MeetingPolicy {
     // pauses ("Но оно, конечно, не нравится." / "как-то не дослушивает" —
     // one sentence split in two, field test 2026-08-09 16:25). +0.3 s of
     // latency buys whole thoughts.
+    /// The longest Them window we will hand to the diarizer — and it is the
+    /// segmentation model's own input length, not a taste.
+    ///
+    /// `pyannote_segmentation.mlmodelc` takes a FIXED `[1, 1, 160000]` input
+    /// with `hasShapeFlexibility = 0`: exactly 10.000 s at 16 kHz. Anything
+    /// longer is chunked internally by FluidAudio (`chunkDuration` 10 s,
+    /// `chunkOverlap` 0 by default), and the LAST chunk is zero-padded to
+    /// length. A padded chunk shorter than ~7 s yields an embedding computed
+    /// mostly over silence, which clusters as a DIFFERENT PERSON — one voice
+    /// torn into two, over and over.
+    ///
+    /// The old cap of 15 s left a 5 s tail, which is the worst end of that
+    /// range. Measured on a dumped 40-minute meeting (bench:
+    /// internal/claude-tooling/diar-bench; ground truth from the owner —
+    /// one participant did 80–90% of the talking):
+    ///
+    ///   15 s cap: 857 / 539 / 141 s per voice (56/35/9%), 70% of windows
+    ///             split — two near-equal speakers who did not exist;
+    ///   10 s cap: 1281 / 212 / 22 s (85/14/1%), 6% split — the meeting as
+    ///             it actually happened.
+    ///
+    /// 10 s rather than something safely smaller: at 5 s windows the embedder
+    /// found ONE voice in ten minutes — too little audio to tell people
+    /// apart. This is the largest window that still fits in one chunk, so a
+    /// zero-padded tail cannot exist at any real window length.
+    ///
+    /// Only Them is capped this way. The You channel never reaches the
+    /// diarizer (the mic IS one known voice), so cutting it more often would
+    /// buy nothing and only shorten its entries.
+    static let themWindowCap: Double = 10
+
     static func windowVerdict(accumulated: Double, hadSpeech: Bool, sinceLoud: Double,
                               minChunk: Double = 2.0, silenceCut: Double = 1.1,
                               hardCap: Double = 15, silentReset: Double = 10) -> WindowVerdict {
