@@ -172,8 +172,26 @@ actor MeetingDiarizer {
         guard ready else { return [] }
         let windowSeconds = Double(floats.count) / Double(AudioRecorder.sampleRate)
         stats.windows += 1
+        // Never hand the model more than one chunk's worth of audio. Longer
+        // buffers are split internally and the last piece is zero-padded; a
+        // padded piece of one to six seconds embeds as noise and clusters as
+        // a person who was never there (MeetingPolicy.themWindowCap has the
+        // measurements). The window cap normally keeps windows inside the
+        // chunk — this is the belt for a LATE TIMER TICK, which is rare but
+        // real: one window in ~250 overshot by 1.4 s in the field, and at
+        // this cap that overshoot is exactly the harmful size.
+        //
+        // Trimming costs nothing: `windowSeconds` below still describes the
+        // FULL window, and speakerSlices snaps the last slice to its end, so
+        // the untrimmed tail simply belongs to whoever held the floor.
+        let chunkSamples = Int(MeetingPolicy.themWindowCap * Double(AudioRecorder.sampleRate))
+        let heard = floats.count > chunkSamples ? Array(floats.prefix(chunkSamples)) : floats
+        if heard.count < floats.count {
+            Log.d(String(format: "diar: window ran %.1fs over the model's %.0fs — tail follows the last voice",
+                         windowSeconds - MeetingPolicy.themWindowCap, MeetingPolicy.themWindowCap))
+        }
         guard let result = try? manager.performCompleteDiarization(
-            floats, sampleRate: AudioRecorder.sampleRate, atTime: windowStart) else {
+            heard, sampleRate: AudioRecorder.sampleRate, atTime: windowStart) else {
             stats.failures += 1
             Log.d(String(format: "diar: failed on %.1fs window", windowSeconds))
             return []
