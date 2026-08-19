@@ -212,22 +212,96 @@ mv "$BRANDED_TMP" "$DMG"
 echo "  ✅ branded installer ready: $DMG"
 
 # 6. Publishing
+#
+# Written to CONVERGE rather than to run once. A publish is four network calls
+# (tag, create, three uploads, flip), and 2026-08-19 proved what a dropped
+# connection in the middle leaves behind: the tag pushed, `gh release create`
+# died halfway through its uploads, its own cleanup of the half-made release
+# ALSO failed, and the fallback `gh release upload` then 404'd — because what
+# was left was a DRAFT, and drafts cannot be found by tag. The result was a
+# release on GitHub carrying one file of three, invisible to every by-tag
+# command, and it had to be finished by hand.
+#
+# So: find the release including drafts, make sure every asset is there, and
+# only then make it visible. Re-running after any failure is now the fix rather
+# than a second way to make a mess — each step checks the state it wants and
+# skips the work if it already holds.
 if [ "${1:-}" = "--publish" ]; then
     if [ "$NOTARIZED" -ne 1 ]; then
         echo "  ❌ refusing to publish: the DMGs are NOT notarized (see the ⚠️ above)."
         echo "     Fix the dictate-notary profile / network and re-run ./release.sh --publish"
         exit 1
     fi
-    git tag -f "v$VERSION" && git push -f origin "v$VERSION"
-    # No stderr silencing: a failed create (network, expired token) must be
-    # readable, not surface later as a baffling failed upload to a missing release.
-    if ! gh release create "v$VERSION" "$DMG" "$UPDATE_DMG" "$OUT/appcast.xml" \
-        --repo "$REPO" --title "Dictate $VERSION" --notes-file "$NOTES_MD"
-    then
-        echo "  ⚠️  release create failed (already exists?) — uploading assets with --clobber"
-        gh release upload "v$VERSION" "$DMG" "$UPDATE_DMG" "$OUT/appcast.xml" --repo "$REPO" --clobber
+    TAG="v$VERSION"
+    ASSETS=("$DMG" "$UPDATE_DMG" "$OUT/appcast.xml")
+
+    git tag -f "$TAG" && git push -f origin "$TAG"
+
+    # Drafts are invisible to /releases/tags/{tag}, which is exactly the hole we
+    # fell into — list and match by hand instead.
+    release_id() {
+        gh api "/repos/$REPO/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name == \"$TAG\") | .id] | first // empty" 2>/dev/null
+    }
+
+    ID=$(release_id || true)
+    if [ -z "${ID:-}" ]; then
+        # Created as a DRAFT and with no assets: a release becomes visible in
+        # the last step, once its files are actually on it. Nobody should ever
+        # meet a "latest release" whose download 404s.
+        ID=$(gh api -X POST "/repos/$REPO/releases" \
+                -f tag_name="$TAG" -f name="Dictate $VERSION" \
+                -F draft=true -F body=@"$NOTES_MD" --jq .id)
+        echo "  ✅ draft release created ($ID)"
+    else
+        echo "  ✅ reusing existing release $ID (draft or published)"
     fi
-    echo "  ✅ published: https://github.com/$REPO/releases/tag/v$VERSION"
+
+    # Uploads are the part that actually fails, so they are the part that
+    # retries. --clobber makes a re-run replace a half-uploaded asset instead
+    # of erroring on the name.
+    for asset in "${ASSETS[@]}"; do
+        name=$(basename "$asset")
+        for attempt in 1 2 3; do
+            if gh release upload "$TAG" "$asset" --repo "$REPO" --clobber; then
+                break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+                echo "  ❌ could not upload $name after 3 attempts."
+                echo "     The release is still a draft — nothing is public. Re-run ./release.sh --publish"
+                exit 1
+            fi
+            echo "  ⚠️  upload of $name failed (attempt $attempt/3) — retrying in 10s"
+            sleep 10
+        done
+    done
+
+    # Belt: ask GitHub what it actually holds, rather than trusting three exit
+    # codes. A release published with a missing file is the failure this whole
+    # section exists to prevent.
+    HAVE=$(gh api "/repos/$REPO/releases/$ID" --jq '[.assets[].name] | sort | join(",")')
+    for asset in "${ASSETS[@]}"; do
+        case ",$HAVE," in
+            *",$(basename "$asset"),"*) ;;
+            *) echo "  ❌ $(basename "$asset") is missing from the release after upload."
+               echo "     Left as a draft. Re-run ./release.sh --publish"; exit 1 ;;
+        esac
+    done
+    echo "  ✅ all assets present: $HAVE"
+
+    # Only now is it a release. make_latest is explicit because it is NOT the
+    # default for an edited draft: 2.6.0 went out with 2.4.0 still wearing the
+    # "Latest" badge, which is the badge the README's download link follows.
+    gh api -X PATCH "/repos/$REPO/releases/$ID" \
+        -F draft=false -F make_latest=true --jq '.html_url' > /dev/null
+    STATE=$(gh api "/repos/$REPO/releases/$ID" --jq '"draft=\(.draft)"')
+    LATEST=$(gh api "/repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null || echo "?")
+    if [ "$STATE" != "draft=false" ] || [ "$LATEST" != "$TAG" ]; then
+        echo "  ❌ release did not go public cleanly ($STATE, latest=$LATEST)."
+        echo "     Re-run ./release.sh --publish"
+        exit 1
+    fi
+    echo "  ✅ published and marked latest: https://github.com/$REPO/releases/tag/$TAG"
     echo "  ⚠️  Sparkle will only see the update once the releases repository is public"
 else
     echo
