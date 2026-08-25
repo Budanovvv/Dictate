@@ -6,5 +6,11 @@
          silently and the app never appears in Privacy → Microphone. -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- Same rule, same scar: under the hardened runtime a TCC request without
+         its entitlement fails SILENTLY — no dialog, and the app never appears in
+         the Privacy list at all (that is exactly how the microphone behaved
+         before the key above was added). Reading calendars needs this one. -->
+    <key>com.apple.security.personal-information.calendars</key>
+    <true/>
 </dict>
 </plist>

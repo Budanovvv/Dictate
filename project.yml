@@ -112,6 +112,10 @@ targets:
       # The micro-cluster rule is dependency-free precisely so it can be tested
       # here: MeetingDiarizer itself imports FluidAudio and cannot come along.
       - path: Sources/MeetingSpeakerPolicy.swift
+      # Which calendar event a recording belongs to — the risky half of naming
+      # meetings from the calendar, and dependency-free so it can be tested
+      # here (MeetingCalendar itself imports EventKit and stays out).
+      - path: Sources/MeetingCalendarPolicy.swift
       - path: Sources/MeetingArchive.swift
       - path: Sources/TranscriptCleanup.swift
       - path: Sources/MeetingSearch.swift

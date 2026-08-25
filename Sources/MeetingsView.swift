@@ -490,7 +490,12 @@ struct MeetingsView: View {
             // transcript closes), and its file is open for appending — so
             // titling waits until it's finished.
             TranscriptPane(entries: session.displayEntries,
-                           title: L("Recording now"),
+                           // A scheduled call shows its real name from the
+                           // first second — that is the point of reading the
+                           // calendar at session start rather than naming the
+                           // transcript at the end. Unscheduled ones say what
+                           // they are.
+                           title: session.scheduledTitle ?? L("Recording now"),
                            subtitle: nil,
                            // A live header has no subtitle line to hang them on
                            // — and the cast is still changing, so a row of

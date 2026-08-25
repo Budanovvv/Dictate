@@ -101,6 +101,8 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Name meetings from my calendar": "Называть митинги по календарю",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Звонок, который был у вас в календаре, сохранится под тем именем, которое вы дали ему там. Незапланированные митинги по-прежнему называются по сказанному. События читаются на этом Mac.",
         "Record this meeting?": "Записать эту встречу?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate расшифровывает звонок локально на этом Mac — наружу ничего не уходит. Убедитесь, что собеседники не против записи: во многих странах требуется их согласие.",
         "Start": "Начать",
@@ -327,6 +329,8 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Name meetings from my calendar": "Називати мітинги за календарем",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Дзвінок, що був у вашому календарі, збережеться під іменем, яке ви дали йому там. Незаплановані мітинги, як і раніше, називаються за сказаним. Події читаються на цьому Mac.",
         "Record this meeting?": "Записати цю зустріч?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate розшифровує дзвінок локально на цьому Mac — назовні нічого не йде. Переконайтеся, що співрозмовники не проти запису: у багатьох країнах потрібна їхня згода.",
         "Start": "Почати",
@@ -544,6 +548,8 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Name meetings from my calendar": "Nombrar las reuniones según mi calendario",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Una llamada que estaba en tu calendario se guarda con el nombre que le diste allí. Lo no programado se sigue nombrando por lo que se dijo. Los eventos se leen en este Mac.",
         "Record this meeting?": "¿Grabar esta reunión?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate transcribe la llamada localmente en este Mac: nada sale del equipo. Asegúrate de que los demás participantes estén de acuerdo con la transcripción: en muchos lugares se requiere su consentimiento.",
         "Start": "Iniciar",
@@ -770,6 +776,8 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Name meetings from my calendar": "Nomear as reuniões pelo meu calendário",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Uma chamada que estava no seu calendário é salva com o nome que você deu a ela lá. O que não foi agendado continua sendo nomeado pelo que foi dito. Os eventos são lidos neste Mac.",
         "Record this meeting?": "Gravar esta reunião?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "O Dictate transcreve a chamada localmente neste Mac — nada sai do computador. Verifique se os outros participantes concordam com a transcrição: em muitos lugares o consentimento deles é exigido.",
         "Start": "Iniciar",
@@ -996,6 +1004,8 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Name meetings from my calendar": "Nommer les réunions d’après mon calendrier",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Un appel présent dans votre calendrier est enregistré sous le nom que vous lui avez donné. Ce qui n’était pas prévu est toujours nommé d’après ce qui a été dit. Les événements sont lus sur ce Mac.",
         "Record this meeting?": "Enregistrer cette réunion ?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate transcrit l’appel localement sur ce Mac — rien ne quitte l’ordinateur. Assurez-vous que les autres participants acceptent la transcription : leur consentement est requis dans de nombreux pays.",
         "Start": "Démarrer",
@@ -1222,6 +1232,8 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Name meetings from my calendar": "Meetings nach meinem Kalender benennen",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Ein Anruf, der in Ihrem Kalender stand, wird unter dem dort vergebenen Namen gesichert. Ungeplantes wird weiterhin nach dem Gesagten benannt. Termine werden auf diesem Mac gelesen.",
         "Record this meeting?": "Dieses Meeting aufzeichnen?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate transkribiert den Anruf lokal auf diesem Mac — nichts verlässt das Gerät. Stellen Sie sicher, dass die anderen Teilnehmer mit der Transkription einverstanden sind: Vielerorts ist ihre Zustimmung erforderlich.",
         "Start": "Starten",
@@ -1448,6 +1460,8 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Name meetings from my calendar": "用我的日历命名会议",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "日历中已有的通话将使用您在那里起的名称保存。未安排的会议仍按谈话内容命名。日程仅在本机读取。",
         "Record this meeting?": "录制此会议？",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate 在这台 Mac 上本地转录通话——任何内容都不会离开设备。请确认其他参与者同意转录：许多地区需要征得他们的同意。",
         "Start": "开始",
@@ -1674,6 +1688,8 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Name meetings from my calendar": "カレンダーの名前をミーティングに使う",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "カレンダーにあった通話は、そこで付けた名前で保存されます。予定外のものは話された内容から名付けられます。予定はこの Mac 内で読み取られます。",
         "Record this meeting?": "この会議を記録しますか？",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate はこの Mac 上でローカルに通話を文字起こしします。データが外部に出ることはありません。他の参加者が文字起こしに同意していることを確認してください。多くの地域では同意が必要です。",
         "Start": "開始",
@@ -1900,6 +1916,8 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Name meetings from my calendar": "캘린더 이름으로 미팅 이름 짓기",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "캘린더에 있던 통화는 거기서 지은 이름으로 저장됩니다. 예정에 없던 미팅은 지금처럼 대화 내용으로 이름이 정해집니다. 일정은 이 Mac에서만 읽습니다.",
         "Record this meeting?": "이 회의를 기록할까요?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate는 이 Mac에서 로컬로 통화를 전사합니다. 어떤 것도 기기를 떠나지 않습니다. 다른 참가자가 전사에 동의하는지 확인하세요. 많은 지역에서 동의가 필요합니다.",
         "Start": "시작",
@@ -2126,6 +2144,8 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Name meetings from my calendar": "Đặt tên cuộc họp theo lịch của tôi",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Cuộc gọi có trong lịch sẽ được lưu với tên bạn đã đặt ở đó. Những cuộc chưa lên lịch vẫn được đặt tên theo nội dung. Sự kiện được đọc trên máy Mac này.",
         "Record this meeting?": "Ghi lại cuộc họp này?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Dictate ghi biên bản cuộc gọi ngay trên máy Mac này — không có gì rời khỏi máy. Hãy chắc chắn những người tham gia khác đồng ý với việc ghi biên bản: nhiều nơi yêu cầu sự đồng ý của họ.",
         "Start": "Bắt đầu",
@@ -2352,6 +2372,8 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Name meetings from my calendar": "Pangalanan ang miting ayon sa kalendaryo ko",
+        "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Ang tawag na nasa kalendaryo mo ay iniimbak sa pangalang ibinigay mo roon. Ang hindi nakaiskedyul ay pinapangalanan pa rin ayon sa sinabi. Binabasa ang mga event sa Mac na ito.",
         "Record this meeting?": "I-record ang meeting na ito?",
         "Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.": "Lokal na tina-transcribe ng Dictate ang tawag sa Mac na ito — walang lumalabas sa device. Siguraduhing payag ang ibang kalahok sa transcription: maraming lugar ang nangangailangan ng kanilang pahintulot.",
         "Start": "Simulan",

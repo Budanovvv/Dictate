@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var translateName = Settings.shared.translateKeyName
     @State private var translateSet = Settings.shared.translateKeyCode != nil
     @State private var language = Settings.shared.language
+    @State private var nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var promptText = Settings.shared.prompt
     @State private var translateTarget = Settings.shared.translateTargetCode
@@ -278,6 +279,35 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            // — Meetings —
+            //
+            // One row, and it carries its own permission. Turning it on is what
+            // asks macOS for the calendar, which is why the switch snaps back
+            // when the request is refused: a switch that stays on while the
+            // feature cannot work is a lie the user only discovers at the next
+            // meeting.
+            Section {
+                Toggle(L("Name meetings from my calendar"), isOn: $nameFromCalendar)
+                    .onChange(of: nameFromCalendar) { on in
+                        guard on else {
+                            Settings.shared.nameMeetingsFromCalendar = false
+                            return
+                        }
+                        if MeetingCalendar.hasAccess {
+                            Settings.shared.nameMeetingsFromCalendar = true
+                            return
+                        }
+                        Task { @MainActor in
+                            let granted = await MeetingCalendar.requestAccess()
+                            Settings.shared.nameMeetingsFromCalendar = granted
+                            nameFromCalendar = granted
+                        }
+                    }
+                Text(L("A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: { Text(L("Meetings")) }
 
             // — General —
             Section {

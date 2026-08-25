@@ -137,6 +137,12 @@ final class MeetingSession: ObservableObject {
     /// interrupt a sentence arriving from the call.
     private var lastThem: (text: String, ordinal: Int?, start: TimeInterval)?
 
+    /// The name this meeting already had in the calendar, if it was a
+    /// scheduled call. Read once at session start — the whole point is that the
+    /// transcript carries its real name from the first line rather than being
+    /// renamed at the end.
+    private(set) var scheduledTitle: String?
+
     // Debug instruments (hidden defaults, see MeetingReplay.swift): a live
     // session may dump both channels to disk; a replay session takes both
     // channels FROM disk and never touches the mic or the tap. The pipeline
@@ -833,13 +839,17 @@ final class MeetingSession: ObservableObject {
             // (and, for a Russian meeting, the translation hop) are paid for
             // once and answer both questions.
             guard let brief = await MeetingTitler.brief(for: entries) else { return }
-            MeetingArchive.setTitle(brief.title, dateLine: Self.dateLine(stamp),
+            // A name the owner wrote themselves outranks a name a model read out
+            // of the words. When the calendar supplied one, the model's title is
+            // dropped on the floor and only its summary is kept.
+            let title = self.scheduledTitle ?? brief.title
+            MeetingArchive.setTitle(title, dateLine: Self.dateLine(stamp),
                                     summary: brief.summary, in: url)
             // The file follows its title so the folder reads in Finder too;
             // the transcript's content stays the source of truth, so a failed
             // rename costs nothing but a plainer name.
             let renamed = MeetingArchive.renameFile(at: url, stamp: Self.fileStamp(stamp),
-                                                    title: brief.title)
+                                                    title: title)
             if self.fileURL == url { self.fileURL = renamed }
             self.onFinished?(renamed)
         }
@@ -939,9 +949,21 @@ final class MeetingSession: ObservableObject {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Dictate Meetings", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // A scheduled call already has a name, and it is a better one than any
+        // summary of what gets said: it is what the owner called this meeting
+        // when they arranged it, and therefore what they will look for later.
+        // Read here, before the file exists, so the name is on the first line
+        // and in the file name — no end-of-session rename, which is its own
+        // source of bugs (a window left pointing at the old path, 2026-08-19).
+        scheduledTitle = MeetingCalendar.scheduledTitle(at: sessionStart)?.title
         let url = dir.appendingPathComponent(
-            MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: nil))
-        let header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\n"
+            MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: scheduledTitle))
+        let header: String
+        if let scheduledTitle {
+            header = "# \(scheduledTitle)\n_\(Self.dateLine(sessionStart))_\n\n"
+        } else {
+            header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\n"
+        }
         try header.data(using: .utf8)!.write(to: url)
         fileHandle = try FileHandle(forWritingTo: url)
         fileHandle?.seekToEndOfFile()

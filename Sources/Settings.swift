@@ -99,6 +99,15 @@ final class Settings {
     /// session it was friction that taught nothing after the first time
     /// (owner's call, 2026-08-19); never at all would leave a public app
     /// silent on the one thing about it that carries legal weight.
+    /// Name scheduled meetings from the calendar instead of from the model.
+    /// Off until asked for: turning it on is what triggers the macOS calendar
+    /// prompt, and this app already spends three permissions before it works
+    /// at all (see MeetingCalendar for why it is not in onboarding).
+    var nameMeetingsFromCalendar: Bool {
+        get { d.bool(forKey: "nameMeetingsFromCalendar") }
+        set { d.set(newValue, forKey: "nameMeetingsFromCalendar") }
+    }
+
     var meetingConsentSeen: Bool {
         get { d.bool(forKey: "meetingConsentSeen") }
         set { d.set(newValue, forKey: "meetingConsentSeen") }

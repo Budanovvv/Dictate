@@ -37,6 +37,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Dictate records your voice while you hold the dictation key to transcribe it on-device.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Dictate reads your calendar so a scheduled call is saved under the name you already gave it. Events are read on this Mac and never leave it.</string>
     <key>NSAudioCaptureUsageDescription</key>
     <string>Dictate captures the call audio during a meeting transcript to transcribe it on-device. Nothing leaves your Mac.</string>
     <key>CFBundleDevelopmentRegion</key>
