@@ -120,6 +120,17 @@ final class Settings {
     /// It is also where the choice will live when there is more than one way to
     /// pay for this: today "my own key", later "my own key or a subscription".
     /// A toggle becomes a picker without moving.
+    /// How finely meetings are cut into sections — the reader's own call.
+    ///
+    /// Worth a control because the evidence says so: across the segmentation
+    /// literature the NUMBER of sections dominates their placement, so letting
+    /// somebody choose the count buys more than any better boundary-finder
+    /// would. Defaults to the middle, which is where it has always been.
+    var sectionDetail: MeetingPolicy.SectionDetail {
+        get { MeetingPolicy.SectionDetail(rawValue: d.integer(forKey: "sectionDetail")) ?? .standard }
+        set { d.set(newValue.rawValue, forKey: "sectionDetail") }
+    }
+
     var askArchive: Bool {
         get { d.bool(forKey: "askArchive") }
         set { d.set(newValue, forKey: "askArchive") }

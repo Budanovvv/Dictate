@@ -15,6 +15,7 @@ struct SettingsView: View {
     /// What is being typed into the key field, and a counter to redraw when the
     /// stored key changes — the Keychain is not observable, so the view needs
     /// telling.
+    @State private var sectionDetail = Settings.shared.sectionDetail
     @State private var askArchive = Settings.shared.askArchive
     @State private var keyDraft = ""
     @State private var keyRevision = 0
@@ -347,6 +348,30 @@ struct SettingsView: View {
                         textModelControl
                     } label: {
                         rowLabel(L("Meeting titles & summaries"), textModelHint)
+                    }
+                    // How finely the contents block cuts a meeting. Next to
+                    // the model that writes it, because it is the same
+                    // feature seen from the reader's side.
+                    LabeledContent {
+                        Picker("", selection: $sectionDetail) {
+                            Text(L("Fewer")).tag(MeetingPolicy.SectionDetail.coarse)
+                            Text(L("Standard")).tag(MeetingPolicy.SectionDetail.standard)
+                            Text(L("More")).tag(MeetingPolicy.SectionDetail.fine)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 210)
+                        .onChange(of: sectionDetail) { level in
+                            Settings.shared.sectionDetail = level
+                            // Changing how contents are cut and leaving the
+                            // existing ones alone would be answering a
+                            // question with a promise. The library rebuilds
+                            // them next time it is opened.
+                            UserDefaults.standard.set(true, forKey: "resectionMeetings")
+                        }
+                    } label: {
+                        rowLabel(L("Jump points per meeting"),
+                                 L("How finely the contents block cuts a call"))
                     }
                     // Asking the archive questions. Under the same heading as
                     // the local model on purpose: these are two answers to one

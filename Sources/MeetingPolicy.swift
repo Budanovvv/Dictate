@@ -316,6 +316,53 @@ enum MeetingPolicy {
     /// Longer than this and one line cannot honestly describe it.
     static let sectionMaximum: Double = 390
 
+    /// How finely a meeting is cut, as the reader asked for it.
+    ///
+    /// This exists because of what the segmentation literature actually
+    /// measures: getting the NUMBER of sections right dominates getting their
+    /// positions right — evenly spacing the correct count scores close to a
+    /// tuned model, and the boundary metrics turn out to be driven mostly by
+    /// granularity rather than by detection quality. So the highest-value
+    /// control is not a better seam-finder, it is letting the person say how
+    /// many they want. Descript reached the same conclusion and asks outright.
+    ///
+    /// `standard` is the middle on purpose: two independent YouTube-scale
+    /// corpora put the human habit at a chapter every 2–2.5 minutes, which is
+    /// where this already sat. The other two bracket it rather than replacing
+    /// it — one for a long call you want a map of, one for a short one you
+    /// want to walk through.
+    enum SectionDetail: Int, CaseIterable {
+        case coarse = 0, standard = 1, fine = 2
+
+        /// The floor a section has to clear, in seconds.
+        var minimum: Double {
+            switch self {
+            case .coarse: return 300
+            case .standard: return sectionMinimum
+            case .fine: return 90
+            }
+        }
+
+        /// And what it aims for, so the target moves with the floor instead of
+        /// fighting it: a 90-second floor under a 240-second target would just
+        /// produce 240-second sections with a lower bar nobody reaches.
+        var target: Double {
+            switch self {
+            case .coarse: return 420
+            case .standard: return sectionTarget
+            case .fine: return 150
+            }
+        }
+
+        var maximum: Double {
+            switch self {
+            case .coarse: return 660
+            case .standard: return sectionMaximum
+            case .fine: return 240
+            }
+        }
+    }
+
     /// Where the sections of a finished meeting start — indices into `marks`,
     /// the first of which is always 0.
     ///

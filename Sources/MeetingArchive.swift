@@ -407,7 +407,13 @@ enum MeetingArchive {
                 endsSentence: endsSentence(entry.text),
                 startsSentence: startsSentence(entry.text))
         }
-        let starts = MeetingPolicy.sectionStarts(marks)
+        // The reader's chosen granularity, read here rather than inside the
+        // policy: MeetingPolicy stays free of Foundation and of preferences so
+        // it can be tested on its own.
+        let detail = Settings.shared.sectionDetail
+        let starts = MeetingPolicy.sectionStarts(marks, target: detail.target,
+                                                 minimum: detail.minimum,
+                                                 maximum: detail.maximum)
         guard !starts.isEmpty else { return [] }
         return starts.indices.map { i in
             starts[i]..<(i + 1 < starts.count ? starts[i + 1] : entries.count)
