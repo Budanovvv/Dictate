@@ -955,12 +955,20 @@ final class MeetingSession: ObservableObject {
         // Read here, before the file exists, so the name is on the first line
         // and in the file name — no end-of-session rename, which is its own
         // source of bugs (a window left pointing at the old path, 2026-08-19).
-        scheduledTitle = MeetingCalendar.scheduledTitle(at: sessionStart)?.title
+        let scheduled = MeetingCalendar.scheduledTitle(at: sessionStart)
+        scheduledTitle = scheduled?.title
         let url = dir.appendingPathComponent(
             MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: scheduledTitle))
         let header: String
         if let scheduledTitle {
-            header = "# \(scheduledTitle)\n_\(Self.dateLine(sessionStart))_\n\n"
+            // The calendar a meeting came from is a classification its owner
+            // already made — "work", "clients" — so it becomes a tag without
+            // anyone being asked to think. Free vocabulary is the only kind
+            // that survives, since the tags people must remember to apply are
+            // the ones they stop applying in week three.
+            let tag = scheduled.flatMap { MeetingTags.fromCalendarName($0.calendar) }
+            let tagLine = tag.map { "\(MeetingTags.tagLine([$0]))\n" } ?? ""
+            header = "# \(scheduledTitle)\n_\(Self.dateLine(sessionStart))_\n\(tagLine)\n"
         } else {
             header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\n"
         }

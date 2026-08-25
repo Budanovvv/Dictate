@@ -101,6 +101,11 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Add a tag": "Добавить тег",
+        "No tags": "Без тегов",
+        "Tag": "Тег",
+        "Create #%@": "Создать #%@",
+        "Click to remove": "Нажмите, чтобы убрать",
         "Name meetings from my calendar": "Называть митинги по календарю",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Звонок, который был у вас в календаре, сохранится под тем именем, которое вы дали ему там. Незапланированные митинги по-прежнему называются по сказанному. События читаются на этом Mac.",
         "Record this meeting?": "Записать эту встречу?",
@@ -329,6 +334,11 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Add a tag": "Додати тег",
+        "No tags": "Без тегів",
+        "Tag": "Тег",
+        "Create #%@": "Створити #%@",
+        "Click to remove": "Натисніть, щоб прибрати",
         "Name meetings from my calendar": "Називати мітинги за календарем",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Дзвінок, що був у вашому календарі, збережеться під іменем, яке ви дали йому там. Незаплановані мітинги, як і раніше, називаються за сказаним. Події читаються на цьому Mac.",
         "Record this meeting?": "Записати цю зустріч?",
@@ -548,6 +558,11 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Add a tag": "Añadir una etiqueta",
+        "No tags": "Sin etiquetas",
+        "Tag": "Etiqueta",
+        "Create #%@": "Crear #%@",
+        "Click to remove": "Haz clic para quitar",
         "Name meetings from my calendar": "Nombrar las reuniones según mi calendario",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Una llamada que estaba en tu calendario se guarda con el nombre que le diste allí. Lo no programado se sigue nombrando por lo que se dijo. Los eventos se leen en este Mac.",
         "Record this meeting?": "¿Grabar esta reunión?",
@@ -776,6 +791,11 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Add a tag": "Adicionar uma tag",
+        "No tags": "Sem tags",
+        "Tag": "Tag",
+        "Create #%@": "Criar #%@",
+        "Click to remove": "Clique para remover",
         "Name meetings from my calendar": "Nomear as reuniões pelo meu calendário",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Uma chamada que estava no seu calendário é salva com o nome que você deu a ela lá. O que não foi agendado continua sendo nomeado pelo que foi dito. Os eventos são lidos neste Mac.",
         "Record this meeting?": "Gravar esta reunião?",
@@ -1004,6 +1024,11 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Add a tag": "Ajouter un tag",
+        "No tags": "Aucun tag",
+        "Tag": "Tag",
+        "Create #%@": "Créer #%@",
+        "Click to remove": "Cliquez pour retirer",
         "Name meetings from my calendar": "Nommer les réunions d’après mon calendrier",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Un appel présent dans votre calendrier est enregistré sous le nom que vous lui avez donné. Ce qui n’était pas prévu est toujours nommé d’après ce qui a été dit. Les événements sont lus sur ce Mac.",
         "Record this meeting?": "Enregistrer cette réunion ?",
@@ -1232,6 +1257,11 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Add a tag": "Tag hinzufügen",
+        "No tags": "Keine Tags",
+        "Tag": "Tag",
+        "Create #%@": "#%@ erstellen",
+        "Click to remove": "Zum Entfernen klicken",
         "Name meetings from my calendar": "Meetings nach meinem Kalender benennen",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Ein Anruf, der in Ihrem Kalender stand, wird unter dem dort vergebenen Namen gesichert. Ungeplantes wird weiterhin nach dem Gesagten benannt. Termine werden auf diesem Mac gelesen.",
         "Record this meeting?": "Dieses Meeting aufzeichnen?",
@@ -1460,6 +1490,11 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Add a tag": "添加标签",
+        "No tags": "无标签",
+        "Tag": "标签",
+        "Create #%@": "创建 #%@",
+        "Click to remove": "点按以移除",
         "Name meetings from my calendar": "用我的日历命名会议",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "日历中已有的通话将使用您在那里起的名称保存。未安排的会议仍按谈话内容命名。日程仅在本机读取。",
         "Record this meeting?": "录制此会议？",
@@ -1688,6 +1723,11 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Add a tag": "タグを追加",
+        "No tags": "タグなし",
+        "Tag": "タグ",
+        "Create #%@": "#%@ を作成",
+        "Click to remove": "クリックで削除",
         "Name meetings from my calendar": "カレンダーの名前をミーティングに使う",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "カレンダーにあった通話は、そこで付けた名前で保存されます。予定外のものは話された内容から名付けられます。予定はこの Mac 内で読み取られます。",
         "Record this meeting?": "この会議を記録しますか？",
@@ -1916,6 +1956,11 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Add a tag": "태그 추가",
+        "No tags": "태그 없음",
+        "Tag": "태그",
+        "Create #%@": "#%@ 만들기",
+        "Click to remove": "클릭하여 제거",
         "Name meetings from my calendar": "캘린더 이름으로 미팅 이름 짓기",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "캘린더에 있던 통화는 거기서 지은 이름으로 저장됩니다. 예정에 없던 미팅은 지금처럼 대화 내용으로 이름이 정해집니다. 일정은 이 Mac에서만 읽습니다.",
         "Record this meeting?": "이 회의를 기록할까요?",
@@ -2144,6 +2189,11 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Add a tag": "Thêm thẻ",
+        "No tags": "Không có thẻ",
+        "Tag": "Thẻ",
+        "Create #%@": "Tạo #%@",
+        "Click to remove": "Bấm để bỏ",
         "Name meetings from my calendar": "Đặt tên cuộc họp theo lịch của tôi",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Cuộc gọi có trong lịch sẽ được lưu với tên bạn đã đặt ở đó. Những cuộc chưa lên lịch vẫn được đặt tên theo nội dung. Sự kiện được đọc trên máy Mac này.",
         "Record this meeting?": "Ghi lại cuộc họp này?",
@@ -2372,6 +2422,11 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Add a tag": "Magdagdag ng tag",
+        "No tags": "Walang tag",
+        "Tag": "Tag",
+        "Create #%@": "Gumawa ng #%@",
+        "Click to remove": "I-click para alisin",
         "Name meetings from my calendar": "Pangalanan ang miting ayon sa kalendaryo ko",
         "A call that was in your calendar is saved under the name you gave it there. Anything unscheduled is still named from what was said. Events are read on this Mac.": "Ang tawag na nasa kalendaryo mo ay iniimbak sa pangalang ibinigay mo roon. Ang hindi nakaiskedyul ay pinapangalanan pa rin ayon sa sinabi. Binabasa ang mga event sa Mac na ito.",
         "Record this meeting?": "I-record ang meeting na ito?",

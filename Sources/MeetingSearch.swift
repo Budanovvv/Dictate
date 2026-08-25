@@ -54,15 +54,42 @@ enum MeetingSearch {
     // MARK: - Literal
 
     /// The search that has always been here: does any turn, or any speaker's
-    /// name, contain what was typed.
+    /// name, contain what was typed — plus tag filtering, which rides in the
+    /// same field rather than in a pane of its own.
+    ///
+    /// A query may mix the two: `#wholecall pricing` means "tagged wholecall
+    /// AND mentioning pricing". Tags narrow, words search — which is what each
+    /// is good at, and it needs no new interface to say so.
     static func literal(_ meetings: [ArchivedMeeting], query: String) -> [ArchivedMeeting] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return meetings }
-        return meetings.filter { meeting in
+        let (tags, text) = split(query: query)
+        var found = meetings
+        // Every named tag must be present: two tags mean the intersection,
+        // because that is what a person adding a second tag is asking for.
+        for tag in tags {
+            found = found.filter { $0.tags.contains(tag) }
+        }
+        guard !text.isEmpty else { return found }
+        return found.filter { meeting in
             meeting.entries.contains {
-                $0.text.lowercased().contains(q) || $0.speaker.lowercased().contains(q)
+                $0.text.lowercased().contains(text) || $0.speaker.lowercased().contains(text)
             }
         }
+    }
+
+    /// Splits "#wholecall pricing" into the tags to filter by and the words to
+    /// search for. Pure, so the rule is testable without an archive.
+    static func split(query: String) -> (tags: [String], text: String) {
+        var tags: [String] = []
+        var words: [String] = []
+        for token in query.split(whereSeparator: \.isWhitespace) {
+            if token.hasPrefix("#"), token.count > 1,
+               let tag = MeetingTags.normalize(String(token.dropFirst())) {
+                tags.append(tag)
+            } else {
+                words.append(String(token))
+            }
+        }
+        return (tags, words.joined(separator: " ").lowercased())
     }
 
     // MARK: - Semantic ranking

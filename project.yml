@@ -116,6 +116,9 @@ targets:
       # meetings from the calendar, and dependency-free so it can be tested
       # here (MeetingCalendar itself imports EventKit and stays out).
       - path: Sources/MeetingCalendarPolicy.swift
+      # Tag normalisation and the header line they live on — pure text work,
+      # and the vocabulary's only defence against drifting into synonyms.
+      - path: Sources/MeetingTags.swift
       - path: Sources/MeetingArchive.swift
       - path: Sources/TranscriptCleanup.swift
       - path: Sources/MeetingSearch.swift

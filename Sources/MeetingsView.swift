@@ -526,6 +526,12 @@ struct MeetingsView: View {
                                participants: participants(of: meeting),
                                live: nil,
                                onStop: nil,
+                               tags: meeting.tags,
+                               knownTags: MeetingArchive.tagCounts(in: meetings),
+                               onTags: { updated in
+                                   MeetingArchive.setTags(updated, in: url)
+                                   reload()
+                               },
                                onRename: { old, new in
                                    MeetingArchive.rename(speaker: old, to: new, in: url)
                                    reload()
@@ -1116,6 +1122,15 @@ private struct TranscriptPane<MenuItems: View>: View {
     let participants: [Participant]
     let live: MeetingSession?
     let onStop: (() -> Void)?
+    /// This meeting's tags and how to change them. nil for a live session —
+    /// a call that is still happening has nothing to file yet, and the
+    /// calendar has already put its own tag on it if there was one.
+    var tags: [String] = []
+    /// Every tag already in the archive, most-used first — what completion
+    /// offers, so the familiar term is the easy one to type and the vocabulary
+    /// stops forking into synonyms.
+    var knownTags: [(tag: String, count: Int)] = []
+    var onTags: (([String]) -> Void)?
     let onRename: (String, String) -> Void
     /// nil while a meeting is still recording — a title is written when the
     /// transcript closes.
@@ -1185,6 +1200,14 @@ private struct TranscriptPane<MenuItems: View>: View {
         return VStack(spacing: 0) {
             header
             Divider()
+            // A row of its own, and not part of the subtitle: that line is
+            // already one unwrappable row fighting for width between the date
+            // and the participants, and tags would be the thing that finally
+            // pushed the two panes' headers out of alignment.
+            if let onTags {
+                TagRow(tags: tags, known: knownTags, onChange: onTags)
+                Divider()
+            }
             if let notice {
                 notice
                 Divider()
@@ -2485,5 +2508,133 @@ struct MeetingPillView: View {
         if session.inflightCount > 0 { return L("Recognizing…") }
         if session.listeningFor != nil { return L("Listening…") }
         return L("Recording")
+    }
+}
+
+/// The tags on one meeting: what it is filed under, and the one control that
+/// changes that.
+///
+/// The interface IS the gatekeeper here. Asset systems that survive give a
+/// person the job of approving new terms, because a free text box drifts into
+/// synonyms — "acme", "Acme Corp", "acme-corp" — and a vocabulary with three
+/// words for one idea answers a third of the questions it should. With one
+/// user there is nobody to hold that job, so it is held by two mechanics:
+/// every tag is normalised on the way in (MeetingTags), and what already
+/// exists is always offered before anything new is typed. Adding a familiar
+/// tag has to be easier than inventing one, or the two diverge.
+///
+/// What is deliberately absent is a tag manager. This class of feature is
+/// killed by ceremony far more often than by missing power: the documented
+/// failure is perfectionism paralysis — people plan a taxonomy, tag for two
+/// weeks, then stop, and the archive ends up half-filed, which is worse than
+/// not filed at all. Add, remove, filter. Nothing else.
+private struct TagRow: View {
+    let tags: [String]
+    let known: [(tag: String, count: Int)]
+    let onChange: ([String]) -> Void
+    @ObservedObject private var loc = Localization.shared
+    @State private var adding = false
+    @State private var draft = ""
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(tags, id: \.self) { tag in
+                TagChip(tag: tag) { onChange(tags.filter { $0 != tag }) }
+            }
+            Button { adding = true } label: {
+                ChromeGlyph(icon: tags.isEmpty ? "tag" : "plus", hovering: false)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L("Add a tag"))
+            .popover(isPresented: $adding, arrowEdge: .bottom) { addPopover }
+            if tags.isEmpty {
+                Text(L("No tags")).font(.caption).foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, MeetingsChrome.inset)
+        .padding(.vertical, 5)
+    }
+
+    /// Type, and see what you already use. The suggestions are the point: the
+    /// list is what keeps the next meeting filed under the same word as the
+    /// last one.
+    private var addPopover: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField(L("Tag"), text: $draft)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
+                .onSubmit { commit(draft) }
+            let matches = suggestions
+            if !matches.isEmpty {
+                Divider()
+                ForEach(matches, id: \.tag) { item in
+                    Button { commit(item.tag) } label: {
+                        HStack {
+                            Text("#\(item.tag)").font(.callout)
+                            Spacer()
+                            Text("\(item.count)").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            // Creating a NEW term is a separate, deliberate act rather than
+            // whatever happens when you stop typing — that is the whole
+            // difference between a vocabulary and a text box.
+            if let fresh = MeetingTags.normalize(draft), !known.contains(where: { $0.tag == fresh }) {
+                Divider()
+                Button { commit(fresh) } label: {
+                    Text(Lf("Create #%@", fresh)).font(.callout)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .frame(width: 220)
+    }
+
+    private var suggestions: [(tag: String, count: Int)] {
+        let typed = MeetingTags.normalize(draft)
+        return known
+            .filter { !tags.contains($0.tag) }
+            .filter { typed == nil || $0.tag.contains(typed!) }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private func commit(_ raw: String) {
+        defer { draft = ""; adding = false }
+        guard let tag = MeetingTags.normalize(raw) else { return }
+        onChange(MeetingTags.unique(tags + [tag]))
+    }
+}
+
+/// One tag, and its remove button on hover. The brand indigo rather than a
+/// speaker colour: a tag is a property of the meeting, not one of its voices.
+private struct TagChip: View {
+    let tag: String
+    let onRemove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text("#\(tag)").font(.caption)
+            if hovering {
+                Image(systemName: "xmark").font(.caption2)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(Brand.indigoLabel.opacity(hovering ? 0.20 : 0.12)))
+        .foregroundStyle(Brand.indigoLabel)
+        .contentShape(Capsule())
+        .onHover { hovering = $0 }
+        .onTapGesture { if hovering { onRemove() } }
+        .help(L("Click to remove"))
+        .animation(.easeOut(duration: 0.1), value: hovering)
     }
 }

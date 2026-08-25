@@ -92,6 +92,10 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// at. Empty for a meeting too short to have one, and for every meeting
     /// recorded before sections existed until the backfill reaches it.
     var sections: [TranscriptSection] = []
+    /// The owner's own classification of this meeting — the axis neither the
+    /// words nor the speakers can answer (which product, which engagement).
+    /// Read from the file, like everything else here.
+    var tags: [String] = []
 
     var speakers: [String] {
         var seen = Set<String>(), ordered: [String] = []
@@ -516,7 +520,8 @@ enum MeetingArchive {
                                        entries: parse(markdown: text, youLabel: youLabel),
                                        title: parseTitle(markdown: text),
                                        summary: parseSummary(markdown: text),
-                                       sections: parseSections(markdown: text))
+                                       sections: parseSections(markdown: text),
+                                       tags: MeetingTags.parse(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }
@@ -588,7 +593,15 @@ enum MeetingArchive {
     static func renameFile(at url: URL, stamp: String, title: String) -> URL {
         let fm = FileManager.default
         let directory = url.deletingLastPathComponent()
-        let wanted = uniqueName(fileName(stamp: stamp, title: title)) {
+        // The file may ALREADY have the name being asked for — a meeting named
+        // from the calendar is created under its final name at session start,
+        // and the end-of-session pass then asks for the same one. Without this
+        // the collision suffix treats the file as its own rival and renames
+        // "Product Daily" to "Product Daily 2" (caught the day calendar naming
+        // landed).
+        let ideal = fileName(stamp: stamp, title: title)
+        guard ideal != url.lastPathComponent else { return url }
+        let wanted = uniqueName(ideal) {
             fm.fileExists(atPath: directory.appendingPathComponent($0).path)
         }
         guard wanted != url.lastPathComponent else { return url }
@@ -652,6 +665,48 @@ enum MeetingArchive {
                                                    ofItemAtPath: url.path)
         }
         return true
+    }
+
+    /// Replaces a transcript's tags with `tags`.
+    @discardableResult
+    static func setTags(_ tags: [String], in url: URL) -> Bool {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+        let updated = MeetingTags.applying(tags, to: text)
+        guard updated != text else { return true }
+        return rewrite(url, with: updated)
+    }
+
+    /// Renames one tag everywhere in the archive.
+    ///
+    /// The escape valve the research says a vocabulary cannot live without: a
+    /// term WILL fork eventually — a typo, a change of mind about what the
+    /// engagement is called — and a system with no way to merge two tags is a
+    /// system whose answers quietly get worse. Cheap here because a tag lives
+    /// in the file, so merging is a rewrite of a header line, not a migration.
+    ///
+    /// Returns how many transcripts changed.
+    @discardableResult
+    static func renameTag(from old: String, to new: String) -> Int {
+        guard let from = MeetingTags.normalize(old),
+              let to = MeetingTags.normalize(new), from != to else { return 0 }
+        var changed = 0
+        for meeting in list(youLabel: L("You")) where meeting.tags.contains(from) {
+            // Through `unique` so renaming onto an existing tag MERGES rather
+            // than writing it twice.
+            let updated = MeetingTags.unique(meeting.tags.map { $0 == from ? to : $0 })
+            if setTags(updated, in: meeting.url) { changed += 1 }
+        }
+        Log.d("tags: renamed #\(from) -> #\(to) in \(changed) transcript(s)")
+        return changed
+    }
+
+    /// Every tag in the archive with how many meetings carry it — what
+    /// completion offers, so the familiar tag is the easy one to type.
+    static func tagCounts(in meetings: [ArchivedMeeting]) -> [(tag: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for m in meetings { for t in m.tags { counts[t, default: 0] += 1 } }
+        return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+            .map { (tag: $0.key, count: $0.value) }
     }
 
     static func delete(_ meeting: ArchivedMeeting) {
