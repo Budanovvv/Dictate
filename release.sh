@@ -48,6 +48,18 @@ trap finish_phantom_watch EXIT
 echo "  ✅ build"
 ./test.sh --quick >/dev/null 2>&1 && echo "  ✅ quick tests" || { echo "  ❌ tests"; exit 1; }
 
+# The owner's personal-only code must never leave this machine. Three layers
+# already stop it — the directory is outside the repository, the code compiles
+# to nothing without DICTATE_PERSONAL, and release builds never set that flag —
+# but every one of those depends on somebody remembering. This one does not:
+# it reads the finished binary and refuses to ship if the marker is in it.
+if /usr/libexec/PlistBuddy -c "Print :DictatePersonalBuild" \
+        "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+    echo "  ❌ this is a PERSONAL build — refusing to publish"
+    exit 1
+fi
+echo "  ✅ not a personal build"
+
 # 2. Two DMGs from one re-signed app:
 #   • BRANDED (Dictate-X.dmg) — the human download: a create-dmg image with a
 #     custom volume icon and a "Drag into Applications" background layout.

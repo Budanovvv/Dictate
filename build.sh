@@ -27,6 +27,24 @@ fi
 # Regenerate it every build so project.yml stays the single source of truth —
 # otherwise a MARKETING_VERSION bump in project.yml never reaches the built app
 # (the version lives in the .pbxproj, which xcodebuild reads as-is).
+# The owner's personal-only build. Sources/Personal/ is excluded from the
+# repository and compiles to nothing without this flag, so a release built
+# without --personal cannot contain it even by accident. release.sh greps the
+# finished binary to make sure.
+PERSONAL_FLAGS=()
+if [[ " $* " == *" --personal "* ]]; then
+    # Both halves matter. The compilation condition is what actually includes
+    # the code; the Info.plist key is what release.sh can SEE. A marker inside
+    # the binary would not do — dead code is stripped, so the check would pass
+    # for the wrong reason, which is worse than no check at all.
+    # $(inherited) is load-bearing: a build setting on the xcodebuild command
+    # line applies to EVERY target, package dependencies included. Replacing the
+    # value outright wiped swift-crypto's own conditions and broke its module
+    # resolution — append, never replace.
+    PERSONAL_FLAGS=(SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) DICTATE_PERSONAL')
+    echo "==> PERSONAL build — must not be released"
+fi
+
 if command -v xcodegen >/dev/null; then
     xcodegen generate --quiet
 else
@@ -41,6 +59,7 @@ for arg in "$@"; do
     case "$arg" in
         --nosign) NOSIGN=1 ;;
         --install) INSTALL=1 ;;
+        --personal) ;;   # handled above, before xcodegen
         *) echo "!! unknown flag: $arg"; exit 2 ;;
     esac
 done
@@ -62,11 +81,24 @@ echo "==> xcodebuild (Release), build ${BUILD_NUMBER}"
 set +o pipefail   # grep exiting 1 on "no matching lines" must not kill the build output filter
 xcodebuild -project Dictate.xcodeproj -scheme Dictate -configuration Release \
     -destination 'platform=macOS' -derivedDataPath "$DD" \
-    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" build ${EXTRA[@]+"${EXTRA[@]}"} \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" ${PERSONAL_FLAGS[@]+"${PERSONAL_FLAGS[@]}"} \
+    build ${EXTRA[@]+"${EXTRA[@]}"} \
     | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED"
 XC=${PIPESTATUS[0]}
 set -o pipefail
 [ "$XC" -eq 0 ] || { echo "!! xcodebuild failed (exit $XC)"; exit 1; }
+
+# Mark a personal build so release.sh can SEE it. Stamped here rather than as
+# a compile-time marker because dead code is stripped: a personal build with
+# the feature not yet wired up would pass a binary grep for the wrong reason,
+# and a check that passes for the wrong reason is worse than no check.
+# Before codesign — editing the plist afterwards would break the signature.
+if [ ${#PERSONAL_FLAGS[@]} -gt 0 ]; then
+    /usr/libexec/PlistBuddy -c "Add :DictatePersonalBuild bool true" \
+        "$APP/Contents/Info.plist" >/dev/null 2>&1 || true
+    codesign --force --deep --sign "Developer ID Application" "$APP" >/dev/null 2>&1 \
+        || codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
+fi
 
 { [ -d "$APP" ] && codesign -v "$APP" 2>/dev/null; } || [ "$NOSIGN" = 1 ] \
     || { echo "!! Build or signing failed"; exit 1; }
