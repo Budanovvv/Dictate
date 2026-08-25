@@ -108,6 +108,23 @@ final class Settings {
         set { d.set(newValue, forKey: "nameMeetingsFromCalendar") }
     }
 
+    /// Whether asking the archive questions is switched on.
+    ///
+    /// OFF by default, and it is the only setting in this app that turns
+    /// something OUTWARD. Everything else Dictate does happens on this Mac, and
+    /// a feature that breaks that promise cannot have its consent be a side
+    /// effect of a credential pasted once, months ago. The switch is the
+    /// consent, it is visible, and turning it off stops the offer appearing at
+    /// all — not merely greys it out.
+    ///
+    /// It is also where the choice will live when there is more than one way to
+    /// pay for this: today "my own key", later "my own key or a subscription".
+    /// A toggle becomes a picker without moving.
+    var askArchive: Bool {
+        get { d.bool(forKey: "askArchive") }
+        set { d.set(newValue, forKey: "askArchive") }
+    }
+
     var meetingConsentSeen: Bool {
         get { d.bool(forKey: "meetingConsentSeen") }
         set { d.set(newValue, forKey: "meetingConsentSeen") }

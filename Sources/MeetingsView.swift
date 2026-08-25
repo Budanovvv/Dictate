@@ -217,7 +217,12 @@ struct MeetingsView: View {
                     // somebody wanted an answer. It cannot offer to answer a
                     // question it has no sources for, which is the failure this
                     // whole category ships with.
-                    askRow.tag(Selection.answer(query))
+                    // Off by default, and off means absent. A greyed-out row
+                    // would still be telling somebody who chose local-only that
+                    // there is an online thing here they are missing.
+                    if Settings.shared.askArchive {
+                        askRow.tag(Selection.answer(query))
+                    }
                     ForEach(related) { hit in
                         relatedRow(hit).tag(hit.selection)
                     }

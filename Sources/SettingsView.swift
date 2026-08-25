@@ -15,6 +15,7 @@ struct SettingsView: View {
     /// What is being typed into the key field, and a counter to redraw when the
     /// stored key changes — the Keychain is not observable, so the view needs
     /// telling.
+    @State private var askArchive = Settings.shared.askArchive
     @State private var keyDraft = ""
     @State private var keyRevision = 0
 
@@ -354,27 +355,28 @@ struct SettingsView: View {
                     // who pays. Putting them side by side is the honest way to
                     // present a feature that breaks the app's own rule.
                     LabeledContent {
-                        apiKeyControl
+                        Toggle("", isOn: $askArchive)
+                            .labelsHidden()
+                            .onChange(of: askArchive) { Settings.shared.askArchive = $0 }
                     } label: {
                         rowLabel(L("Ask about your meetings"),
                                  L("Answers questions across the archive"))
+                    }
+                    // The key only matters once the feature is on, and a field
+                    // for a credential nobody can use yet is a question with no
+                    // reason behind it.
+                    if askArchive {
+                        LabeledContent {
+                            apiKeyControl
+                        } label: {
+                            rowLabel(L("Anthropic API key"), L("Your account, your usage"))
+                        }
                     }
                 } header: { Text(L("Meetings")) } footer: {
                     // Three facts in the order a person asks for them: what it
                     // does, where it runs (the whole positioning of this app),
                     // what it costs.
-                    Text(Lf("Names your meetings, writes a one-line summary and a table of contents — all on this Mac, nothing is sent anywhere. One-time download, %@.",
-                            LocalTextModelFile.sizeText)
-                         // The same honesty the offer in the meetings window
-                         // gives: on a Mac with no Metal path this runs on the
-                         // CPU, measured 13.9 s per passage against 1.1 s.
-                         + (LocalTextModelFile.runsOnCPU
-                            ? " " + L("On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.")
-                            : "")
-                         // And the memory cost, on the Macs where it is felt.
-                         + (LocalTextModelFile.isMemoryTight
-                            ? " " + L("It holds about 4.7 GB of memory while it writes, which this Mac will feel.")
-                            : ""))
+                    Text(meetingsFooter)
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -484,6 +486,31 @@ struct SettingsView: View {
         default:
             return nil
         }
+    }
+
+    /// What this section promises, assembled in one place because the compiler
+    /// cannot type-check it inline and because the claim is worth reading whole.
+    ///
+    /// "Nothing is sent anywhere" was unconditionally true until this section
+    /// grew a switch that sends something. Scoping the claim to the local model,
+    /// and stating plainly what the switch sends, is the difference between a
+    /// promise and a slogan.
+    private var meetingsFooter: String {
+        var text = Lf("Names your meetings, writes a one-line summary and a table of contents — all on this Mac. One-time download, %@.",
+                      LocalTextModelFile.sizeText)
+        text += " " + (askArchive
+            ? L("Asking is the one thing that leaves: your question and the few passages the search found go to Anthropic on your key. Whole meetings never do, and nothing goes anywhere until you click.")
+            : L("Asking questions is off, so nothing about your meetings leaves this Mac."))
+        // The same honesty the offer in the meetings window gives: on a Mac
+        // with no Metal path this runs on the CPU, measured 13.9 s per passage
+        // against 1.1 s.
+        if LocalTextModelFile.runsOnCPU {
+            text += " " + L("On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting.")
+        }
+        if LocalTextModelFile.isMemoryTight {
+            text += " " + L("It holds about 4.7 GB of memory while it writes, which this Mac will feel.")
+        }
+        return text
     }
 
     /// The user's own Anthropic key.
