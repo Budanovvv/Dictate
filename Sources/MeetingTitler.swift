@@ -289,21 +289,22 @@ enum MeetingTitler {
         The title names what the meeting was about as a whole, in at most 6 \
         words.
 
-        The line under it adds what the title does NOT say — the substance \
-        AND the outcome. One or two sentences, at most 240 characters, on a \
-        single line.
+        The line under it says what the meeting was ABOUT, taken as a whole, \
+        and then what came of it. One or two sentences, at most 240 \
+        characters, on a single line.
 
-        Where you would write "discussion of the topic and the problems \
-        raised", write instead what specifically was wrong, and for whom. \
-        Where you would write "participants agreed on the topic", write \
-        instead what was decided, naming the people or the things it applies \
-        to. Where you would write "the topic is being discussed", write \
-        instead what has to happen next.
+        Cover the conversation, not its most vivid moment. If an hour went on \
+        three subjects, name the three; do not spend the line on one exchange \
+        because that exchange was specific. Where you would write "discussion \
+        of the topic and the problems raised", write instead which subjects \
+        were covered and what was settled about them. Where you would write \
+        "participants agreed on the topic", write instead what was decided, \
+        naming the people or the things it applies to.
 
-        Never restate the title. Never describe the meeting as an event. Never \
-        use a genre word like "demo discussion" or "planning session", and \
-        never an abstraction like "system functionality" or "objectives" — use \
-        the concrete nouns the conversation itself used.
+        Never restate the title. Never use a genre word like "demo \
+        discussion" or "planning session", and never an abstraction like \
+        "system functionality" or "objectives" — use the concrete nouns the \
+        conversation itself used.
 
         Every word of your line must come from the conversation you are given. \
         Never invent a name, a date or a number that is not in it.

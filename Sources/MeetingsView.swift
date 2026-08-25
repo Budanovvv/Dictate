@@ -289,40 +289,59 @@ struct MeetingsView: View {
             // Only until the first keystroke. It is an invitation, and once
             // typing has started it would be a permanent caption on a working
             // control — the results themselves say what the search did.
+            // The invitation goes once typing starts; the tags stay, because
+            // they are a control rather than a caption.
             if query.isEmpty {
                 Text(L("Words, or a question — I'll match by meaning"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 2)
-                // The tags themselves, where the question "how do I filter by
-                // one?" is actually asked. Typing "#name" into the field works
-                // and nobody would ever guess it — a vocabulary you cannot see
-                // is a vocabulary you stop using.
-                tagFilterRow
             }
+            tagFilterRow
         }
         .padding(.horizontal, MeetingsChrome.sidebarInset)
         .padding(.vertical, 8)
     }
 
-    /// The archive's tags, most-used first, as a scrollable line of chips.
-    /// Only while the field is empty: once a search is under way this row
-    /// would be offering to replace it.
+    /// The archive's tags, most-used first, as a scrollable line of chips —
+    /// always, not only while the field is empty.
+    ///
+    /// It used to hide as soon as a tag was chosen, which quietly made two
+    /// things impossible: picking a SECOND tag (the row was gone) and seeing
+    /// which ones were on. Filtering by two tags is the ordinary way to narrow
+    /// — "this client, this product" — and it has to be reachable from where
+    /// the first one was.
     @ViewBuilder
     private var tagFilterRow: some View {
         let all = MeetingArchive.tagCounts(in: meetings)
+        let active = Set(MeetingSearch.split(query: query).tags)
         if !all.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 5) {
                     ForEach(all, id: \.tag) { item in
-                        TagChip(tag: item.tag, onFilter: { query = "#\(item.tag)" })
+                        TagChip(tag: item.tag,
+                                onFilter: { toggleTagFilter(item.tag) },
+                                active: active.contains(item.tag))
                     }
                 }
                 .padding(.horizontal, 2)
                 .padding(.vertical, 1)
             }
         }
+    }
+
+    /// Adds a tag to the filter, or takes it out if it is already there.
+    ///
+    /// The words in the field are kept either way: that is what makes
+    /// "#wholecall pricing" — search inside the tag rather than across the
+    /// whole archive — something you can build by clicking and then typing,
+    /// instead of a syntax you have to know.
+    private func toggleTagFilter(_ tag: String) {
+        var (tags, text) = MeetingSearch.split(query: query)
+        if let at = tags.firstIndex(of: tag) { tags.remove(at: at) } else { tags.append(tag) }
+        let parts = tags.map { "#\($0)" } + (text.isEmpty ? [] : [text])
+        query = parts.joined(separator: " ")
     }
 
     /// Search, hand-built rather than `.searchable`: the stock sidebar field is
@@ -572,11 +591,7 @@ struct MeetingsView: View {
                                    reload()
                                },
                                onTagFilter: { tag in
-                                   // The library is where a filtered list can
-                                   // be seen, so asking for one opens it —
-                                   // filtering behind a closed sidebar would
-                                   // look like the click did nothing.
-                                   query = "#\(tag)"
+                                   toggleTagFilter(tag)
                                },
                                onRename: { old, new in
                                    MeetingArchive.rename(speaker: old, to: new, in: url)
@@ -2776,6 +2791,9 @@ private struct TagRow: View {
 private struct TagChip: View {
     let tag: String
     let onFilter: () -> Void
+    /// Filled in rather than tinted: the filter row has to say which tags are
+    /// ON, or picking a second one is guesswork.
+    var active: Bool = false
     /// nil where there is nothing to remove FROM — the library's filter row
     /// shows the same chip, but a tag is not attached to anything there.
     var onRemove: (() -> Void)? = nil
@@ -2805,8 +2823,9 @@ private struct TagChip: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
-        .background(Capsule().fill(Brand.indigoLabel.opacity(hovering ? 0.20 : 0.12)))
-        .foregroundStyle(Brand.indigoLabel)
+        .background(Capsule().fill(Brand.indigoLabel.opacity(
+            active ? 1.0 : (hovering ? 0.20 : 0.12))))
+        .foregroundStyle(active ? Color.white : Brand.indigoLabel)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.1), value: hovering)
     }
