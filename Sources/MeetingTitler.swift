@@ -154,6 +154,14 @@ enum MeetingTitler {
     /// with `#`, `_` or `**[`, the three prefixes that mean something else in
     /// our own file format.
     ///
+    /// A SAFETY NET, not a style control — and that distinction is the whole
+    /// change. The prompt used to carry this number too ("at most 240
+    /// characters"), which is the worst-obeyed instruction type there is for a
+    /// model this size: measured on 8B models, a character count is honoured
+    /// 7–24% of the time and "one sentence" 99.2% (Retkowski & Waibel, NAACL
+    /// 2025 Findings). So the prompt asks for one sentence, in the units the
+    /// model actually has, and this number catches the tail it cannot count.
+    ///
     /// The ceiling was 90, and 90 was the width of a sidebar row: the summary
     /// used to live ONLY in that row, so it was sized to fit two lines of it.
     /// It has a reading pane now — the transcript opens on it — and the row
@@ -290,8 +298,7 @@ enum MeetingTitler {
         words.
 
         The line under it says what the meeting was ABOUT, taken as a whole, \
-        and then what came of it. One or two sentences, at most 240 \
-        characters, on a single line.
+        and then what came of it. Write ONE sentence, on a single line.
 
         Cover the conversation, not its most vivid moment. If an hour went on \
         three subjects, name the three; do not spend the line on one exchange \

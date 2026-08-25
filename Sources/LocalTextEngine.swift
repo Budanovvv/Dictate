@@ -230,7 +230,7 @@ struct LocalTextEngine: MeetingTextEngine {
             LINE: <the line under it>
             """
         let raw = try await LlamaServer.shared.complete(system: asked, user: text,
-                                                        temperature: 0.3, maxTokens: 120)
+                                                        temperature: 0.3, maxTokens: 200)
         var title = "", summary = ""
         for line in raw.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -305,6 +305,17 @@ actor LlamaServer {
                          ["role": "user", "content": user]],
             "temperature": temperature,
             "max_tokens": maxTokens,
+            // Qwen publishes these three for this model, and sending only
+            // `temperature` does NOT leave them unset — it leaves them at
+            // llama.cpp's own defaults, which are top_k 40, top_p 0.95 and
+            // min_p 0.05. That is a silent contradiction of the model card
+            // (20 / 0.8 / 0.0), and it is not cancelled out by a low
+            // temperature: llama.cpp applies temperature LAST in the sampler
+            // chain, so these three truncate the distribution before it ever
+            // gets there.
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0.0,
             // The instructions are identical across a whole backfill, so the
             // server keeps their prefix tokenized and skips re-reading it —
             // most of the per-call cost on short passages.
