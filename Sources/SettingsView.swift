@@ -349,55 +349,7 @@ struct SettingsView: View {
                     } label: {
                         rowLabel(L("Meeting titles & summaries"), textModelHint)
                     }
-                    // How finely the contents block cuts a meeting. Next to
-                    // the model that writes it, because it is the same
-                    // feature seen from the reader's side.
-                    LabeledContent {
-                        Picker("", selection: $sectionDetail) {
-                            Text(L("Fewer")).tag(MeetingPolicy.SectionDetail.coarse)
-                            Text(L("Standard")).tag(MeetingPolicy.SectionDetail.standard)
-                            Text(L("More")).tag(MeetingPolicy.SectionDetail.fine)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(width: 210)
-                        .onChange(of: sectionDetail) { level in
-                            Settings.shared.sectionDetail = level
-                            // Changing how contents are cut and leaving the
-                            // existing ones alone would be answering a
-                            // question with a promise. The library rebuilds
-                            // them next time it is opened.
-                            UserDefaults.standard.set(true, forKey: "resectionMeetings")
-                        }
-                    } label: {
-                        rowLabel(L("Jump points per meeting"),
-                                 L("How finely the contents block cuts a call"))
-                    }
-                    // Asking the archive questions. Under the same heading as
-                    // the local model on purpose: these are two answers to one
-                    // question — how much thinking happens about your meetings
-                    // — and the difference between them is where it happens and
-                    // who pays. Putting them side by side is the honest way to
-                    // present a feature that breaks the app's own rule.
-                    LabeledContent {
-                        Toggle("", isOn: $askArchive)
-                            .labelsHidden()
-                            .onChange(of: askArchive) { Settings.shared.askArchive = $0 }
-                    } label: {
-                        rowLabel(L("Ask about your meetings"),
-                                 L("Answers questions across the archive"))
-                    }
-                    // The key only matters once the feature is on, and a field
-                    // for a credential nobody can use yet is a question with no
-                    // reason behind it.
-                    if askArchive {
-                        LabeledContent {
-                            apiKeyControl
-                        } label: {
-                            rowLabel(L("Anthropic API key"), L("Your account, your usage"))
-                        }
-                    }
-                } header: { Text(L("Meetings")) } footer: {
+                } header: { Text(L("Understanding meetings")) } footer: {
                     // Three facts in the order a person asks for them: what it
                     // does, where it runs (the whole positioning of this app),
                     // what it costs.
@@ -405,6 +357,43 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            // Asking the archive. Its OWN section, and OUTSIDE the "if the
+            // local model is supported" test that wraps the one above: this
+            // runs on the user's API key in Anthropic's cloud and has nothing
+            // to do with whether this Mac can run a 4B model locally. Hiding
+            // it in there meant a Mac too small for the local model could not
+            // turn on the one feature that does not need it.
+            Section {
+                // Asking the archive questions. Under the same heading as
+                // the local model on purpose: these are two answers to one
+                // question — how much thinking happens about your meetings
+                // — and the difference between them is where it happens and
+                // who pays. Putting them side by side is the honest way to
+                // present a feature that breaks the app's own rule.
+                LabeledContent {
+                    Toggle("", isOn: $askArchive)
+                        .labelsHidden()
+                        .onChange(of: askArchive) { Settings.shared.askArchive = $0 }
+                } label: {
+                    rowLabel(L("Ask about your meetings"),
+                             L("Answers questions across the archive"))
+                }
+                // The key only matters once the feature is on, and a field
+                // for a credential nobody can use yet is a question with no
+                // reason behind it.
+                if askArchive {
+                    LabeledContent {
+                        apiKeyControl
+                    } label: {
+                        rowLabel(L("Anthropic API key"), L("Your account, your usage"))
+                    }
+                }
+            } header: { Text(L("Asking your archive")) } footer: {
+                Text(askFooter)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // — Status (read-only) —
@@ -513,6 +502,15 @@ struct SettingsView: View {
         }
     }
 
+    /// What the asking section promises. Its own paragraph because it makes a
+    /// different promise from the local model's, and one paragraph making both
+    /// is exactly how "nothing is sent anywhere" quietly acquired an exception.
+    private var askFooter: String {
+        askArchive
+            ? L("Asking is the one thing that leaves: your question and the few passages the search found go to Anthropic on your key. Whole meetings never do, and nothing goes anywhere until you click.")
+            : L("Asking questions is off, so nothing about your meetings leaves this Mac.")
+    }
+
     /// What this section promises, assembled in one place because the compiler
     /// cannot type-check it inline and because the claim is worth reading whole.
     ///
@@ -523,9 +521,6 @@ struct SettingsView: View {
     private var meetingsFooter: String {
         var text = Lf("Names your meetings, writes a one-line summary and a table of contents — all on this Mac. One-time download, %@.",
                       LocalTextModelFile.sizeText)
-        text += " " + (askArchive
-            ? L("Asking is the one thing that leaves: your question and the few passages the search found go to Anthropic on your key. Whole meetings never do, and nothing goes anywhere until you click.")
-            : L("Asking questions is off, so nothing about your meetings leaves this Mac."))
         // The same honesty the offer in the meetings window gives: on a Mac
         // with no Metal path this runs on the CPU, measured 13.9 s per passage
         // against 1.1 s.
