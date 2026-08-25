@@ -53,7 +53,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         meetingNavigator.open(select)
         if meetingWindow == nil {
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 420, height: 500),
+                // Room for the library AND a readable transcript beside it:
+                // 300 for the cards, the rest for the words. The window used to
+                // open at 420 and animate to 780 when the library appeared —
+                // there is one layout now, so it opens at the size that layout
+                // needs. AppKit remembers what the user resizes it to, so this
+                // is a first-open default, not a size imposed on anyone.
+                contentRect: NSRect(x: 0, y: 0, width: 820, height: 620),
                 // .miniaturizable so the middle traffic light EXISTS: folding
                 // a window away is what that button is for on this platform,
                 // and a bespoke chevron elsewhere in the window is a second
@@ -91,15 +97,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // window.
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
-            panel.minSize = NSSize(width: 360, height: 300)
+            // 300 of library + 340 of transcript is where the cards stop
+            // being readable, and a card that cannot be read is a list that
+            // cannot be scanned.
+            panel.minSize = NSSize(width: 640, height: 420)
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.contentView = NSHostingView(rootView: MeetingsView(
                 session: meeting,
                 navigator: meetingNavigator,
-                onStop: { [weak self] in self?.meeting.stop() },
-                onSidebarChange: { [weak self] shown in
-                    self?.adjustMeetingWindow(sidebarShown: shown)
-                })
+                onStop: { [weak self] in self?.meeting.stop() })
                 // Without this the window is unified only in appearance: the
                 // backgrounds run to the top edge but SwiftUI keeps a title-bar
                 // safe area, so the header row is pushed 28pt down and the two
@@ -228,22 +234,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         panel.becomesKeyOnlyIfNeeded = live
     }
 
-    /// Opening the library needs room; closing it hands the space back.
-    private func adjustMeetingWindow(sidebarShown: Bool) {
-        guard let window = meetingWindow else { return }
-        // The library column is a fixed 240pt (MeetingsChrome.sidebarWidth), so
-        // with it open the window has to keep room for a readable transcript
-        // beside it; on its own the transcript is usable down to 360.
-        window.minSize = NSSize(width: sidebarShown ? 620 : 360, height: 300)
-        let width = window.frame.width
-        guard sidebarShown ? width < 720 : width > 720 else { return }
-        var frame = window.frame
-        let target: CGFloat = sidebarShown ? 780 : 460
-        frame.origin.x -= (target - frame.width) / 2
-        frame.size.width = target
-        if sidebarShown { frame.size.height = max(frame.height, 540) }
-        window.setFrame(frame, display: true, animate: true)
-    }
 
     /// Menu toggle for the meeting transcript.
     ///

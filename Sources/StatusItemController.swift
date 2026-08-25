@@ -357,56 +357,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// locale's own short form (an English interface gets "12 Aug", a Russian
     /// one "12 авг."), because a hardcoded English month in a Russian menu is a
     /// bug, not a style.
+    /// One row, not a submenu of recent meetings.
+    ///
+    /// There used to be a list of the five newest transcripts here. It was a
+    /// poor copy of the library — no summary, no tags, no search, five of
+    /// however many — kept behind a hover, and everything it did uniquely (the
+    /// running call) now sits at the top level as "Show Live Transcript". It
+    /// also cost a file read per meeting on EVERY menu open, in a folder that
+    /// iCloud may have evicted, which is a stall this app has already paid for
+    /// once. The menu does actions; the window does browsing.
     private func addMeetingsItem(to menu: NSMenu) {
-        let recent = Self.recentMeetings()
-        // Nothing recorded yet and nothing running: a submenu holding one item
-        // is worse than the plain item it holds.
-        guard !recent.isEmpty || meetingActive() else {
-            let plain = NSMenuItem(title: L("Meetings…"),
-                                   action: #selector(showAllMeetings), keyEquivalent: "")
-            plain.target = self
-            menu.addItem(plain)
-            return
-        }
-
-        let parent = NSMenuItem(title: L("Meetings"), action: nil, keyEquivalent: "")
-        // A second symbol, and only because the first one exists: AppKit lays a
-        // whole group out on the icon's text column, so ONE image left this pair
-        // indented ~36pt while the rows below stayed flush — a stray row rather
-        // than emphasis. Both rows of the section carry one, Dictation carries
-        // none, and the difference reads as two sections. Template, not
-        // coloured: the red is the record action's alone.
-        parent.image = Self.plainSymbol("list.bullet.rectangle")
-        let sub = NSMenu()
-
-        // The running call heads the list, with the clock it has been running
-        // where the others carry a date — the same red dot the menu bar icon is
-        // wearing while it does.
-        if let started = meetingStarted() {
-            let live = NSMenuItem(title: "🔴 " + L("Recording now") + " · " + Self.elapsed(since: started),
-                                  action: #selector(showLiveMeeting), keyEquivalent: "")
-            live.target = self
-            sub.addItem(live)
-        }
-        for meeting in recent {
-            let entry = NSMenuItem(title: Self.row(for: meeting),
-                                   action: #selector(openMeeting(_:)), keyEquivalent: "")
-            entry.target = self
-            entry.representedObject = meeting.url
-            entry.toolTip = meeting.name
-            sub.addItem(entry)
-        }
-
-        sub.addItem(.separator())
-        let all = NSMenuItem(title: L("Show All Meetings…"),
-                             action: #selector(showAllMeetings), keyEquivalent: "")
-        all.target = self
-        sub.addItem(all)
-
-        parent.submenu = sub
-        menu.addItem(parent)
+        let item = NSMenuItem(title: L("Meetings…"),
+                              action: #selector(showAllMeetings), keyEquivalent: "")
+        item.image = Self.plainSymbol("list.bullet.rectangle")
+        item.target = self
+        menu.addItem(item)
     }
-
     /// "12 Aug · Agent Discussion". Only the TITLE is ever cut — the date is
     /// the part that has to survive, and it is what makes the column scannable.
     private static func row(for meeting: RecentMeeting) -> String {

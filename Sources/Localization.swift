@@ -101,6 +101,7 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "What it was about": "О чём был",
         "Show everything tagged #%@": "Показать всё с тегом #%@",
         "Remove #%@ from this meeting": "Убрать #%@ с этого митинга",
         "Add a tag": "Добавить тег",
@@ -146,7 +147,6 @@ extension Localization {
         "Meetings…": "Митинги…",
         "Record Meeting": "Записать митинг",
         "Stop Recording": "Остановить запись",
-        "Show All Meetings…": "Все митинги…",
         "%@ — dictate in %@": "%@ — диктовка: %@",
         "%@ — dictate in any language": "%@ — диктовка на любом языке",
         "%@ — translate %@ → %@": "%@ — перевод %@ → %@",
@@ -156,8 +156,6 @@ extension Localization {
         "Search transcripts": "Поиск по транскриптам",
         "What do you want to find?": "Что найти?",
         "Words, or a question — I'll match by meaning": "Слова или вопрос — найду по смыслу",
-        "Show the meeting list": "Показать список митингов",
-        "Hide the meeting list": "Скрыть список митингов",
         "Meeting actions": "Действия с митингом",
         "Related by meaning": "По смыслу",
         "Contents": "Содержание",
@@ -335,6 +333,7 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "What it was about": "Про що був",
         "Show everything tagged #%@": "Показати все з тегом #%@",
         "Remove #%@ from this meeting": "Прибрати #%@ з цього мітингу",
         "Add a tag": "Додати тег",
@@ -380,7 +379,6 @@ extension Localization {
         "Meetings…": "Зустрічі…",
         "Record Meeting": "Записати зустріч",
         "Stop Recording": "Зупинити запис",
-        "Show All Meetings…": "Усі зустрічі…",
         "%@ — dictate in %@": "%@ — диктування: %@",
         "%@ — dictate in any language": "%@ — диктування будь-якою мовою",
         "%@ — translate %@ → %@": "%@ — переклад %@ → %@",
@@ -390,8 +388,6 @@ extension Localization {
         "Search transcripts": "Пошук у транскриптах",
         "What do you want to find?": "Що знайти?",
         "Words, or a question — I'll match by meaning": "Слова або запитання — знайду за змістом",
-        "Show the meeting list": "Показати список зустрічей",
-        "Hide the meeting list": "Сховати список зустрічей",
         "Meeting actions": "Дії із зустріччю",
         "Related by meaning": "За змістом",
         "Contents": "Зміст",
@@ -560,6 +556,7 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "What it was about": "De qué trató",
         "Show everything tagged #%@": "Mostrar todo con la etiqueta #%@",
         "Remove #%@ from this meeting": "Quitar #%@ de esta reunión",
         "Add a tag": "Añadir una etiqueta",
@@ -605,7 +602,6 @@ extension Localization {
         "Meetings…": "Reuniones…",
         "Record Meeting": "Grabar reunión",
         "Stop Recording": "Detener grabación",
-        "Show All Meetings…": "Ver todas las reuniones…",
         "%@ — dictate in %@": "%@ — dictar en %@",
         "%@ — dictate in any language": "%@ — dictar en cualquier idioma",
         "%@ — translate %@ → %@": "%@ — traducir %@ → %@",
@@ -615,8 +611,6 @@ extension Localization {
         "Search transcripts": "Buscar en transcripciones",
         "What do you want to find?": "¿Qué quieres encontrar?",
         "Words, or a question — I'll match by meaning": "Palabras o una pregunta: busco por significado",
-        "Show the meeting list": "Mostrar la lista de reuniones",
-        "Hide the meeting list": "Ocultar la lista de reuniones",
         "Meeting actions": "Acciones de la reunión",
         "Related by meaning": "Relacionadas por significado",
         "Contents": "Contenido",
@@ -794,6 +788,7 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "What it was about": "Sobre o que foi",
         "Show everything tagged #%@": "Mostrar tudo com a tag #%@",
         "Remove #%@ from this meeting": "Remover #%@ desta reunião",
         "Add a tag": "Adicionar uma tag",
@@ -839,7 +834,6 @@ extension Localization {
         "Meetings…": "Reuniões…",
         "Record Meeting": "Gravar reunião",
         "Stop Recording": "Parar gravação",
-        "Show All Meetings…": "Ver todas as reuniões…",
         "%@ — dictate in %@": "%@ — ditar em %@",
         "%@ — dictate in any language": "%@ — ditar em qualquer idioma",
         "%@ — translate %@ → %@": "%@ — traduzir %@ → %@",
@@ -849,8 +843,6 @@ extension Localization {
         "Search transcripts": "Buscar nas transcrições",
         "What do you want to find?": "O que você quer encontrar?",
         "Words, or a question — I'll match by meaning": "Palavras ou uma pergunta: busco por significado",
-        "Show the meeting list": "Mostrar a lista de reuniões",
-        "Hide the meeting list": "Ocultar a lista de reuniões",
         "Meeting actions": "Ações da reunião",
         "Related by meaning": "Relacionadas por significado",
         "Contents": "Conteúdo",
@@ -1028,6 +1020,7 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "What it was about": "De quoi il s’agissait",
         "Show everything tagged #%@": "Afficher tout ce qui porte #%@",
         "Remove #%@ from this meeting": "Retirer #%@ de cette réunion",
         "Add a tag": "Ajouter un tag",
@@ -1073,7 +1066,6 @@ extension Localization {
         "Meetings…": "Réunions…",
         "Record Meeting": "Enregistrer la réunion",
         "Stop Recording": "Arrêter l'enregistrement",
-        "Show All Meetings…": "Toutes les réunions…",
         "%@ — dictate in %@": "%@ — dicter en %@",
         "%@ — dictate in any language": "%@ — dicter dans n'importe quelle langue",
         "%@ — translate %@ → %@": "%@ — traduire %@ → %@",
@@ -1083,8 +1075,6 @@ extension Localization {
         "Search transcripts": "Rechercher dans les transcriptions",
         "What do you want to find?": "Que cherchez-vous ?",
         "Words, or a question — I'll match by meaning": "Des mots ou une question — je cherche par le sens",
-        "Show the meeting list": "Afficher la liste des réunions",
-        "Hide the meeting list": "Masquer la liste des réunions",
         "Meeting actions": "Actions de la réunion",
         "Related by meaning": "Liées par le sens",
         "Contents": "Sommaire",
@@ -1262,6 +1252,7 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "What it was about": "Worum es ging",
         "Show everything tagged #%@": "Alles mit #%@ anzeigen",
         "Remove #%@ from this meeting": "#%@ aus diesem Meeting entfernen",
         "Add a tag": "Tag hinzufügen",
@@ -1307,7 +1298,6 @@ extension Localization {
         "Meetings…": "Meetings…",
         "Record Meeting": "Meeting aufnehmen",
         "Stop Recording": "Aufnahme stoppen",
-        "Show All Meetings…": "Alle Meetings…",
         "%@ — dictate in %@": "%@ — Diktat: %@",
         "%@ — dictate in any language": "%@ — Diktat in beliebiger Sprache",
         "%@ — translate %@ → %@": "%@ — übersetzen %@ → %@",
@@ -1317,8 +1307,6 @@ extension Localization {
         "Search transcripts": "Transkripte durchsuchen",
         "What do you want to find?": "Was möchten Sie finden?",
         "Words, or a question — I'll match by meaning": "Wörter oder eine Frage — ich suche nach Bedeutung",
-        "Show the meeting list": "Meeting-Liste einblenden",
-        "Hide the meeting list": "Meeting-Liste ausblenden",
         "Meeting actions": "Meeting-Aktionen",
         "Related by meaning": "Sinnverwandt",
         "Contents": "Inhalt",
@@ -1496,6 +1484,7 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "What it was about": "关于什么",
         "Show everything tagged #%@": "显示所有带 #%@ 的内容",
         "Remove #%@ from this meeting": "从此会议移除 #%@",
         "Add a tag": "添加标签",
@@ -1541,7 +1530,6 @@ extension Localization {
         "Meetings…": "会议…",
         "Record Meeting": "录制会议",
         "Stop Recording": "停止录制",
-        "Show All Meetings…": "查看全部会议…",
         "%@ — dictate in %@": "%@ — 用 %@ 听写",
         "%@ — dictate in any language": "%@ — 用任意语言听写",
         "%@ — translate %@ → %@": "%@ — 翻译 %@ → %@",
@@ -1551,8 +1539,6 @@ extension Localization {
         "Search transcripts": "搜索转录",
         "What do you want to find?": "想找什么？",
         "Words, or a question — I'll match by meaning": "词语或问题——按含义匹配",
-        "Show the meeting list": "显示会议列表",
-        "Hide the meeting list": "隐藏会议列表",
         "Meeting actions": "会议操作",
         "Related by meaning": "语义相关",
         "Contents": "目录",
@@ -1730,6 +1716,7 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "What it was about": "何についてか",
         "Show everything tagged #%@": "#%@ が付いたものをすべて表示",
         "Remove #%@ from this meeting": "このミーティングから #%@ を外す",
         "Add a tag": "タグを追加",
@@ -1775,7 +1762,6 @@ extension Localization {
         "Meetings…": "ミーティング…",
         "Record Meeting": "会議を録音",
         "Stop Recording": "録音を停止",
-        "Show All Meetings…": "すべての会議を表示…",
         "%@ — dictate in %@": "%@ — %@ で音声入力",
         "%@ — dictate in any language": "%@ — どの言語でも音声入力",
         "%@ — translate %@ → %@": "%@ — 翻訳 %@ → %@",
@@ -1785,8 +1771,6 @@ extension Localization {
         "Search transcripts": "文字起こしを検索",
         "What do you want to find?": "何を探しますか？",
         "Words, or a question — I'll match by meaning": "単語でも質問でも — 意味で探します",
-        "Show the meeting list": "ミーティング一覧を表示",
-        "Hide the meeting list": "ミーティング一覧を隠す",
         "Meeting actions": "ミーティングの操作",
         "Related by meaning": "意味が近いもの",
         "Contents": "目次",
@@ -1964,6 +1948,7 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "What it was about": "무엇에 관한 것인지",
         "Show everything tagged #%@": "#%@ 태그가 붙은 항목 모두 보기",
         "Remove #%@ from this meeting": "이 미팅에서 #%@ 제거",
         "Add a tag": "태그 추가",
@@ -2009,7 +1994,6 @@ extension Localization {
         "Meetings…": "회의…",
         "Record Meeting": "회의 녹음",
         "Stop Recording": "녹음 중지",
-        "Show All Meetings…": "모든 회의 보기…",
         "%@ — dictate in %@": "%@ — 받아쓰기: %@",
         "%@ — dictate in any language": "%@ — 모든 언어로 받아쓰기",
         "%@ — translate %@ → %@": "%@ — 번역 %@ → %@",
@@ -2019,8 +2003,6 @@ extension Localization {
         "Search transcripts": "전사 검색",
         "What do you want to find?": "무엇을 찾으시나요?",
         "Words, or a question — I'll match by meaning": "단어나 질문 — 의미로 찾아 드립니다",
-        "Show the meeting list": "회의 목록 보기",
-        "Hide the meeting list": "회의 목록 숨기기",
         "Meeting actions": "회의 작업",
         "Related by meaning": "의미가 비슷한 것",
         "Contents": "목차",
@@ -2198,6 +2180,7 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "What it was about": "Về điều gì",
         "Show everything tagged #%@": "Hiện mọi thứ gắn thẻ #%@",
         "Remove #%@ from this meeting": "Bỏ #%@ khỏi cuộc họp này",
         "Add a tag": "Thêm thẻ",
@@ -2243,7 +2226,6 @@ extension Localization {
         "Meetings…": "Cuộc họp…",
         "Record Meeting": "Ghi cuộc họp",
         "Stop Recording": "Dừng ghi",
-        "Show All Meetings…": "Xem tất cả cuộc họp…",
         "%@ — dictate in %@": "%@ — đọc chính tả bằng %@",
         "%@ — dictate in any language": "%@ — đọc chính tả bằng bất kỳ ngôn ngữ nào",
         "%@ — translate %@ → %@": "%@ — dịch %@ → %@",
@@ -2253,8 +2235,6 @@ extension Localization {
         "Search transcripts": "Tìm trong biên bản",
         "What do you want to find?": "Bạn muốn tìm gì?",
         "Words, or a question — I'll match by meaning": "Từ khóa hoặc câu hỏi — tôi tìm theo nghĩa",
-        "Show the meeting list": "Hiện danh sách cuộc họp",
-        "Hide the meeting list": "Ẩn danh sách cuộc họp",
         "Meeting actions": "Thao tác cuộc họp",
         "Related by meaning": "Liên quan về ý nghĩa",
         "Contents": "Nội dung",
@@ -2432,6 +2412,7 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "What it was about": "Tungkol saan",
         "Show everything tagged #%@": "Ipakita lahat ng may #%@",
         "Remove #%@ from this meeting": "Alisin ang #%@ sa miting na ito",
         "Add a tag": "Magdagdag ng tag",
@@ -2477,7 +2458,6 @@ extension Localization {
         "Meetings…": "Mga Meeting…",
         "Record Meeting": "I-record ang Meeting",
         "Stop Recording": "Ihinto ang Pag-record",
-        "Show All Meetings…": "Ipakita ang Lahat ng Meeting…",
         "%@ — dictate in %@": "%@ — magdikta sa %@",
         "%@ — dictate in any language": "%@ — magdikta sa anumang wika",
         "%@ — translate %@ → %@": "%@ — isalin %@ → %@",
@@ -2487,8 +2467,6 @@ extension Localization {
         "Search transcripts": "Maghanap sa mga transcript",
         "What do you want to find?": "Ano ang hahanapin?",
         "Words, or a question — I'll match by meaning": "Mga salita o tanong — hahanapin ko ayon sa kahulugan",
-        "Show the meeting list": "Ipakita ang listahan ng meeting",
-        "Hide the meeting list": "Itago ang listahan ng meeting",
         "Meeting actions": "Mga aksyon sa meeting",
         "Related by meaning": "Kaugnay sa kahulugan",
         "Contents": "Nilalaman",

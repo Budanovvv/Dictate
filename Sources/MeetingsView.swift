@@ -47,9 +47,13 @@ struct MeetingsView: View {
     @ObservedObject private var offer = LocalTextModelOffer.shared
     let onStop: () -> Void
     /// The window owner resizes/levels the panel when the library opens.
-    let onSidebarChange: (Bool) -> Void
 
-    @State private var sidebarShown = false
+    // The library is always here. It used to fold away, and during a live
+    // call it folded ITSELF, turning the window into a glanceable strip over
+    // the meeting. The pill does that job now (MeetingPill), so the window is
+    // free to be one thing — a library with a transcript beside it — instead
+    // of two modes with a toggle, an animated width and a rule about when each
+    // applies.
     /// The library opens with the keyboard in the list — the way Mail and
     /// Notes open. It is also what makes the selected row read in the accent
     /// colour instead of the grey AppKit gives an unfocused list, and it means
@@ -102,10 +106,8 @@ struct MeetingsView: View {
     /// the rule under the two headers is a single line.
     var body: some View {
         HStack(spacing: 0) {
-            if sidebarShown {
-                sidebar.frame(width: MeetingsChrome.sidebarWidth)
-                Divider()
-            }
+            sidebar.frame(width: MeetingsChrome.sidebarWidth)
+            Divider()
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -116,9 +118,7 @@ struct MeetingsView: View {
             // screen immediately even when the disk (iCloud) is slow.
             if session.isActive {
                 selection = .live
-                sidebarShown = false
             } else {
-                sidebarShown = true
                 // After the window has actually taken key status (AppDelegate
                 // defers that by a runloop turn), or the request lands on a
                 // window that cannot hold focus yet and is dropped.
@@ -148,9 +148,6 @@ struct MeetingsView: View {
             // and a backfill started in the same breath would ask the model
             // about the very same meeting twice. The next time the library is
             // opened is soon enough.
-        }
-        .onChange(of: sidebarShown) { value in
-            onSidebarChange(value)
         }
         // A summary landed on disk for one of the older meetings: pick it up.
         // Only ever a handful of times, and only while the backfill runs —
@@ -264,9 +261,6 @@ struct MeetingsView: View {
     /// not line up".
     private var headerRow: some View {
         HStack(spacing: 2) {
-            ChromeButton(icon: "sidebar.leading",
-                         help: MeetingsChrome.sidebarHelp(shown: sidebarShown),
-                         action: toggleSidebar)
             Spacer(minLength: 0)
         }
         // The library holds the window's top-left corner while it is open, and
@@ -423,6 +417,12 @@ struct MeetingsView: View {
             // about three meetings. A meeting with no summary yet shows
             // nothing here — the first utterance is not a fallback, it is the
             // thing being removed.
+            // A PREVIEW of the summary, not the summary: two lines, cut. The
+            // full sentence is in the transcript's head now, where there is
+            // width to read it — which is what lets this row stay a fixed
+            // enough height to scan a list by. Mail clients settled this
+            // decades ago and cap their preview at three lines; two is what
+            // fits beside a title that may take two of its own.
             if let summary = meeting.summary {
                 Text(summary)
                     .font(.caption)
@@ -435,6 +435,22 @@ struct MeetingsView: View {
                     // rest.
                     .lineLimit(2)
                     .help(summary)
+            }
+            // Where the meeting belongs, last: the eye scans the title and the
+            // preview, and the tags answer a different question — which pile is
+            // this in — that is only asked once the row has been found.
+            if !meeting.tags.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(meeting.tags.prefix(4), id: \.self) { tag in
+                        Text("#\(tag)")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Brand.indigoLabel.opacity(0.12)))
+                            .foregroundStyle(Brand.indigoLabel)
+                    }
+                }
+                .lineLimit(1)
             }
         }
         .padding(.vertical, 3)
@@ -533,8 +549,7 @@ struct MeetingsView: View {
                            onRetitle: nil,
                            openRename: .constant(false),
                            jumpTo: nil,
-                           sidebarShown: sidebarShown,
-                           onToggleSidebar: toggleSidebar) {
+                           ) {
                 // A meeting in progress has no file yet — but the text on
                 // screen is exactly as copyable as an archived one, and taking
                 // the transcript out mid-call is what the owner reaches for.
@@ -562,7 +577,6 @@ struct MeetingsView: View {
                                    // filtering behind a closed sidebar would
                                    // look like the click did nothing.
                                    query = "#\(tag)"
-                                   sidebarShown = true
                                },
                                onRename: { old, new in
                                    MeetingArchive.rename(speaker: old, to: new, in: url)
@@ -581,8 +595,9 @@ struct MeetingsView: View {
                                // transcript opens where the discussion was,
                                // not at the top of a fifty-minute file.
                                jumpTo: selection?.time,
-                               sidebarShown: sidebarShown,
-                               onToggleSidebar: toggleSidebar,
+                               overviewSummary: meeting.summary,
+                               overviewSections: meeting.sections,
+
                                notice: declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
                                    : nil) {
@@ -618,15 +633,10 @@ struct MeetingsView: View {
                 // there is no library header for it to sit on. The empty row
                 // stays either way, so the rule under it is still one line
                 // across the window.
-                if !sidebarShown {
-                    ChromeButton(icon: "sidebar.leading",
-                                 help: MeetingsChrome.sidebarHelp(shown: sidebarShown),
-                                 action: toggleSidebar)
-                }
                 Spacer(minLength: 0)
             }
             .frame(height: MeetingsChrome.headerHeight)
-            .padding(.leading, sidebarShown ? MeetingsChrome.inset : MeetingsChrome.trafficLights)
+            .padding(.leading, MeetingsChrome.inset)
             .padding(.trailing, MeetingsChrome.inset)
             Divider()
             VStack(spacing: 10) {
@@ -642,9 +652,6 @@ struct MeetingsView: View {
         .background(Color(nsColor: .textBackgroundColor))
     }
 
-    private func toggleSidebar() {
-        withAnimation(.easeInOut(duration: 0.22)) { sidebarShown.toggle() }
-    }
 
     // MARK: - Data
 
@@ -919,10 +926,7 @@ enum MeetingsChrome {
     /// and a line of its preview are what a row has to show, and this is the
     /// width that shows them. The window widens by exactly this much when the
     /// library opens (AppDelegate), so the transcript keeps the width it had.
-    static let sidebarWidth: CGFloat = 240
-    static func sidebarHelp(shown: Bool) -> String {
-        shown ? L("Hide the meeting list") : L("Show the meeting list")
-    }
+    static let sidebarWidth: CGFloat = 300
 }
 
 /// The window's one button shape: a borderless glyph in a 28pt target with a
@@ -1176,8 +1180,16 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// the owner picked out of the search results. nil is the ordinary case:
     /// an archive opens at the top, a call at its newest line.
     let jumpTo: String?
-    let sidebarShown: Bool
-    let onToggleSidebar: () -> Void
+    /// What the meeting was about, in the model's one sentence. It used to
+    /// appear ONLY in the sidebar row, which is why that row kept wanting to
+    /// grow: a list is for scanning and a detail pane is for reading, and the
+    /// summary was living in the wrong one.
+    var overviewSummary: String? = nil
+    /// A line per few minutes with the moment it starts at. Written into every
+    /// transcript since sections existed and, until now, never shown anywhere —
+    /// only searched. For an hour-long call it is the most useful thing in the
+    /// file, and it only works if you can click it.
+    var overviewSections: [TranscriptSection] = []
     /// A one-line notice under the header — the offer of the text model, on
     /// the one meeting the built-in one refused to describe. nil is the
     /// ordinary case, which is every meeting and every live call.
@@ -1280,11 +1292,6 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// title 36pt off the transcript's margin.
     private var header: some View {
         HStack(spacing: 6) {
-            if !sidebarShown {
-                ChromeButton(icon: "sidebar.leading",
-                             help: MeetingsChrome.sidebarHelp(shown: sidebarShown),
-                             action: onToggleSidebar)
-            }
             if live?.isActive == true {
                 PulsingDot().padding(.leading, 2)
             }
@@ -1334,7 +1341,7 @@ private struct TranscriptPane<MenuItems: View>: View {
         // the library open this header starts on the transcript's own margin,
         // and without it the header IS the title bar and starts after the
         // window's buttons.
-        .padding(.leading, sidebarShown ? MeetingsChrome.inset : MeetingsChrome.trafficLights)
+        .padding(.leading, MeetingsChrome.inset)
         .padding(.trailing, MeetingsChrome.inset)
     }
 
@@ -1442,6 +1449,48 @@ private struct TranscriptPane<MenuItems: View>: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// What this meeting was, above what was said in it.
+    ///
+    /// The app has been writing both of these into every transcript for weeks
+    /// and showing neither: the summary leaked into the sidebar row (a list,
+    /// where nobody reads), and the contents block was written, indexed for
+    /// search, and never drawn at all. Put where there is width to read them,
+    /// they turn an hour of dialogue into something you can enter in the
+    /// middle — which is what a table of contents is for.
+    ///
+    /// Part of the transcript's own scroll rather than a fixed header: this is
+    /// the top of a document, not a permanent band stealing height from the
+    /// words. Scroll down and it is gone.
+    @ViewBuilder
+    private func overview(jump: @escaping (String) -> Void) -> some View {
+        if overviewSummary != nil || !overviewSections.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                if let overviewSummary {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L("What it was about"))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text(overviewSummary)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if !overviewSections.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L("Contents"))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        ForEach(overviewSections, id: \.time) { section in
+                            SectionLink(section: section) { jump(section.time) }
+                        }
+                    }
+                }
+                Divider()
+            }
+            .padding(.bottom, 2)
+        }
+    }
+
     private var turnsList: some View {
         cache.refresh(entries)
         // Everything the list does about scrolling hangs off this one rule:
@@ -1453,6 +1502,7 @@ private struct TranscriptPane<MenuItems: View>: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
+                    overview { moment in jump(to: moment, proxy) }
                     ForEach(cache.turns) { turn in
                         TurnView(turn: turn,
                                  color: cache.color(for: turn),
@@ -2696,6 +2746,44 @@ private struct TagChip: View {
         .padding(.vertical, 2)
         .background(Capsule().fill(Brand.indigoLabel.opacity(hovering ? 0.20 : 0.12)))
         .foregroundStyle(Brand.indigoLabel)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.1), value: hovering)
+    }
+}
+
+
+/// One line of the contents block: when it starts, and what was discussed
+/// there. Clicking scrolls the transcript to that moment.
+///
+/// The timestamp is monospaced and dim, the line is ordinary text — the same
+/// pairing the transcript itself uses for a turn, so the contents read as an
+/// index OF this document rather than as a separate widget bolted above it.
+private struct SectionLink: View {
+    let section: TranscriptSection
+    let onJump: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onJump) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(section.time.prefix(5))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text(section.line)
+                    .font(.callout)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(hovering ? 0.06 : 0))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.1), value: hovering)
     }
