@@ -301,10 +301,34 @@ struct MeetingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 2)
+                // The tags themselves, where the question "how do I filter by
+                // one?" is actually asked. Typing "#name" into the field works
+                // and nobody would ever guess it — a vocabulary you cannot see
+                // is a vocabulary you stop using.
+                tagFilterRow
             }
         }
         .padding(.horizontal, MeetingsChrome.sidebarInset)
         .padding(.vertical, 8)
+    }
+
+    /// The archive's tags, most-used first, as a scrollable line of chips.
+    /// Only while the field is empty: once a search is under way this row
+    /// would be offering to replace it.
+    @ViewBuilder
+    private var tagFilterRow: some View {
+        let all = MeetingArchive.tagCounts(in: meetings)
+        if !all.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(all, id: \.tag) { item in
+                        TagChip(tag: item.tag, onFilter: { query = "#\(item.tag)" })
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
+            }
+        }
     }
 
     /// Search, hand-built rather than `.searchable`: the stock sidebar field is
@@ -531,6 +555,14 @@ struct MeetingsView: View {
                                onTags: { updated in
                                    MeetingArchive.setTags(updated, in: url)
                                    reload()
+                               },
+                               onTagFilter: { tag in
+                                   // The library is where a filtered list can
+                                   // be seen, so asking for one opens it —
+                                   // filtering behind a closed sidebar would
+                                   // look like the click did nothing.
+                                   query = "#\(tag)"
+                                   sidebarShown = true
                                },
                                onRename: { old, new in
                                    MeetingArchive.rename(speaker: old, to: new, in: url)
@@ -1131,6 +1163,8 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// stops forking into synonyms.
     var knownTags: [(tag: String, count: Int)] = []
     var onTags: (([String]) -> Void)?
+    /// Clicking a tag asks the library to show everything filed under it.
+    var onTagFilter: ((String) -> Void)?
     let onRename: (String, String) -> Void
     /// nil while a meeting is still recording — a title is written when the
     /// transcript closes.
@@ -1205,7 +1239,8 @@ private struct TranscriptPane<MenuItems: View>: View {
             // and the participants, and tags would be the thing that finally
             // pushed the two panes' headers out of alignment.
             if let onTags {
-                TagRow(tags: tags, known: knownTags, onChange: onTags)
+                TagRow(tags: tags, known: knownTags, onChange: onTags,
+                       onFilter: { onTagFilter?($0) })
                 Divider()
             }
             if let notice {
@@ -2532,21 +2567,26 @@ private struct TagRow: View {
     let tags: [String]
     let known: [(tag: String, count: Int)]
     let onChange: ([String]) -> Void
+    let onFilter: (String) -> Void
     @ObservedObject private var loc = Localization.shared
     @State private var adding = false
+    @State private var addHovering = false
     @State private var draft = ""
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
-                TagChip(tag: tag) { onChange(tags.filter { $0 != tag }) }
+                TagChip(tag: tag,
+                        onFilter: { onFilter(tag) },
+                        onRemove: { onChange(tags.filter { $0 != tag }) })
             }
             Button { adding = true } label: {
-                ChromeGlyph(icon: tags.isEmpty ? "tag" : "plus", hovering: false)
+                ChromeGlyph(icon: tags.isEmpty ? "tag" : "plus", hovering: addHovering)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help(L("Add a tag"))
+            .onHover { addHovering = $0 }
             .popover(isPresented: $adding, arrowEdge: .bottom) { addPopover }
             if tags.isEmpty {
                 Text(L("No tags")).font(.caption).foregroundStyle(.tertiary)
@@ -2613,28 +2653,50 @@ private struct TagRow: View {
     }
 }
 
-/// One tag, and its remove button on hover. The brand indigo rather than a
-/// speaker colour: a tag is a property of the meeting, not one of its voices.
+/// One tag on a meeting: click it to see everything else filed there, and
+/// remove it with the × that appears under the pointer.
+///
+/// The click USED to remove the tag, which was wrong twice over. A destructive
+/// action does not belong on the main target of a control — the owner tapped a
+/// tag he had just added and watched it vanish — and it wasted the one gesture
+/// everybody tries first on a chip. Filtering is what a tag is FOR, so that is
+/// what clicking it does; it also turns out to be how the filter gets
+/// discovered at all, which typing "#tag" into a search field never was.
 private struct TagChip: View {
     let tag: String
-    let onRemove: () -> Void
+    let onFilter: () -> Void
+    /// nil where there is nothing to remove FROM — the library's filter row
+    /// shows the same chip, but a tag is not attached to anything there.
+    var onRemove: (() -> Void)? = nil
+    @ObservedObject private var loc = Localization.shared
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 3) {
-            Text("#\(tag)").font(.caption)
-            if hovering {
-                Image(systemName: "xmark").font(.caption2)
+            Button(action: onFilter) {
+                Text("#\(tag)").font(.caption)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(Lf("Show everything tagged #%@", tag))
+
+            // A real button, not a decoration on a tap gesture: removing has
+            // to be something you aim at, and only what you aimed at is what
+            // goes away.
+            if hovering, let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark").font(.caption2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(Lf("Remove #%@ from this meeting", tag))
             }
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
         .background(Capsule().fill(Brand.indigoLabel.opacity(hovering ? 0.20 : 0.12)))
         .foregroundStyle(Brand.indigoLabel)
-        .contentShape(Capsule())
         .onHover { hovering = $0 }
-        .onTapGesture { if hovering { onRemove() } }
-        .help(L("Click to remove"))
         .animation(.easeOut(duration: 0.1), value: hovering)
     }
 }
