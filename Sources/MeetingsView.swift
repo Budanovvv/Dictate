@@ -663,6 +663,7 @@ struct MeetingsView: View {
                                overviewSections: meeting.sections,
                                onRecut: { recut(meeting, to: $0) },
                                recutting: recutting == meeting.url,
+                               recutLevel: sectionLevel[meeting.url],
 
                                notice: declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
@@ -766,6 +767,10 @@ struct MeetingsView: View {
     /// Which meeting is being recut, if any — so the pane can say so and the
     /// menu cannot be used twice at once.
     @State private var recutting: URL?
+    /// Which granularity each meeting is currently showing. Only for the
+    /// control's own highlight — the truth is the file, and a meeting nobody
+    /// has recut simply has no entry here.
+    @State private var sectionLevel: [URL: MeetingPolicy.SectionDetail] = [:]
 
     /// Cut one meeting's contents again at a chosen granularity.
     ///
@@ -775,12 +780,23 @@ struct MeetingsView: View {
     /// seconds a dozen short model calls take.
     private func recut(_ meeting: ArchivedMeeting, to detail: MeetingPolicy.SectionDetail) {
         guard recutting == nil else { return }
+        // A cut already made is put back instantly. Half a minute is a fair
+        // price for a new shape and an absurd one for going back to the shape
+        // you had a moment ago.
+        if let kept = SectionCache.cut(meeting.url, meeting.entries, detail) {
+            _ = MeetingArchive.setSections(kept, heading: L("Contents"), in: meeting.url)
+            sectionLevel[meeting.url] = detail
+            reload()
+            return
+        }
         recutting = meeting.url
         Task { @MainActor in
             defer { recutting = nil }
             let sections = await MeetingSectioner.sections(for: meeting.entries, detail: detail)
             guard !sections.isEmpty else { return }
+            SectionCache.remember(sections, for: meeting.url, meeting.entries, detail)
             _ = MeetingArchive.setSections(sections, heading: L("Contents"), in: meeting.url)
+            sectionLevel[meeting.url] = detail
             reload()
         }
     }
@@ -1335,6 +1351,10 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// True while that is happening, so the block can say so instead of
     /// looking broken for the twenty seconds a recut takes.
     var recutting = false
+    /// Which granularity is showing, when anyone knows. nil for a meeting cut
+    /// by the ordinary backfill, which is most of them — the control then
+    /// highlights nothing rather than claiming a level it cannot verify.
+    var recutLevel: MeetingPolicy.SectionDetail? = nil
     /// A one-line notice under the header — the offer of the text model, on
     /// the one meeting the built-in one refused to describe. nil is the
     /// ordinary case, which is every meeting and every live call.
@@ -1666,28 +1686,6 @@ private struct TranscriptPane<MenuItems: View>: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                if recutting {
-                    ProgressView().controlSize(.small).scaleEffect(0.7)
-                } else if let onRecut {
-                    // Here rather than in Settings, and per meeting rather
-                    // than globally. The evidence says the NUMBER of sections
-                    // matters more than where they fall, which makes this the
-                    // highest-value control in the whole feature — and a
-                    // control nobody finds is worth nothing, so it lives where
-                    // the thing it changes is on screen.
-                    Menu {
-                        Button(L("Fewer, longer")) { onRecut(.coarse) }
-                        Button(L("Standard")) { onRecut(.standard) }
-                        Button(L("More, shorter")) { onRecut(.fine) }
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.caption)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help(L("How finely this meeting is cut"))
-                }
                 if all.count > collapsed {
                     Button(contentsExpanded ? L("Show less") : L("Show all")) {
                         withAnimation(.easeOut(duration: 0.15)) { contentsExpanded.toggle() }
@@ -1698,6 +1696,29 @@ private struct TranscriptPane<MenuItems: View>: View {
                 }
             }
             .padding(.bottom, 3)
+            // Only while the block is open. Collapsed, this is a glance at
+            // what a call contained; nobody adjusts granularity from there,
+            // and a control on every closed block would be three words of
+            // furniture on every meeting in the archive.
+            if contentsExpanded, let onRecut {
+                HStack(spacing: 6) {
+                    Picker("", selection: Binding(
+                        get: { recutLevel ?? .standard },
+                        set: { onRecut($0) })) {
+                        Text(L("Fewer")).tag(MeetingPolicy.SectionDetail.coarse)
+                        Text(L("Standard")).tag(MeetingPolicy.SectionDetail.standard)
+                        Text(L("More")).tag(MeetingPolicy.SectionDetail.fine)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .disabled(recutting)
+                    if recutting {
+                        ProgressView().controlSize(.small).scaleEffect(0.6)
+                    }
+                }
+                .padding(.bottom, 5)
+            }
             ForEach(shown, id: \.time) { section in
                 SectionLink(section: section) { jump(section.time) }
             }
