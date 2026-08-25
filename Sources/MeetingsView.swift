@@ -788,7 +788,19 @@ struct MeetingsView: View {
                 // A reload started later has fresher facts (a rename, a
                 // delete) — an older read arriving after it must not win.
                 guard generation == reloadGeneration else { return }
-                meetings = loaded
+                // Keep the instance we already have wherever the file still
+                // says the same thing. This is the whole fix for the reader's
+                // place jumping: a background writer touching ONE meeting used
+                // to replace all 37, and the open transcript — new struct, new
+                // entry identities, a summary above it re-laid out — moved
+                // under whoever was reading it. Now only what actually changed
+                // becomes a new value, and SwiftUI has nothing to redraw for
+                // the rest.
+                let previous = Dictionary(uniqueKeysWithValues: meetings.map { ($0.url, $0) })
+                meetings = loaded.map { fresh in
+                    if let old = previous[fresh.url], old.sameContent(as: fresh) { return old }
+                    return fresh
+                }
                 // Eighteen short strings: cheap enough to do inline, and
                 // cheapest of all on a reload that changed nothing (the
                 // vectors are kept).

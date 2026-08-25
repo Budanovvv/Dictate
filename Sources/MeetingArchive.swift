@@ -97,6 +97,24 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// Read from the file, like everything else here.
     var tags: [String] = []
 
+    /// What this meeting IS, independent of the objects carrying it.
+    ///
+    /// Reading the folder mints a fresh `ArchivedMeeting` — and fresh UUIDs
+    /// inside every entry — for all 37 transcripts, whether or not anything in
+    /// them changed. Struct equality therefore reports "different" for a file
+    /// nobody touched, and everything downstream believes it: the view
+    /// rebuilds, the summary above the reader changes height, and the place
+    /// they were reading moves. Comparing what the file SAYS is how a reload
+    /// can leave untouched meetings alone.
+    func sameContent(as other: ArchivedMeeting) -> Bool {
+        url == other.url && title == other.title && summary == other.summary
+            && tags == other.tags && sections == other.sections
+            && entries.count == other.entries.count
+            && zip(entries, other.entries).allSatisfy {
+                $0.time == $1.time && $0.speaker == $1.speaker && $0.text == $1.text
+            }
+    }
+
     var speakers: [String] {
         var seen = Set<String>(), ordered: [String] = []
         for e in entries where seen.insert(e.speaker).inserted { ordered.append(e.speaker) }
