@@ -1468,14 +1468,15 @@ private struct TranscriptPane<MenuItems: View>: View {
         if overviewSummary != nil || !overviewSections.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 if let overviewSummary {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(L("What it was about"))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Text(overviewSummary)
-                            .font(.callout)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    // The most valuable line in the head, and it is given its
+                    // weight by SIZE rather than by boldness: a bold run of
+                    // small text shouts, while a larger regular one simply
+                    // reads first. The label above it stays a quiet caption —
+                    // it names the thing, the sentence IS the thing.
+                    Text(overviewSummary)
+                        .font(.title3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
                 if !overviewSections.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {

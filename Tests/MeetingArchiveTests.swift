@@ -428,11 +428,23 @@ final class SummarySanitizingTests: XCTestCase {
                        "The release slipped a week, and here is why")
     }
 
-    /// 90 characters, because the row is 240pt wide and shows two lines.
+    /// The ceiling itself, asserted once so a change to it is a decision
+    /// rather than an accident. It was 90 while the summary lived only in a
+    /// sidebar row; it is 240 now that the transcript opens on it and the row
+    /// shows a clamped preview instead.
+    func testTheDefaultCeilingIsTwoSentencesWorth() {
+        let sentence = String(repeating: "a", count: 300)
+        XCTAssertLessThanOrEqual(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 241)
+        XCTAssertGreaterThan(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 200)
+    }
+
+    /// Given a ceiling, an overlong summary prefers to end where the model
+    /// ended a sentence — the behaviour, tested independently of what the
+    /// ceiling happens to be.
     func testAnOverlongSummaryEndsOnASentence() {
         let long = "Notarization fails on the CI box. The certificate also expired last " +
                    "week and nothing can ship until somebody renews it."
-        let cleaned = MeetingTitler.sanitizeSummary(long)
+        let cleaned = MeetingTitler.sanitizeSummary(long, maxCharacters: 90)
         XCTAssertNotNil(cleaned)
         XCTAssertLessThanOrEqual(cleaned!.count, 90)
         XCTAssertEqual(cleaned, "Notarization fails on the CI box")
@@ -442,11 +454,19 @@ final class SummarySanitizingTests: XCTestCase {
     /// and says so.
     func testAnOverlongSingleSentenceIsCutOnAWord() {
         let long = String(repeating: "warehouse lease renewal ", count: 20)
-        let cleaned = MeetingTitler.sanitizeSummary(long)
+        let cleaned = MeetingTitler.sanitizeSummary(long, maxCharacters: 90)
         XCTAssertNotNil(cleaned)
         XCTAssertLessThanOrEqual(cleaned!.count, 91)
         XCTAssertTrue(cleaned!.hasSuffix("…"))
         XCTAssertFalse(cleaned!.contains("warehous…"))
+    }
+
+    /// A summary that fits is left exactly as the model wrote it — the case
+    /// the raised ceiling exists for.
+    func testATwoSentenceSummaryNowSurvivesWhole() {
+        let real = "Notarization fails on the CI box. The certificate expired last week " +
+                   "and nothing ships until somebody renews it"
+        XCTAssertEqual(MeetingTitler.sanitizeSummary(real), real)
     }
 
     /// A line too short to say anything is worse than an empty line — the row

@@ -102,7 +102,6 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 extension Localization {
     static let ru: [String: String] = [
         "Back to the top": "В начало",
-        "What it was about": "О чём был",
         "Show everything tagged #%@": "Показать всё с тегом #%@",
         "Remove #%@ from this meeting": "Убрать #%@ с этого митинга",
         "Add a tag": "Добавить тег",
@@ -335,7 +334,6 @@ extension Localization {
 
     static let uk: [String: String] = [
         "Back to the top": "На початок",
-        "What it was about": "Про що був",
         "Show everything tagged #%@": "Показати все з тегом #%@",
         "Remove #%@ from this meeting": "Прибрати #%@ з цього мітингу",
         "Add a tag": "Додати тег",
@@ -559,7 +557,6 @@ extension Localization {
 
     static let es: [String: String] = [
         "Back to the top": "Volver arriba",
-        "What it was about": "De qué trató",
         "Show everything tagged #%@": "Mostrar todo con la etiqueta #%@",
         "Remove #%@ from this meeting": "Quitar #%@ de esta reunión",
         "Add a tag": "Añadir una etiqueta",
@@ -792,7 +789,6 @@ extension Localization {
 
     static let pt: [String: String] = [
         "Back to the top": "Voltar ao topo",
-        "What it was about": "Sobre o que foi",
         "Show everything tagged #%@": "Mostrar tudo com a tag #%@",
         "Remove #%@ from this meeting": "Remover #%@ desta reunião",
         "Add a tag": "Adicionar uma tag",
@@ -1025,7 +1021,6 @@ extension Localization {
 
     static let fr: [String: String] = [
         "Back to the top": "Revenir en haut",
-        "What it was about": "De quoi il s’agissait",
         "Show everything tagged #%@": "Afficher tout ce qui porte #%@",
         "Remove #%@ from this meeting": "Retirer #%@ de cette réunion",
         "Add a tag": "Ajouter un tag",
@@ -1258,7 +1253,6 @@ extension Localization {
 
     static let de: [String: String] = [
         "Back to the top": "Nach oben",
-        "What it was about": "Worum es ging",
         "Show everything tagged #%@": "Alles mit #%@ anzeigen",
         "Remove #%@ from this meeting": "#%@ aus diesem Meeting entfernen",
         "Add a tag": "Tag hinzufügen",
@@ -1491,7 +1485,6 @@ extension Localization {
 
     static let zh: [String: String] = [
         "Back to the top": "回到顶部",
-        "What it was about": "关于什么",
         "Show everything tagged #%@": "显示所有带 #%@ 的内容",
         "Remove #%@ from this meeting": "从此会议移除 #%@",
         "Add a tag": "添加标签",
@@ -1724,7 +1717,6 @@ extension Localization {
 
     static let ja: [String: String] = [
         "Back to the top": "先頭に戻る",
-        "What it was about": "何についてか",
         "Show everything tagged #%@": "#%@ が付いたものをすべて表示",
         "Remove #%@ from this meeting": "このミーティングから #%@ を外す",
         "Add a tag": "タグを追加",
@@ -1957,7 +1949,6 @@ extension Localization {
 
     static let ko: [String: String] = [
         "Back to the top": "맨 위로",
-        "What it was about": "무엇에 관한 것인지",
         "Show everything tagged #%@": "#%@ 태그가 붙은 항목 모두 보기",
         "Remove #%@ from this meeting": "이 미팅에서 #%@ 제거",
         "Add a tag": "태그 추가",
@@ -2190,7 +2181,6 @@ extension Localization {
 
     static let vi: [String: String] = [
         "Back to the top": "Về đầu",
-        "What it was about": "Về điều gì",
         "Show everything tagged #%@": "Hiện mọi thứ gắn thẻ #%@",
         "Remove #%@ from this meeting": "Bỏ #%@ khỏi cuộc họp này",
         "Add a tag": "Thêm thẻ",
@@ -2423,7 +2413,6 @@ extension Localization {
 
     static let tl: [String: String] = [
         "Back to the top": "Balik sa itaas",
-        "What it was about": "Tungkol saan",
         "Show everything tagged #%@": "Ipakita lahat ng may #%@",
         "Remove #%@ from this meeting": "Alisin ang #%@ sa miting na ito",
         "Add a tag": "Magdagdag ng tag",

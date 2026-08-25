@@ -154,11 +154,18 @@ enum MeetingTitler {
     /// with `#`, `_` or `**[`, the three prefixes that mean something else in
     /// our own file format.
     ///
-    /// The ceiling is 90 because the row is 240pt wide and shows two lines:
-    /// past that the sentence is not shortened, it is truncated, and a line
-    /// the reader has to hover to finish is not a summary. The meaning is
-    /// asked to live in the first 60 for the same reason — that is one line.
-    static func sanitizeSummary(_ raw: String, maxCharacters: Int = 90,
+    /// The ceiling was 90, and 90 was the width of a sidebar row: the summary
+    /// used to live ONLY in that row, so it was sized to fit two lines of it.
+    /// It has a reading pane now — the transcript opens on it — and the row
+    /// shows a clamped preview of the same sentence, which is how a mail client
+    /// has always done this. So the number is no longer about the list: 240 is
+    /// one or two real sentences, enough to say both what a meeting was about
+    /// and what came of it, and the row still fills its two lines from the
+    /// front of it.
+    ///
+    /// It stays ONE line in the file regardless — a newline there would hand
+    /// the parser a second line to make sense of.
+    static func sanitizeSummary(_ raw: String, maxCharacters: Int = 240,
                                 minCharacters: Int = 18) -> String? {
         // Every kind of whitespace collapses to a single space — this is what
         // makes the result a single line by construction.
@@ -282,9 +289,9 @@ enum MeetingTitler {
         The title names what the meeting was about as a whole, in at most 6 \
         words.
 
-        The line under it adds what the title does NOT say — the substance or \
-        the outcome. Write it as a subject line: ONE fragment, at most 90 \
-        characters, no full stop at the end, not two sentences.
+        The line under it adds what the title does NOT say — the substance \
+        AND the outcome. One or two sentences, at most 240 characters, on a \
+        single line.
 
         Where you would write "discussion of the topic and the problems \
         raised", write instead what specifically was wrong, and for whom. \
@@ -451,9 +458,8 @@ enum MeetingSectioner {
     /// summary's 18-character minimum.
     static let minimumCharacters = 12
 
-    /// …and a higher ceiling than the summary's 90.
+    /// …and its own ceiling, independent of the summary's.
     ///
-    /// The summary's ceiling is set by a 240pt sidebar row showing two lines.
     /// A section line has a second home the summary does not: it is written
     /// into the .md, where a person reads it in a Markdown app with the whole
     /// window to spare. 110 is what stops the CUTTING, which was the real
