@@ -398,7 +398,9 @@ enum MeetingArchive {
     /// The entries of each section, in order — the bridge between the pure cut
     /// rule and the transcript it is cut from. Empty when the meeting is too
     /// short to be worth sectioning at all.
-    static func sectionRanges(of entries: [TranscriptEntry]) -> [Range<Int>] {
+    static func sectionRanges(of entries: [TranscriptEntry],
+                              detail: MeetingPolicy.SectionDetail = Settings.shared.sectionDetail)
+        -> [Range<Int>] {
         let marks = entries.map { entry in
             MeetingPolicy.SectionMark(
                 start: Double(seconds(fromClock: entry.time) ?? 0),
@@ -407,10 +409,6 @@ enum MeetingArchive {
                 endsSentence: endsSentence(entry.text),
                 startsSentence: startsSentence(entry.text))
         }
-        // The reader's chosen granularity, read here rather than inside the
-        // policy: MeetingPolicy stays free of Foundation and of preferences so
-        // it can be tested on its own.
-        let detail = Settings.shared.sectionDetail
         let starts = MeetingPolicy.sectionStarts(marks, target: detail.target,
                                                  minimum: detail.minimum,
                                                  maximum: detail.maximum)

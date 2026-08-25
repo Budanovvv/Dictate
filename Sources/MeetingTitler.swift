@@ -594,9 +594,10 @@ enum MeetingSectioner {
     /// meeting abandoned halfway writes nothing (a half-filled contents block
     /// is worse than none, because nothing would ever come back to finish it).
     static func sections(for entries: [TranscriptEntry],
+                         detail: MeetingPolicy.SectionDetail = Settings.shared.sectionDetail,
                          progress: @escaping @MainActor () async -> Bool = { true })
         async -> [TranscriptSection] {
-        let ranges = MeetingArchive.sectionRanges(of: entries)
+        let ranges = MeetingArchive.sectionRanges(of: entries, detail: detail)
         guard ranges.count >= 2 else { return [] }
         guard let engine = await MeetingTextEngines.best() else {
             Log.d("sections: no generation engine")

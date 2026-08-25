@@ -661,6 +661,8 @@ struct MeetingsView: View {
                                jumpTo: selection?.time,
                                overviewSummary: meeting.summary,
                                overviewSections: meeting.sections,
+                               onRecut: { recut(meeting, to: $0) },
+                               recutting: recutting == meeting.url,
 
                                notice: declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
@@ -761,6 +763,28 @@ struct MeetingsView: View {
     /// The answer currently on screen, if any. A StateObject rather than local
     /// state because it outlives every redraw of the list beneath it and has to
     /// stay stoppable while the reader scrolls.
+    /// Which meeting is being recut, if any — so the pane can say so and the
+    /// menu cannot be used twice at once.
+    @State private var recutting: URL?
+
+    /// Cut one meeting's contents again at a chosen granularity.
+    ///
+    /// One meeting, not the archive: recutting everything takes minutes of
+    /// model time and answers a question nobody asked. This is somebody
+    /// looking at THIS call and wanting a finer map of it, and it takes the
+    /// seconds a dozen short model calls take.
+    private func recut(_ meeting: ArchivedMeeting, to detail: MeetingPolicy.SectionDetail) {
+        guard recutting == nil else { return }
+        recutting = meeting.url
+        Task { @MainActor in
+            defer { recutting = nil }
+            let sections = await MeetingSectioner.sections(for: meeting.entries, detail: detail)
+            guard !sections.isEmpty else { return }
+            _ = MeetingArchive.setSections(sections, heading: L("Contents"), in: meeting.url)
+            reload()
+        }
+    }
+
     @StateObject private var answer = MeetingAnswer()
 
     /// Who answers. One line to change when a hosted tier arrives — everything
@@ -1303,6 +1327,14 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// only searched. For an hour-long call it is the most useful thing in the
     /// file, and it only works if you can click it.
     var overviewSections: [TranscriptSection] = []
+    /// Recut this meeting's contents at a chosen granularity. nil where there
+    /// is nothing to recut — a live call has no contents yet. The pane holds
+    /// the control because that is where somebody is looking at the result;
+    /// the work belongs to whoever owns the file, so it is handed in.
+    var onRecut: ((MeetingPolicy.SectionDetail) -> Void)? = nil
+    /// True while that is happening, so the block can say so instead of
+    /// looking broken for the twenty seconds a recut takes.
+    var recutting = false
     /// A one-line notice under the header — the offer of the text model, on
     /// the one meeting the built-in one refused to describe. nil is the
     /// ordinary case, which is every meeting and every live call.
@@ -1634,6 +1666,28 @@ private struct TranscriptPane<MenuItems: View>: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                if recutting {
+                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                } else if let onRecut {
+                    // Here rather than in Settings, and per meeting rather
+                    // than globally. The evidence says the NUMBER of sections
+                    // matters more than where they fall, which makes this the
+                    // highest-value control in the whole feature — and a
+                    // control nobody finds is worth nothing, so it lives where
+                    // the thing it changes is on screen.
+                    Menu {
+                        Button(L("Fewer, longer")) { onRecut(.coarse) }
+                        Button(L("Standard")) { onRecut(.standard) }
+                        Button(L("More, shorter")) { onRecut(.fine) }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help(L("How finely this meeting is cut"))
+                }
                 if all.count > collapsed {
                     Button(contentsExpanded ? L("Show less") : L("Show all")) {
                         withAnimation(.easeOut(duration: 0.15)) { contentsExpanded.toggle() }
