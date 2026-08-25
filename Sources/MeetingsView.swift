@@ -1500,7 +1500,14 @@ private struct TranscriptPane<MenuItems: View>: View {
         // follow the call only while the user is at the bottom and has their
         // hands off. Anything else means they are reading or selecting, and a
         // forced scroll would tear that away.
-        let autoScroll = pinned && !interacting && !allSelected
+        // Following the newest line is a LIVE-call feature, and it took a
+        // report to notice it had never said so: a finished transcript has
+        // nothing to follow, but it inherited the whole mechanism anyway. The
+        // symptom was exact — drag up to read the summary, and the moment you
+        // let go the view snapped back to the bottom, because releasing clears
+        // `interacting`, which re-arms auto-scroll, which jumps to the newest
+        // line of a meeting that ended days ago.
+        let autoScroll = live?.isActive == true && pinned && !interacting && !allSelected
         let missed = max(0, entries.count - frozenAt)
         return ScrollViewReader { proxy in
             ScrollView {
