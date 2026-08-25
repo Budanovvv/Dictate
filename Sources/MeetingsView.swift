@@ -1483,13 +1483,14 @@ private struct TranscriptPane<MenuItems: View>: View {
         if overviewSummary != nil || !overviewSections.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 if let overviewSummary {
-                    // The most valuable line in the head, and it is given its
-                    // weight by SIZE rather than by boldness: a bold run of
-                    // small text shouts, while a larger regular one simply
-                    // reads first. The label above it stays a quiet caption —
-                    // it names the thing, the sentence IS the thing.
+                    // Body, not title3. It was set large when it was one
+                    // sentence and size was how it earned attention; it is a
+                    // paragraph now — up to three hundred characters on a long
+                    // call — and at that length a large face stops reading as
+                    // emphasis and starts reading as bulk. Position does the
+                    // work instead: it is the first thing in the transcript.
                     Text(overviewSummary)
-                        .font(.title3)
+                        .font(.body)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }

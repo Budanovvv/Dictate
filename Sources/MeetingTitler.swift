@@ -162,15 +162,21 @@ enum MeetingTitler {
     /// 2025 Findings). So the prompt asks for one sentence, in the units the
     /// model actually has, and this number catches the tail it cannot count.
     ///
-    /// 320 rather than 240, and the number came from the archive rather than
-    /// from taste. Across 37 regenerated summaries the median is 131
-    /// characters and the minimum 60 — the ceiling is nowhere near most of
-    /// them. Exactly three were cut, and all three sat at 238–239: compound
-    /// sentences a semicolon short of finishing ("…through voice interactions;
-    /// they settled on buil"). They did not need a different instruction, they
-    /// needed room. At 320 a sentence of that shape completes and the
-    /// sanitiser never has to cut at all, which is the outcome worth having:
-    /// the ellipsis is an admission, not a style.
+    /// 800, and by then the number has stopped being a style control at all.
+    ///
+    /// Measured across the archive, the model sizes a summary to the meeting
+    /// on its own: under ten minutes, median 112 characters and nothing cut;
+    /// ten to thirty, median 221; over thirty, median 295. That is a model
+    /// spending more words on more conversation, not one that rambles — and
+    /// every summary ever cut was in the longest group, pressed against
+    /// whatever ceiling was in force at the time. Each ceiling has been
+    /// clipping the distribution rather than shaping it.
+    ///
+    /// So the ceiling keeps only its last honest job: catching a generation
+    /// that has gone wrong — a repetition loop, a model that never stops. 800
+    /// is far above anything observed (316 is the record) and well below a
+    /// runaway. It should now never fire on a real summary, and if it does,
+    /// that is a bug report rather than a trim.
     ///
     /// The ceiling was 90, and 90 was the width of a sidebar row: the summary
     /// used to live ONLY in that row, so it was sized to fit two lines of it.
@@ -183,7 +189,7 @@ enum MeetingTitler {
     ///
     /// It stays ONE line in the file regardless — a newline there would hand
     /// the parser a second line to make sense of.
-    static func sanitizeSummary(_ raw: String, maxCharacters: Int = 320,
+    static func sanitizeSummary(_ raw: String, maxCharacters: Int = 800,
                                 minCharacters: Int = 18) -> String? {
         // Every kind of whitespace collapses to a single space — this is what
         // makes the result a single line by construction.

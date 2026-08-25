@@ -433,10 +433,16 @@ final class SummarySanitizingTests: XCTestCase {
     /// row; 240 once the transcript opened on it; 320 after measuring the
     /// archive — median 131, and the only three summaries being cut all sat at
     /// 238–239, one clause short of finishing.
-    func testTheDefaultCeilingLeavesRoomToFinishASentence() {
-        let sentence = String(repeating: "a", count: 400)
-        XCTAssertLessThanOrEqual(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 321)
-        XCTAssertGreaterThan(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 280)
+    func testTheDefaultCeilingOnlyCatchesARunaway() {
+        // 800: above anything the model has produced (316 is the record) and
+        // below a generation that has gone wrong. It should never fire on a
+        // real summary — see the measurements in sanitizeSummary's comment.
+        let runaway = String(repeating: "a", count: 2000)
+        XCTAssertLessThanOrEqual(MeetingTitler.sanitizeSummary(runaway)?.count ?? 0, 801)
+        XCTAssertGreaterThan(MeetingTitler.sanitizeSummary(runaway)?.count ?? 0, 700)
+        // A real one passes through untouched.
+        let real = String(repeating: "word ", count: 60).trimmingCharacters(in: .whitespaces)
+        XCTAssertEqual(MeetingTitler.sanitizeSummary(real), real)
     }
 
     /// Given a ceiling, an overlong summary prefers to end where the model
