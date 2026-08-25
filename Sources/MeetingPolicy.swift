@@ -391,7 +391,17 @@ enum MeetingPolicy {
         let gap = next.start - previous.start
         let spoken = min(windowCap, Double(previous.words) / wordsPerSecond)
         score += min(1, max(0, (gap - spoken) / silenceSpread))
-        if previous.speaker != next.speaker { score += 0.5 }
+        // A quarter, not a half. Ablated on spoken content (arXiv:2602.08979,
+        // YTSeg): adding pause information to a text baseline is worth +2.87
+        // F1, adding speaker features +0.67 — pause carries about four times
+        // the weight, where this used to give it two. The comment above
+        // already suspected as much from our own data (56–79% of adjacent
+        // entries change speaker anyway, so the signal barely discriminates);
+        // this is the outside number that agrees.
+        //
+        // The same ablation is why there is no pitch term here and never will
+        // be: prosodic F0 was the one feature that made results WORSE (−0.53).
+        if previous.speaker != next.speaker { score += 0.25 }
         if previous.endsSentence { score += 0.5 }
         if next.startsSentence { score += 0.5 }
         return score
