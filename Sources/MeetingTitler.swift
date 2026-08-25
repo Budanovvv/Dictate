@@ -535,8 +535,9 @@ enum MeetingSectioner {
         quote the transcript, never copy a sentence out of it, and never begin \
         with a speaker's name.
 
-        Keep it under 100 characters and stop there — one clause, no full stop \
-        at the end, never two sentences. It has to be scannable in a list.
+        ONE sentence of at most 15 words. Not two sentences, and never a list \
+        of them — a second sentence is the most common way this goes wrong. No \
+        full stop at the end. It has to be scannable in a list.
 
         Say what was at stake — the problem raised, what was decided, or what \
         somebody has to do next — using the concrete nouns the conversation \
@@ -547,6 +548,16 @@ enum MeetingSectioner {
         If the passage really covers two subjects, join them in ONE clause \
         with "and" or "before". Naming two things is honest; listing them is \
         not a description of either.
+
+        The passage may be in another language. Write what was MEANT, not what \
+        the words are one by one. An expression that is ordinary in the \
+        original and nonsense in English — "they have to invent a bicycle" for \
+        people re-solving a solved problem — means you translated the words and \
+        lost the sentence.
+
+        This is speech recognition, so names and places come through mangled. \
+        Do not build the line around a word you cannot make sense of; say what \
+        happened instead, and leave the broken word out.
 
         Do not describe the meeting as a whole, and do not say that a \
         conversation took place. Do not state any fact the passage does not \
