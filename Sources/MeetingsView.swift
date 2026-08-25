@@ -1993,19 +1993,36 @@ private struct SpeakerRenamePopover: View {
 /// comparison, because an unchanged array compares by buffer identity.
 private final class TurnCache {
     private var entries: [TranscriptEntry] = []
+    private var signature: [String] = []
     private var loaded = false
     private(set) var turns: [TranscriptTurn] = []
     private(set) var colors: [String: Color] = [:]
 
     func refresh(_ new: [TranscriptEntry]) {
-        guard !loaded || new != entries else { return }
+        // Compared by CONTENT, not by struct equality. A TranscriptEntry
+        // carries a UUID minted when the file is parsed, and equality includes
+        // it — so re-reading a file nothing had changed still looked like a
+        // different transcript. Every reload therefore rebuilt the turns with
+        // fresh identities, the list underneath the reader lost its place, and
+        // the scroll jumped. Visible whenever the archive is re-read while
+        // somebody is reading it, which the summary backfill does after every
+        // meeting it writes.
+        guard !loaded || Self.signature(new) != signature else { return }
         loaded = true
+        signature = Self.signature(new)
         entries = new
         // The cleaned form is what is read, hovered, copied and jumped to —
         // derived HERE and nowhere else, so the pane cannot end up showing one
         // transcript and copying another.
         turns = MeetingArchive.readable(new)
         colors = Self.palette(for: new)
+    }
+
+    /// What actually distinguishes one transcript from another: the words,
+    /// who said them and when. Deliberately not the identity of the objects
+    /// carrying them, which changes every time the file is read.
+    private static func signature(_ entries: [TranscriptEntry]) -> [String] {
+        entries.map { "\($0.time)\u{1}\($0.speaker)\u{1}\($0.text)" }
     }
 
     /// The palette is keyed by name, so a turn's colour is a dictionary hit
