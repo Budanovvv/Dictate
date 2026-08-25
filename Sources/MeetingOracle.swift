@@ -47,13 +47,22 @@ protocol MeetingOracle {
 /// on its own: retrieval happens locally, instantly and visibly, and the model
 /// only reads what the person can already see on screen. That ordering is what
 /// lets the sources appear before the first token does.
-struct MeetingSource {
+struct MeetingSource: Identifiable {
+    /// Where the passage came from, so the answer can be checked by going
+    /// there. The whole design of the answer rests on this being one click
+    /// away: measured, citations raise trust even when they are wrong, which
+    /// makes a footnote nobody follows a liability rather than a check.
+    let url: URL
     let title: String
     let date: String
     /// nil when the whole meeting is the source rather than one passage of it.
     let time: String?
-    /// What was actually said — speaker-attributed lines, verbatim.
+    /// What was actually said — speaker-attributed lines, verbatim. Shown to
+    /// the reader as well as to the model: evidence that can be read without a
+    /// click is the thing this category never shipped.
     let text: String
+
+    var id: String { "\(url.path)#\(time ?? "")" }
 
     /// How a source is written into the prompt. Labelled so the model can name
     /// it back, which is the only way an answer can be checked.

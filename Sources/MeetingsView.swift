@@ -80,10 +80,15 @@ struct MeetingsView: View {
         /// row for the same meeting, and so selecting one is an ordinary list
         /// selection instead of a click handler bolted onto a row.
         case moment(URL, String)
+        /// An answer to the question in the field. A selection like any other,
+        /// so it lives and dies with the list rather than as a sheet bolted on
+        /// top: clicking any meeting returns, and nothing the reader was
+        /// looking at is destroyed.
+        case answer(String)
 
         var url: URL? {
             switch self {
-            case .live: return nil
+            case .live, .answer: return nil
             case .archived(let url), .moment(let url, _): return url
             }
         }
@@ -206,11 +211,25 @@ struct MeetingsView: View {
             // that wasn't quite typed.
             if !related.isEmpty {
                 Section(L("Related by meaning")) {
+                    // Asking is one row, not a second field. Nothing is ever
+                    // inferred from what was typed — this appears because the
+                    // search already found passages, and is clicked because
+                    // somebody wanted an answer. It cannot offer to answer a
+                    // question it has no sources for, which is the failure this
+                    // whole category ships with.
+                    askRow.tag(Selection.answer(query))
                     ForEach(related) { hit in
                         relatedRow(hit).tag(hit.selection)
                     }
                 }
             }
+        }
+        // Selecting the ask row is what starts the work. Not typing, not a
+        // timer, not a guess about what the words meant — a person chose it.
+        .onChange(of: selection) { picked in
+            guard case .answer(let question) = picked else { return }
+            guard answer.question != question || answer.failure != nil else { return }
+            answer.ask(question, from: sources(from: related), using: oracle)
         }
         .listStyle(.sidebar)
         // The list draws itself on the sidebar material above, instead of
@@ -542,8 +561,33 @@ struct MeetingsView: View {
     // MARK: - Detail
 
     @ViewBuilder
+    /// The row that offers an answer. Deliberately plain — a label rather than
+    /// a sparkle, because a marker that is also a trigger teaches people that
+    /// AI is a button rather than a property of what they are looking at.
+    private var askRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "text.magnifyingglass")
+                .foregroundStyle(Brand.indigoLabel)
+            Text(Lf("Answer this from %@ moments", "\(related.count)"))
+                .lineLimit(1)
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private var answerPane: some View {
+        AnswerPane(answer: answer) { source in
+            // Going to the passage is an ordinary selection, so the answer
+            // stays behind in the list and one click comes back to it.
+            selection = source.time.map { .moment(source.url, $0) } ?? .archived(source.url)
+        }
+    }
+
+    @ViewBuilder
     private var detail: some View {
         switch selection {
+        case .answer:
+            answerPane
         case .live:
             // A running meeting has no title yet (it is written when the
             // transcript closes), and its file is open for appending — so
@@ -681,6 +725,43 @@ struct MeetingsView: View {
     /// only when it has an answer. The literal hits are excluded here rather
     /// than in the ranking: they are already on screen above, and the same
     /// meeting offered twice reads as two answers.
+    /// The passages an answer would be allowed to use — the same ones already
+    /// on screen under "Related by meaning", with the words that go with them.
+    ///
+    /// The window is three entries from the moment. Enough to carry a decision
+    /// and who made it; short enough that five of them stay a prompt rather
+    /// than a transcript, and short enough that a reader can check one by
+    /// looking instead of by reading.
+    private func sources(from hits: [RelatedHit]) -> [MeetingSource] {
+        hits.compactMap { hit -> MeetingSource? in
+            let entries = hit.meeting.entries
+            let lines: [TranscriptEntry]
+            if let section = hit.section,
+               let start = entries.firstIndex(where: { $0.time == section.time }) {
+                lines = Array(entries[start..<min(start + 3, entries.count)])
+            } else {
+                lines = Array(entries.prefix(3))
+            }
+            guard !lines.isEmpty else { return nil }
+            return MeetingSource(
+                url: hit.meeting.url,
+                title: hit.meeting.title ?? hit.meeting.url.deletingPathExtension().lastPathComponent,
+                date: DateFormatter.localizedString(from: hit.meeting.started,
+                                                    dateStyle: .medium, timeStyle: .none),
+                time: hit.section?.time,
+                text: lines.map { "[\($0.time)] \($0.speaker): \($0.text)" }.joined(separator: "\n"))
+        }
+    }
+
+    /// The answer currently on screen, if any. A StateObject rather than local
+    /// state because it outlives every redraw of the list beneath it and has to
+    /// stay stoppable while the reader scrolls.
+    @StateObject private var answer = MeetingAnswer()
+
+    /// Who answers. One line to change when a hosted tier arrives — everything
+    /// above this knows only the protocol.
+    private var oracle: MeetingOracle { ClaudeAPIOracle() }
+
     private var related: [RelatedHit] {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
         let exact = Set(filtered.map(\.url))

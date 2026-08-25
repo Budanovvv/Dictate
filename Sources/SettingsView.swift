@@ -12,6 +12,12 @@ struct SettingsView: View {
     @ObservedObject private var loc = Localization.shared
     @StateObject private var captureMain = KeyCapture()
     @StateObject private var captureTranslate = KeyCapture()
+    /// What is being typed into the key field, and a counter to redraw when the
+    /// stored key changes — the Keychain is not observable, so the view needs
+    /// telling.
+    @State private var keyDraft = ""
+    @State private var keyRevision = 0
+
     @State private var hotkeyName = Settings.shared.hotkeyName
     @State private var unsafeKey = !KeyNames.isSafeHotkey(Settings.shared.hotkeyKeyCode)
     @State private var translateName = Settings.shared.translateKeyName
@@ -341,6 +347,18 @@ struct SettingsView: View {
                     } label: {
                         rowLabel(L("Meeting titles & summaries"), textModelHint)
                     }
+                    // Asking the archive questions. Under the same heading as
+                    // the local model on purpose: these are two answers to one
+                    // question — how much thinking happens about your meetings
+                    // — and the difference between them is where it happens and
+                    // who pays. Putting them side by side is the honest way to
+                    // present a feature that breaks the app's own rule.
+                    LabeledContent {
+                        apiKeyControl
+                    } label: {
+                        rowLabel(L("Ask about your meetings"),
+                                 L("Answers questions across the archive"))
+                    }
                 } header: { Text(L("Meetings")) } footer: {
                     // Three facts in the order a person asks for them: what it
                     // does, where it runs (the whole positioning of this app),
@@ -465,6 +483,40 @@ struct SettingsView: View {
             return L("Without it, meetings are saved with the date as their name.")
         default:
             return nil
+        }
+    }
+
+    /// The user's own Anthropic key.
+    ///
+    /// A field rather than a sign-in button, and that is not a shortcut: a
+    /// third-party app is not permitted to offer a Claude account login or to
+    /// spend somebody's subscription on their behalf. A key is the sanctioned
+    /// route, and it has the better property anyway — the person can see what
+    /// they are spending and revoke it in one click, on a page we do not own.
+    @ViewBuilder
+    private var apiKeyControl: some View {
+        if let stored = AnthropicKey.current, keyDraft.isEmpty {
+            HStack(spacing: 8) {
+                statusBadge(ok: true, text: AnthropicKey.masked(stored))
+                Button(L("Remove")) {
+                    AnthropicKey.store(nil)
+                    keyRevision += 1
+                }
+                .controlSize(.small)
+            }
+        } else {
+            HStack(spacing: 8) {
+                SecureField("sk-ant-…", text: $keyDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 190)
+                Button(L("Save")) {
+                    AnthropicKey.store(keyDraft)
+                    keyDraft = ""
+                    keyRevision += 1
+                }
+                .controlSize(.small)
+                .disabled(!AnthropicKey.looksValid(keyDraft))
+            }
         }
     }
 
