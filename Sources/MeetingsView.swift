@@ -1234,6 +1234,8 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// leaves them looking at a screenful of dialogue. Cleared on a timer, so
     /// nothing here animates or repeats.
     @State private var marked: UUID?
+    /// Near enough the top that the way back would be offering nothing.
+    @State private var atTop = true
     /// Bumped per jump; only the newest jump gets to clear its own mark.
     @State private var markFlash = 0
     @State private var copiedVisible = false
@@ -1502,6 +1504,7 @@ private struct TranscriptPane<MenuItems: View>: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
+                    Color.clear.frame(height: 0).id("top")
                     overview { moment in jump(to: moment, proxy) }
                     ForEach(cache.turns) { turn in
                         TurnView(turn: turn,
@@ -1548,6 +1551,14 @@ private struct TranscriptPane<MenuItems: View>: View {
             // The scroll position is the whole signal: "still at the newest
             // line" arms auto-scroll, anything above it disarms it.
             .onScrollGeometryChange(for: Bool.self) { geometry in
+                // Half a screen down is where "I have scrolled away" starts:
+                // near enough the top and the button would be offering to do
+                // what a flick of the wheel already does.
+                geometry.contentOffset.y < geometry.containerSize.height / 2
+            } action: { _, near in
+                atTop = near
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
                 TranscriptScroll.isPinned(contentOffsetY: geometry.contentOffset.y,
                                           containerHeight: geometry.containerSize.height,
                                           contentHeight: geometry.contentSize.height,
@@ -1569,6 +1580,13 @@ private struct TranscriptPane<MenuItems: View>: View {
                     jumpToNewest(proxy, missed: missed)
                 }
             }
+            .overlay(alignment: .top) {
+                // The way back to the head of a long transcript. Same idiom as
+                // "jump to newest" and the opposite direction, so the two read
+                // as one pair rather than two inventions; shown only once there
+                // is something to come back from.
+                if !atTop { backToTop(proxy) }
+            }
             .overlay(alignment: .bottomTrailing) { copiedBadge }
             .onChange(of: entries.count) { _ in
                 guard autoScroll else { return }
@@ -1583,15 +1601,24 @@ private struct TranscriptPane<MenuItems: View>: View {
             }
             .onChange(of: title) { _ in
                 // A different meeting is a clean slate: nothing is selected,
-                // nothing is being dragged, and a call in progress opens on
-                // its newest line.
+                // nothing is being dragged.
                 allSelected = false
                 interacting = false
-                pinned = true
                 hovered = nil
                 marked = nil
                 frames.clear()
+                // A call in progress opens on its newest line — that is where
+                // it is happening. A finished one opens at the TOP, on its
+                // summary and contents, because that is where you decide
+                // whether this is the meeting you were looking for.
+                //
+                // `pinned` has to be cleared for the archive or the switch ends
+                // up at the bottom anyway: pinned + a changed entry count arms
+                // auto-scroll, which then jumps to the newest line of a meeting
+                // that has nothing newer to show.
+                pinned = live != nil
                 if live != nil { scrollToNewest(proxy) }
+                else { proxy.scrollTo("top", anchor: .top) }
             }
             .onAppear {
                 jump(to: jumpTo, proxy)
@@ -1638,6 +1665,32 @@ private struct TranscriptPane<MenuItems: View>: View {
         }
         .buttonStyle(.plain)
         .padding(.bottom, 10)
+    }
+
+    /// "↑ Back to the top", for a transcript long enough that the summary and
+    /// the contents have scrolled out of reach.
+    ///
+    /// The same capsule as "jump to newest" pointing the other way: an hour of
+    /// dialogue is a long way from its own head, and the alternative is a lot
+    /// of scrolling to answer "what was this meeting again".
+    private func backToTop(_ proxy: ScrollViewProxy) -> some View {
+        Button {
+            allSelected = false
+            interacting = false
+            pinned = false
+            withAnimation { proxy.scrollTo("top", anchor: .top) }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.up").imageScale(.small)
+                Text(L("Back to the top")).font(.caption)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 10)
     }
 
     /// Confirmation that something did land on the clipboard. An overlay, so
