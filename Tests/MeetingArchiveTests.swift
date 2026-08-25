@@ -429,13 +429,14 @@ final class SummarySanitizingTests: XCTestCase {
     }
 
     /// The ceiling itself, asserted once so a change to it is a decision
-    /// rather than an accident. It was 90 while the summary lived only in a
-    /// sidebar row; it is 240 now that the transcript opens on it and the row
-    /// shows a clamped preview instead.
-    func testTheDefaultCeilingIsTwoSentencesWorth() {
-        let sentence = String(repeating: "a", count: 300)
-        XCTAssertLessThanOrEqual(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 241)
-        XCTAssertGreaterThan(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 200)
+    /// rather than an accident. 90 while the summary lived only in a sidebar
+    /// row; 240 once the transcript opened on it; 320 after measuring the
+    /// archive — median 131, and the only three summaries being cut all sat at
+    /// 238–239, one clause short of finishing.
+    func testTheDefaultCeilingLeavesRoomToFinishASentence() {
+        let sentence = String(repeating: "a", count: 400)
+        XCTAssertLessThanOrEqual(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 321)
+        XCTAssertGreaterThan(MeetingTitler.sanitizeSummary(sentence)?.count ?? 0, 280)
     }
 
     /// Given a ceiling, an overlong summary prefers to end where the model

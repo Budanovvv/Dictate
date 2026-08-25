@@ -162,6 +162,16 @@ enum MeetingTitler {
     /// 2025 Findings). So the prompt asks for one sentence, in the units the
     /// model actually has, and this number catches the tail it cannot count.
     ///
+    /// 320 rather than 240, and the number came from the archive rather than
+    /// from taste. Across 37 regenerated summaries the median is 131
+    /// characters and the minimum 60 — the ceiling is nowhere near most of
+    /// them. Exactly three were cut, and all three sat at 238–239: compound
+    /// sentences a semicolon short of finishing ("…through voice interactions;
+    /// they settled on buil"). They did not need a different instruction, they
+    /// needed room. At 320 a sentence of that shape completes and the
+    /// sanitiser never has to cut at all, which is the outcome worth having:
+    /// the ellipsis is an admission, not a style.
+    ///
     /// The ceiling was 90, and 90 was the width of a sidebar row: the summary
     /// used to live ONLY in that row, so it was sized to fit two lines of it.
     /// It has a reading pane now — the transcript opens on it — and the row
@@ -173,7 +183,7 @@ enum MeetingTitler {
     ///
     /// It stays ONE line in the file regardless — a newline there would hand
     /// the parser a second line to make sense of.
-    static func sanitizeSummary(_ raw: String, maxCharacters: Int = 240,
+    static func sanitizeSummary(_ raw: String, maxCharacters: Int = 320,
                                 minCharacters: Int = 18) -> String? {
         // Every kind of whitespace collapses to a single space — this is what
         // makes the result a single line by construction.
