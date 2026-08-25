@@ -1312,6 +1312,10 @@ private struct TranscriptPane<MenuItems: View>: View {
     @ViewBuilder let menuItems: () -> MenuItems
 
     @ObservedObject private var loc = Localization.shared
+    /// Whether the contents are open. Per pane rather than remembered: a
+    /// choice about one meeting's shape is not a preference about all of them,
+    /// and it resets when you move on, which is what you would want anyway.
+    @State private var contentsExpanded = false
     @State private var retitling = false
     @State private var titleDraft = ""
     /// Which participant's rename popover is open — one at a time, by name.
@@ -1579,33 +1583,76 @@ private struct TranscriptPane<MenuItems: View>: View {
     @ViewBuilder
     private func overview(jump: @escaping (String) -> Void) -> some View {
         if overviewSummary != nil || !overviewSections.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 if let overviewSummary {
-                    // Body, not title3. It was set large when it was one
-                    // sentence and size was how it earned attention; it is a
-                    // paragraph now — up to three hundred characters on a long
-                    // call — and at that length a large face stops reading as
-                    // emphasis and starts reading as bulk. Position does the
-                    // work instead: it is the first thing in the transcript.
+                    // The only prose in the head, and the only thing here set
+                    // at reading size. Everything below it is machinery for
+                    // getting somewhere.
                     Text(overviewSummary)
                         .font(.body)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
                 if !overviewSections.isEmpty {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(L("Contents"))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        ForEach(overviewSections, id: \.time) { section in
-                            SectionLink(section: section) { jump(section.time) }
-                        }
-                    }
+                    contentsBlock(jump: jump)
                 }
-                Divider()
+                // Not a hairline. Above it is what this meeting WAS; below it
+                // is what was said, and the eye should not have to work out
+                // where one becomes the other — which was the whole complaint.
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.top, 2)
             }
-            .padding(.bottom, 2)
+            .padding(.bottom, 10)
         }
+    }
+
+    /// The contents, as an index rather than as more prose.
+    ///
+    /// It used to sit here as a bare list one size below the summary, between
+    /// two blocks of body text, and the three zones read as one texture. The
+    /// fix is not a bigger heading: it is admitting that this is a DIFFERENT
+    /// KIND of thing. A list you jump from is furniture, not reading, so it
+    /// gets a fill of its own, smaller type and tighter rows — one object on
+    /// the page instead of sixteen lines pretending to be sentences.
+    ///
+    /// And it collapses. Sixteen moments at reading size fill the pane of a
+    /// 64-minute call, so the transcript — the thing the file exists for —
+    /// begins below the fold.
+    @ViewBuilder
+    private func contentsBlock(jump: @escaping (String) -> Void) -> some View {
+        let all = overviewSections
+        // Four fits a short call whole and leaves a long one's transcript on
+        // screen. A local constant, not a static: TranscriptPane is generic
+        // over its menu items and cannot hold stored type properties.
+        let collapsed = 4
+        let shown = contentsExpanded ? all : Array(all.prefix(collapsed))
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Text(Lf("%@ moments", "\(all.count)"))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if all.count > collapsed {
+                    Button(contentsExpanded ? L("Show less") : L("Show all")) {
+                        withAnimation(.easeOut(duration: 0.15)) { contentsExpanded.toggle() }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(Brand.indigoLabel)
+                }
+            }
+            .padding(.bottom, 3)
+            ForEach(shown, id: \.time) { section in
+                SectionLink(section: section) { jump(section.time) }
+            }
+        }
+        .padding(9)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+        )
     }
 
     private var turnsList: some View {
@@ -2966,7 +3013,10 @@ private struct SectionLink: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Text(section.line)
-                    .font(.callout)
+                    // A step below the summary AND below the transcript, so
+                    // this block reads as an index rather than as a third
+                    // block of prose competing with the two around it.
+                    .font(.caption)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
