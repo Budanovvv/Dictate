@@ -1011,7 +1011,7 @@ final class MeetingSections: ObservableObject {
                 // background work on a Mac that has just finished a call and
                 // has nothing else to do; the wait it removes is in front of
                 // somebody who is looking at the screen.
-                var chosen: [TranscriptSection] = []
+                var cuts: [MeetingPolicy.SectionDetail: [TranscriptSection]] = [:]
                 for detail in MeetingPolicy.SectionDetail.allCases {
                     guard allowed() else { return }
                     let cut = await MeetingSectioner.sections(for: meeting.entries,
@@ -1022,9 +1022,20 @@ final class MeetingSections: ObservableObject {
                     }
                     guard !cut.isEmpty else { continue }
                     SectionCache.remember(cut, for: meeting.url, meeting.entries, detail)
-                    if detail == Settings.shared.sectionDetail { chosen = cut }
+                    cuts[detail] = cut
                 }
-                let sections = chosen
+                // The preferred granularity, or the finest one that worked.
+                //
+                // A six-minute meeting cannot be cut into two pieces of two
+                // and a half minutes each, so the standard level yields
+                // nothing for it while the fine level yields two — and writing
+                // nothing there threw away contents we had already made.
+                // Contents at a granularity nobody picked beat no contents:
+                // the point of the block is to be able to jump, and a meeting
+                // too short for the preferred shape is exactly one where the
+                // finer shape is the honest answer.
+                let sections = cuts[Settings.shared.sectionDetail]
+                    ?? cuts[.fine] ?? cuts[.standard] ?? cuts[.coarse] ?? []
                 guard !sections.isEmpty,
                       MeetingArchive.setSections(sections, heading: L("Contents"),
                                                  in: meeting.url) else {
