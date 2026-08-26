@@ -1637,13 +1637,27 @@ private struct TranscriptPane<MenuItems: View>: View {
         if overviewSummary != nil || !overviewSections.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 if let overviewSummary {
-                    // The only prose in the head, and the only thing here set
-                    // at reading size. Everything below it is machinery for
-                    // getting somewhere.
-                    Text(overviewSummary)
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    // A rule down the side, not a bigger face.
+                    //
+                    // Size was tried and does not work here: everything around
+                    // this is prose too, so one step up reads as a slightly
+                    // louder paragraph rather than as a different kind of
+                    // thing. What the eye needs is a signal of a different
+                    // ORDER — and a coloured rule beside a block is the mark
+                    // typesetting has used for the standfirst since long
+                    // before screens. It also stays clear of the contents
+                    // below, which is marked by a fill: two blocks, two
+                    // different devices, no competition between them.
+                    HStack(alignment: .top, spacing: 10) {
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(Brand.indigoLabel.opacity(0.55))
+                            .frame(width: 3)
+                        Text(overviewSummary)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 if !overviewSections.isEmpty {
                     contentsBlock(jump: jump)
