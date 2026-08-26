@@ -1004,11 +1004,27 @@ final class MeetingSections: ObservableObject {
                     try? await Task.sleep(for: breather)
                     guard allowed() else { return }
                 }
-                let sections = await MeetingSectioner.sections(for: meeting.entries) { [weak self] in
-                    guard let self else { return false }
-                    try? await Task.sleep(for: self.pause)
-                    return allowed()
+                // All three granularities, once, here — not one now and the
+                // others the first time somebody asks. Switching between them
+                // is a glance at the same meeting from further away or closer
+                // in, and a glance should not cost half a minute. This is
+                // background work on a Mac that has just finished a call and
+                // has nothing else to do; the wait it removes is in front of
+                // somebody who is looking at the screen.
+                var chosen: [TranscriptSection] = []
+                for detail in MeetingPolicy.SectionDetail.allCases {
+                    guard allowed() else { return }
+                    let cut = await MeetingSectioner.sections(for: meeting.entries,
+                                                             detail: detail) { [weak self] in
+                        guard let self else { return false }
+                        try? await Task.sleep(for: self.pause)
+                        return allowed()
+                    }
+                    guard !cut.isEmpty else { continue }
+                    SectionCache.remember(cut, for: meeting.url, meeting.entries, detail)
+                    if detail == Settings.shared.sectionDetail { chosen = cut }
                 }
+                let sections = chosen
                 guard !sections.isEmpty,
                       MeetingArchive.setSections(sections, heading: L("Contents"),
                                                  in: meeting.url) else {
