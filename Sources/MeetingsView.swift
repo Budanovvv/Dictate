@@ -664,6 +664,8 @@ struct MeetingsView: View {
                                onRecut: { recut(meeting, to: $0) },
                                recutting: recutting == meeting.url,
                                recutLevel: sectionLevel[meeting.url],
+                               recutLevels: SectionCache.levels(for: meeting.url,
+                                                                entries: meeting.entries),
 
                                notice: declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
@@ -1363,6 +1365,9 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// by the ordinary backfill, which is most of them — the control then
     /// highlights nothing rather than claiming a level it cannot verify.
     var recutLevel: MeetingPolicy.SectionDetail? = nil
+    /// Which granularities this meeting actually has. A short call has one
+    /// shape; offering three would be a control that lies about what it can do.
+    var recutLevels: Set<MeetingPolicy.SectionDetail> = []
     /// A one-line notice under the header — the offer of the text model, on
     /// the one meeting the built-in one refused to describe. nil is the
     /// ordinary case, which is every meeting and every live call.
@@ -1722,14 +1727,20 @@ private struct TranscriptPane<MenuItems: View>: View {
             // what a call contained; nobody adjusts granularity from there,
             // and a control on every closed block would be three words of
             // furniture on every meeting in the archive.
-            if contentsExpanded, let onRecut {
+            if contentsExpanded, let onRecut, recutLevels.count > 1 {
                 HStack(spacing: 6) {
                     Picker("", selection: Binding(
                         get: { recutLevel ?? .standard },
                         set: { onRecut($0) })) {
-                        Text(L("Fewer")).tag(MeetingPolicy.SectionDetail.coarse)
-                        Text(L("Standard")).tag(MeetingPolicy.SectionDetail.standard)
-                        Text(L("More")).tag(MeetingPolicy.SectionDetail.fine)
+                        if recutLevels.contains(.coarse) {
+                            Text(L("Fewer")).tag(MeetingPolicy.SectionDetail.coarse)
+                        }
+                        if recutLevels.contains(.standard) {
+                            Text(L("Standard")).tag(MeetingPolicy.SectionDetail.standard)
+                        }
+                        if recutLevels.contains(.fine) {
+                            Text(L("More")).tag(MeetingPolicy.SectionDetail.fine)
+                        }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()

@@ -1014,6 +1014,19 @@ final class MeetingSections: ObservableObject {
                 var cuts: [MeetingPolicy.SectionDetail: [TranscriptSection]] = [:]
                 for detail in MeetingPolicy.SectionDetail.allCases {
                     guard allowed() else { return }
+                    // Only granularities that would actually differ. Three
+                    // views of a ten-minute call are three ways of saying the
+                    // same thing, and we would pay a dozen model calls each
+                    // for the privilege. Fewer than three pieces is not a
+                    // table of contents, it is a pair of bookmarks — and the
+                    // summary above already covers that ground.
+                    //
+                    // Checked before the model rather than after: cutting is
+                    // arithmetic over timestamps and costs nothing, while the
+                    // labelling is the whole expense.
+                    guard MeetingArchive.sectionRanges(of: meeting.entries,
+                                                       detail: detail).count >= 3
+                    else { continue }
                     let cut = await MeetingSectioner.sections(for: meeting.entries,
                                                              detail: detail) { [weak self] in
                         guard let self else { return false }

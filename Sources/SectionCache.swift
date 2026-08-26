@@ -71,3 +71,17 @@ enum SectionCache {
         try? JSONEncoder().encode(map).write(to: file, options: .atomic)
     }
 }
+
+extension SectionCache {
+    /// Which granularities exist for this meeting.
+    ///
+    /// The control asks, so it can offer only what is there. A short call has
+    /// one shape and a long one has three, and a segmented control with two
+    /// dead thirds is a control that lies about what it can do.
+    static func levels(for url: URL,
+                       entries: [TranscriptEntry]) -> Set<MeetingPolicy.SectionDetail> {
+        Set(MeetingPolicy.SectionDetail.allCases.filter {
+            cut(url, entries, $0) != nil
+        })
+    }
+}
