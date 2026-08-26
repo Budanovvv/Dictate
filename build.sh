@@ -64,6 +64,32 @@ for arg in "$@"; do
     esac
 done
 
+
+# A meeting being recorded outlives no restart: quitting the app closes its
+# transcript file, and installing quits the app. That is not theory — the
+# archive has two afternoons of forty-second fragments from days when this
+# script ran every fifteen minutes while a real conversation was happening,
+# and the owner reasonably thought the app had broken.
+#
+# Read from the log rather than from a flag file: the app already says when a
+# session starts and stops, and a flag would be one more thing to leave stale
+# after a crash. If the newest of those two lines is a start, something is
+# being recorded right now.
+meeting_is_recording() {
+    local log="$HOME/Library/Logs/Dictate/dictate.log"
+    [ -f "$log" ] || return 1
+    pgrep -x Dictate >/dev/null || return 1      # no app, nothing to interrupt
+    local last
+    last=$(grep -a "meeting: session started\|meeting: session stopping" "$log" | tail -1)
+    [[ "$last" == *"session started"* ]]
+}
+
+if meeting_is_recording; then
+    echo "!! a meeting is being recorded — stopping now would close its transcript"
+    echo "   stop the recording first (menu bar -> Stop), then run this again"
+    exit 3
+fi
+
 EXTRA=()
 [ "$NOSIGN" = 1 ] && EXTRA+=(CODE_SIGNING_ALLOWED=NO)
 
