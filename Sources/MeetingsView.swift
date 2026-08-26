@@ -736,19 +736,27 @@ struct MeetingsView: View {
     /// The passages an answer would be allowed to use — the same ones already
     /// on screen under "Related by meaning", with the words that go with them.
     ///
-    /// The window is three entries from the moment. Enough to carry a decision
-    /// and who made it; short enough that five of them stay a prompt rather
-    /// than a transcript, and short enough that a reader can check one by
-    /// looking instead of by reading.
+    /// The window is eight entries from the moment.
+    ///
+    /// Three was too mean. A decision is rarely made in the line where the
+    /// subject is raised — somebody proposes, somebody objects, and the thing
+    /// that was actually agreed lands four or five turns later, outside a
+    /// three-line window. Eight of them across five passages is still a prompt
+    /// rather than a transcript, and it is the strongest lever available here:
+    /// widening the window sends MORE OF WHAT WAS ACTUALLY SAID, where every
+    /// other option sends our own summary of it.
+    ///
+    /// It stays short enough for the source card to be checked by looking
+    /// rather than by reading, which is the whole point of showing it.
     private func sources(from hits: [RelatedHit]) -> [MeetingSource] {
         hits.compactMap { hit -> MeetingSource? in
             let entries = hit.meeting.entries
             let lines: [TranscriptEntry]
             if let section = hit.section,
                let start = entries.firstIndex(where: { $0.time == section.time }) {
-                lines = Array(entries[start..<min(start + 3, entries.count)])
+                lines = Array(entries[start..<min(start + 8, entries.count)])
             } else {
-                lines = Array(entries.prefix(3))
+                lines = Array(entries.prefix(8))
             }
             guard !lines.isEmpty else { return nil }
             return MeetingSource(
