@@ -74,6 +74,13 @@ struct MeetingsView: View {
     @State private var showingHowItWorks = false
     /// The bottom-left corner menu (design).
     @State private var settingsMenuOpen = false
+    /// Which panes are folded away (design MeetingsWindow: panes) — the
+    /// sidebar and the meeting list each have a toggle in the reading pane's
+    /// header. Persisted: a layout choice outlives the window.
+    @State private var sidebarHidden = UserDefaults.standard.bool(forKey: "meetingsSidebarHidden")
+    @State private var listHidden = UserDefaults.standard.bool(forKey: "meetingsListHidden")
+    @State private var convHidden = UserDefaults.standard.bool(forKey: "meetingsConvHidden")
+
     /// The adjustable column widths (a preference of the eyes, like text
     /// size): the design's 214/296 until dragged, then whatever was chosen.
     @State private var navWidth: CGFloat = {
@@ -83,6 +90,10 @@ struct MeetingsView: View {
     @State private var listWidth: CGFloat = {
         let v = UserDefaults.standard.double(forKey: "meetingsListWidth")
         return v > 0 ? CGFloat(v) : 296
+    }()
+    @State private var convWidth: CGFloat = {
+        let v = UserDefaults.standard.double(forKey: "meetingsConvWidth")
+        return v > 0 ? CGFloat(v) : 268
     }()
 
     /// Bumped on every star toggle — the one thing that makes a UserDefaults
@@ -152,19 +163,15 @@ struct MeetingsView: View {
         // The first two dividers drag (owner 2026-08-29) — widths persist,
         // clamped so neither column can crush its content or eat the pane.
         HStack(spacing: 0) {
-            navColumn.frame(width: navWidth)
-            ColumnGrip { delta in
-                navWidth = min(max(navWidth + delta, 180), 320)
-            } done: {
-                UserDefaults.standard.set(Double(navWidth), forKey: "meetingsNavWidth")
+            if !sidebarHidden {
+                navColumn.frame(width: navWidth)
+                ColumnGrip(width: $navWidth, range: 180...320, key: "meetingsNavWidth")
+                    .zIndex(2)
             }
-            if selection != .ask {
+            if selection != .ask, !listHidden {
                 listColumn.frame(width: listWidth)
-                ColumnGrip { delta in
-                    listWidth = min(max(listWidth + delta, 240), 420)
-                } done: {
-                    UserDefaults.standard.set(Double(listWidth), forKey: "meetingsListWidth")
-                }
+                ColumnGrip(width: $listWidth, range: 240...420, key: "meetingsListWidth")
+                    .zIndex(2)
             }
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -428,6 +435,9 @@ struct MeetingsView: View {
                 }
             }
             .padding(.horizontal, 12)
+            // With the sidebar folded this column owns the window's top-left
+            // corner, and the search field must clear the traffic lights.
+            .padding(.leading, sidebarHidden ? MeetingsChrome.trafficLights - 12 : 0)
             .padding(.vertical, 8)
             Divider()
             tagFilterRow
@@ -961,6 +971,43 @@ struct MeetingsView: View {
         .padding(.bottom, 6)
     }
 
+    private func toggleSidebar() {
+        withAnimation(.easeInOut(duration: DS.reveal)) { sidebarHidden.toggle() }
+        UserDefaults.standard.set(sidebarHidden, forKey: "meetingsSidebarHidden")
+    }
+
+    private func toggleList() {
+        withAnimation(.easeInOut(duration: DS.reveal)) { listHidden.toggle() }
+        UserDefaults.standard.set(listHidden, forKey: "meetingsListHidden")
+    }
+
+    private func toggleConversations() {
+        withAnimation(.easeInOut(duration: DS.reveal)) { convHidden.toggle() }
+        UserDefaults.standard.set(convHidden, forKey: "meetingsConvHidden")
+    }
+
+    /// The pane switches for a reading-pane header (design MeetingsWindow:
+    /// "Show or hide the sidebar/meeting list"). When the pane holding this
+    /// cluster has become the window's leftmost, it also reserves the room
+    /// the traffic lights occupy — the header row IS the title bar here.
+    private enum PaneContext { case meeting, ask }
+
+    private func paneToggles(_ context: PaneContext) -> AnyView {
+        let secondHidden = context == .meeting ? listHidden : convHidden
+        let leftmost = sidebarHidden && secondHidden
+        return AnyView(HStack(spacing: 2) {
+            ChromeButton(icon: "sidebar.left",
+                         help: L("Show or hide the sidebar")) { toggleSidebar() }
+            ChromeButton(icon: "sidebar.right",
+                         help: context == .meeting
+                             ? L("Show or hide the meeting list")
+                             : L("Show or hide the conversations")) {
+                if context == .meeting { toggleList() } else { toggleConversations() }
+            }
+        }
+        .padding(.leading, leftmost ? MeetingsChrome.trafficLights - MeetingsChrome.inset : 0))
+    }
+
     /// A filter row was clicked while Ask was open: the person asked to SEE
     /// that slice of the library, so the pane goes back to reading — the same
     /// move the All Meetings row already makes.
@@ -1044,7 +1091,8 @@ struct MeetingsView: View {
             askScope = nil
         }, onAddKey: {
             connectQuestion = answer.lastQuestion ?? ""
-        }, stats: askStats)
+        }, stats: askStats,
+           headerLeading: paneToggles(.ask))
     }
 
     /// A copy of the transcript wherever the user points — the .md is the
@@ -1090,12 +1138,17 @@ struct MeetingsView: View {
         case .answer, .ask:
             // The Ask view brings its conversation column (11j): past
             // questions, titled by their first one, opened without re-asking.
+            // Same manners as the meeting list: the conversations column
+            // drags and remembers its width (owner 2026-08-29).
             HStack(spacing: 0) {
-                ConversationsColumn(answer: answer,
-                                    onOpen: { answer.restore($0) },
-                                    onNew: { answer.clear() })
-                    .frame(width: 268)
-                Divider()
+                if !convHidden {
+                    ConversationsColumn(answer: answer,
+                                        onOpen: { answer.restore($0) },
+                                        onNew: { answer.clear() })
+                        .frame(width: convWidth)
+                    ColumnGrip(width: $convWidth, range: 220...380, key: "meetingsConvWidth")
+                        .zIndex(2)
+                }
                 answerPane
             }
         case .live:
@@ -1122,7 +1175,7 @@ struct MeetingsView: View {
                            onRetitle: nil,
                            openRename: .constant(false),
                            jumpTo: nil,
-                           ) {
+                           headerLeading: paneToggles(.meeting)) {
                 // A meeting in progress has no file yet — but the text on
                 // screen is exactly as copyable as an archived one, and taking
                 // the transcript out mid-call is what the owner reaches for.
@@ -1186,6 +1239,7 @@ struct MeetingsView: View {
                                notice: declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
                                    : nil,
+                               headerLeading: paneToggles(.meeting),
                                // One Ask, never scoped (16): a transcript's
                                // ask affordance is a door to the single
                                // global Ask — the answer names the meeting
@@ -2040,6 +2094,9 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// the one meeting the built-in one refused to describe. nil is the
     /// ordinary case, which is every meeting and every live call.
     var notice: AnyView? = nil
+    /// The window-level pane toggles, handed in by whoever owns the panes —
+    /// this pane only gives them the header's leading end to sit on.
+    var headerLeading: AnyView? = nil
     /// Opens the conversation scoped to this meeting. nil while the agent is
     /// off (absent, not greyed) and for live calls.
     var onAsk: (() -> Void)? = nil
@@ -2179,6 +2236,9 @@ private struct TranscriptPane<MenuItems: View>: View {
     private var archivedHead: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 14) {
+                if let headerLeading {
+                    headerLeading.padding(.top, 3)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     if let onRetitle {
                         Button {
@@ -2257,20 +2317,6 @@ private struct TranscriptPane<MenuItems: View>: View {
                         }
                     }
                 }
-                Spacer(minLength: 8)
-                HStack(spacing: 7) {
-                    Text(L("Recognized on this Mac"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Text("whisper-large-v3-turbo")
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .frame(height: 19)
-                        .background(RoundedRectangle(cornerRadius: 5)
-                            .fill(.quaternary.opacity(0.5)))
-                }
-                .padding(.top, 18)
             }
             .padding(.bottom, 14)
         }
@@ -2291,6 +2337,9 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// title 36pt off the transcript's margin.
     private var header: some View {
         HStack(spacing: 6) {
+            if let headerLeading {
+                headerLeading.padding(.trailing, 4)
+            }
             if live?.isActive == true {
                 PulsingDot().padding(.leading, 2)
             }
@@ -3215,31 +3264,66 @@ private struct TranscriptPane<MenuItems: View>: View {
 
 }
 
-/// A draggable column divider: the hairline everyone expects, with a 9 pt
-/// grab zone and the resize cursor. The columns it sits between clamp the
-/// delta — the grip itself has no opinions about widths.
+/// A draggable column divider (design MeetingsWindow: grip). At rest a short
+/// 2×44 pill marks the handle; while dragging the line runs full height in
+/// accent and a floating badge names the live width. The width is computed
+/// ABSOLUTELY — the width at drag start plus how far the mouse travelled in
+/// global coordinates. The first version applied local deltas, and since the
+/// divider moves with the column, its coordinate space moved too: a feedback
+/// loop the owner reported as "трясётся как неимоверное".
 private struct ColumnGrip: View {
-    let apply: (CGFloat) -> Void
-    let done: () -> Void
-    @State private var last: CGFloat = 0
+    @Binding var width: CGFloat
+    let range: ClosedRange<CGFloat>
+    let key: String
+    @State private var startWidth: CGFloat?
+    @State private var dragging = false
 
     var body: some View {
         Divider()
+            .overlay(
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(dragging ? DS.accent : Color.primary.opacity(0.12))
+                    .frame(width: 2)
+                    .frame(maxHeight: dragging ? .infinity : 44)
+            )
             .overlay(
                 Color.clear
                     .frame(width: 9)
                     .contentShape(Rectangle())
                     .pointerStyle(.columnResize)
-                    .gesture(DragGesture(minimumDistance: 1)
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { value in
-                            apply(value.translation.width - last)
-                            last = value.translation.width
+                            if startWidth == nil {
+                                startWidth = width
+                                dragging = true
+                            }
+                            let base = startWidth ?? width
+                            width = min(max(base + value.translation.width,
+                                            range.lowerBound), range.upperBound)
                         }
                         .onEnded { _ in
-                            last = 0
-                            done()
+                            startWidth = nil
+                            dragging = false
+                            UserDefaults.standard.set(Double(width), forKey: key)
                         })
             )
+            .overlay(alignment: .topLeading) {
+                if dragging {
+                    Text(verbatim: "\(Int(width)) pt")
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 6)
+                            .fill(.background)
+                            .shadow(color: .black.opacity(0.24), radius: 11, y: 4))
+                        .overlay(RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.5))
+                        .fixedSize()
+                        .offset(x: 8, y: 60)
+                }
+            }
+            .animation(.easeOut(duration: DS.fade), value: dragging)
     }
 }
 

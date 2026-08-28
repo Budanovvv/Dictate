@@ -472,6 +472,9 @@ struct AnswerPane: View {
     /// The archive's size, shown quietly inside the docked composer
     /// (design: "38 meetings · 26 h of audio"). nil hides it.
     var stats: String? = nil
+    /// The window-level pane toggle (the sidebar's), handed in by the panes'
+    /// owner — with the sidebar folded it also clears the traffic lights.
+    var headerLeading: AnyView? = nil
 
     @State private var draft = ""
     /// Focused when a chat is (re)started — the "+" has to produce a visible,
@@ -487,6 +490,9 @@ struct AnswerPane: View {
         // the honest line about who answers — present in every state, so an
         // opened conversation still says what it is scoped to.
         HStack {
+            if let headerLeading {
+                headerLeading.padding(.trailing, 4)
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(L("Ask")).font(DS.windowTitle)
                 if let headerNote {

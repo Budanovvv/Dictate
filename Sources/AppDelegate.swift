@@ -116,7 +116,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 .ignoresSafeArea(.container, edges: .top))
             meetingsHosting.sizingOptions = []
             panel.contentView = meetingsHosting
-            panel.center()
+            // The window keeps the frame the user gave it (HIG) — re-centring
+            // a window somebody has placed is what "it jumped screens" feels
+            // like. Centre only the very first time.
+            if !panel.setFrameUsingName("Meetings") { panel.center() }
+            panel.setFrameAutosaveName("Meetings")
             // Closing is the gesture people already reach for, so it has to
             // mean the safest thing it could mean. While a session is live the
             // close button folds the transcript into the pill instead of
@@ -162,6 +166,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         meetingMinimized = false
         meetingPill?.hide()
         applyMeetingWindowMode()
+        // A fresh open goes to the screen the user is on (the click is the
+        // honest signal); a window already visible is never moved.
+        if let panel = meetingWindow, !panel.isVisible {
+            let mouse = NSEvent.mouseLocation
+            if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
+               panel.screen !== screen {
+                let vis = screen.visibleFrame
+                panel.setFrameOrigin(NSPoint(x: vis.midX - panel.frame.width / 2,
+                                             y: vis.midY - panel.frame.height / 2))
+            }
+        }
         // Only an explicit "open the library" with no call running may take the
         // keyboard. Everything else — the window appearing because a meeting
         // started or finished — merely orders it in.
@@ -241,6 +256,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         let live = meeting.isActive
         panel.level = live ? .floating : .normal
         panel.becomesKeyOnlyIfNeeded = live
+        // Spaces follow the same split: the live strip floats over every
+        // Space and full-screen call; the library is an ordinary window that
+        // lives on its own Space. canJoinAllSpaces on the LIBRARY was the
+        // owner's "it throws me to another screen" (2026-08-29) — the window
+        // popped up on whatever display it was left on, and activation
+        // dragged the eyes there.
+        panel.collectionBehavior = live
+            ? [.canJoinAllSpaces, .fullScreenAuxiliary]
+            : []
     }
 
 
