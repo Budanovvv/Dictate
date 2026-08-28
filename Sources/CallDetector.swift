@@ -34,9 +34,10 @@ final class CallDetector {
     private var quietTicks = 0
     /// Ticks a browser has held the mic without a title naming the call.
     private var unidentifiedTicks = 0
-    /// When the prompt last fired. However the episodes flap, the card never
-    /// asks more than once per five minutes — a declined call must not keep
-    /// asking (three prompts in one meeting, owner's log 2026-08-29).
+    /// When the prompt last fired. A short belt against an episode that
+    /// flaps straight through the 20 s patience — NOT a rate limit on real
+    /// calls: five minutes here suppressed the owner's genuinely new call
+    /// two minutes after the last one (log, 2026-08-29 15:28).
     private var lastFiredAt: Date?
 
     func start() {
@@ -55,7 +56,7 @@ final class CallDetector {
     }
 
     private func fire(_ platform: String?) {
-        if let lastFiredAt, Date().timeIntervalSince(lastFiredAt) < 300 {
+        if let lastFiredAt, Date().timeIntervalSince(lastFiredAt) < 60 {
             Log.d("call: detected — \(platform ?? "unnamed"), prompt cooling down")
             return
         }

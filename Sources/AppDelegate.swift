@@ -300,13 +300,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     /// The actual start, shared by the menu, the window's Record control and
     /// the call prompt (which carries its own consent line, so it comes here
-    /// directly).
-    private func startMeetingSession() {
+    /// directly). `asPill` is the prompt's way in: the person is ON A CALL —
+    /// dropping the full portal over it helps nobody (owner's call,
+    /// 2026-08-29), so the recording starts as the small pill and the window
+    /// stays wherever it was.
+    private func startMeetingSession(asPill: Bool = false) {
         callPrompt.hide()
         do {
             try meeting.start()
             statusController.applyState(dictation.state)   // show the red mark
-            showMeetingWindow()
+            if asPill {
+                meetingMinimized = true
+                meetingPillController().show(from: nil)
+                Log.d("meeting: started as the pill")
+            } else {
+                showMeetingWindow()
+            }
         } catch {
             statusController.showError(Lf("Couldn't start the meeting transcript: %@",
                                           error.localizedDescription))
@@ -320,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         guard !meeting.isActive else { return }
         Log.d("call: prompting")
         callPrompt.show(platform: platform) { [weak self] in
-            self?.startMeetingSession()
+            self?.startMeetingSession(asPill: true)
         }
     }
 

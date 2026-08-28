@@ -34,7 +34,10 @@ final class CallPrompt {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .statusBar
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        // The card CHASES the person: whatever Space or full-screen app
+        // they are on when it appears — or move to while it waits — the
+        // offer is in front of them (owner's rule: wherever I am).
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         let hosting = NSHostingView(rootView: CallPromptCard(
             platform: platform,
