@@ -108,6 +108,9 @@ struct MeetingsView: View {
     /// flipped in Settings re-renders this window live (same trick as
     /// askArchiveOn above).
     @State private var capsSeen = -1
+    /// Screenshot harness only (debugShot meetings:firstrun): shows the
+    /// FirstRun setup screen on a machine whose archive is not empty.
+    @State private var forceFirstRun = false
     /// The toolbar's Rename… routes to the same popover the title carries,
     /// so there is one editing surface no matter how you get to it.
     @State private var renamingFromMenu = false
@@ -210,6 +213,10 @@ struct MeetingsView: View {
             }
             // Screenshot harness (design pass): select the newest meeting
             // once the archive has loaded.
+            if UserDefaults.standard.string(forKey: "debugShotMeetings") == "firstrun" {
+                UserDefaults.standard.removeObject(forKey: "debugShotMeetings")
+                forceFirstRun = true
+            }
             if UserDefaults.standard.string(forKey: "debugShotMeetings") == "first" {
                 UserDefaults.standard.removeObject(forKey: "debugShotMeetings")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
@@ -220,7 +227,8 @@ struct MeetingsView: View {
             // opens on the question, not on a transcript. With the agent off
             // the nil selection keeps the old portal home, which carries the
             // connect offer.
-            if Settings.shared.askArchive, selection == nil, !session.isActive {
+            if Settings.shared.askArchive, selection == nil, !session.isActive,
+               !forceFirstRun {
                 selection = .ask
             }
             reload {
@@ -1388,7 +1396,7 @@ struct MeetingsView: View {
             // The brief-portal is retired (the design's launch view is Ask):
             // with nothing selected the pane shows the first-run empty state
             // (10a) or the plain placeholder, never a dashboard.
-            if meetings.isEmpty, !session.isActive, !capsAllOn {
+            if forceFirstRun || (meetings.isEmpty && !session.isActive && !capsAllOn) {
                 firstRunSetup
             } else if meetings.isEmpty, !session.isActive {
                 firstRunEmpty

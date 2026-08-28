@@ -639,6 +639,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 statusController.debugOpenMenu()
             case "hud":
                 debugHUD(variant.isEmpty ? "recording" : variant)
+            case "callprompt":
+                // The detection card, both faces, without a call: the record
+                // action only logs — a photograph must not start a session.
+                callPrompt.show(platform: variant == "unnamed" ? nil : "Zoom",
+                                style: variant == "offer" ? .offer : .prompt) {
+                    Log.d("debugShot: callprompt record tapped")
+                }
             default:
                 break
             }

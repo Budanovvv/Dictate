@@ -555,7 +555,10 @@ struct SettingsView: View {
                 // Named by what the user gets, not by what it is — nobody has
                 // ever wanted a "text model"; they want their meetings to have
                 // names.
-                if textModel.state != .unsupported {
+                // The download row is the machinery of the switch above —
+                // with reading off it answers a question nobody asked, so it
+                // appears only once the decision is made.
+                if textModel.state != .unsupported, readMeetings {
                     LabeledContent {
                         textModelControl
                     } label: {
