@@ -47,14 +47,6 @@ final class CallDetector {
         }
     }
 
-    func stop() {
-        timer?.invalidate()
-        timer = nil
-        inCall = false
-        quietTicks = 0
-        unidentifiedTicks = 0
-    }
-
     private func fire(_ platform: String?) {
         if let lastFiredAt, Date().timeIntervalSince(lastFiredAt) < 60 {
             Log.d("call: detected — \(platform ?? "unnamed"), prompt cooling down")

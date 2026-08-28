@@ -821,13 +821,6 @@ struct MeetingsView: View {
     }
 
 
-    /// "10:26:17" as the hour and minute a person would say. The seconds are
-    /// in the transcript where they belong; in a list they are noise.
-    private func clock(_ time: String) -> String {
-        let parts = time.split(separator: ":")
-        return parts.count >= 2 ? "\(parts[0]):\(parts[1])" : time
-    }
-
     /// Time (unless it is already the row's title) and length — omitting a
     /// duration too short to state, so a one-line meeting doesn't advertise
     /// "0 s".
@@ -1149,7 +1142,6 @@ struct MeetingsView: View {
                            // chips would grow and shuffle mid-call. Renaming a
                            // voice during a call stays where it always was: on
                            // the speaker's own turn.
-                           participants: [],
                            live: session,
                            onStop: onStop,
                            onRename: { old, new in session.renameSpeaker(from: old, to: new) },
@@ -1169,7 +1161,6 @@ struct MeetingsView: View {
                 TranscriptPane(entries: meeting.entries,
                                title: meeting.title ?? dayAndTime(meeting.started),
                                subtitle: subtitle(for: meeting),
-                               participants: participants(of: meeting),
                                live: nil,
                                onStop: nil,
                                tags: meeting.tags,
@@ -1575,28 +1566,6 @@ struct MeetingsView: View {
         MeetingSections.shared.backfill(meetings) { [session] in !session.isActive }
     }
 
-    /// Who was in the meeting, in the order they first spoke — the same order
-    /// (and therefore the same colours) the turns below use.
-    ///
-    /// Taken from the entries rather than from `meeting.speakers`, because the
-    /// header needs one fact that list does not carry: which of these names is
-    /// the owner. "You" is not a name the app gave a voice, it is the person
-    /// reading the window, and it is the one participant that cannot be
-    /// renamed.
-    /// `isYou` is trustworthy here in a way it once was not: the parser used
-    /// to decide it by comparing the transcript's label with the CURRENT
-    /// interface language, so switching the app to German turned every English
-    /// "You" in the archive into a stranger — a stolen palette slot, and a
-    /// rename offered to the reader. `MeetingArchive.youLabels` now answers
-    /// that question in all eleven languages at once, so this view can simply
-    /// believe the flag.
-    private func participants(of meeting: ArchivedMeeting) -> [Participant] {
-        var seen = Set<String>()
-        return meeting.entries
-            .filter { seen.insert($0.speaker).inserted }
-            .map { Participant(name: $0.speaker, isYou: $0.isYou) }
-    }
-
     /// When it happened and how long it ran — assembled from the facts this
     /// meeting actually has.
     ///
@@ -1621,11 +1590,6 @@ struct MeetingsView: View {
     }
 
     // MARK: - Formatting
-
-    private func elapsed(at date: Date) -> String {
-        let s = max(0, Int(date.timeIntervalSince(session.startedAt)))
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
 
     private func compactDuration(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
@@ -1694,11 +1658,6 @@ enum MeetingsChrome {
     /// the search field's toggle with the library open, the transcript's toggle
     /// without it — starts here.
     static let trafficLights: CGFloat = 78
-    /// The library column. Fixed, not draggable: a meeting's title, its time
-    /// and a line of its preview are what a row has to show, and this is the
-    /// width that shows them. The window widens by exactly this much when the
-    /// library opens (AppDelegate), so the transcript keeps the width it had.
-    static let sidebarWidth: CGFloat = 300
 }
 
 /// The window's one button shape: a borderless glyph in a 28pt target with a
@@ -1927,7 +1886,6 @@ private struct TranscriptPane<MenuItems: View>: View {
     let subtitle: String?
     /// Who was in the meeting. Rendered as chips in the subtitle line, each one
     /// a way into the rename popover; empty for a live call (see the call site).
-    let participants: [Participant]
     let live: MeetingSession?
     let onStop: (() -> Void)?
     /// This meeting's tags and how to change them. nil for a live session —
@@ -2027,7 +1985,6 @@ private struct TranscriptPane<MenuItems: View>: View {
     @State private var retitling = false
     @State private var titleDraft = ""
     /// Which participant's rename popover is open — one at a time, by name.
-    @State private var renamingSpeaker: String?
     /// Turns and speaker colours, derived once per change of `entries`.
     @State private var cache = TurnCache()
     /// The turn under the pointer — ONE optional id, owned here and nowhere
@@ -2345,18 +2302,6 @@ private struct TranscriptPane<MenuItems: View>: View {
                             minutes: max(1, (seconds[$0] ?? 0) / 60)) }
     }
 
-    /// The legend's two channels (design): everything of yours on one dot,
-    /// everything of the call's — however many voices — on the other. The
-    /// per-voice split lives in the turns, where the names are.
-    private var channelShares: [(name: String, isYou: Bool, minutes: Int)] {
-        let you = speakingShares.filter(\.isYou).reduce(0) { $0 + $1.minutes }
-        let them = speakingShares.filter { !$0.isYou }.reduce(0) { $0 + $1.minutes }
-        var out: [(String, Bool, Int)] = []
-        if you > 0 { out.append((L("You"), true, you)) }
-        if them > 0 { out.append((L("Call audio"), false, them)) }
-        return out.map { (name: $0.0, isYou: $0.1, minutes: $0.2) }
-    }
-
 
     /// The line under the meeting's name: when it happened, then who was in it.
     ///
@@ -2385,26 +2330,6 @@ private struct TranscriptPane<MenuItems: View>: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(height: 14)
-        }
-    }
-
-    private func chips(leadingFacts facts: String) -> some View {
-        HStack(spacing: 5) {
-            if !facts.isEmpty {
-                Text(facts)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            ForEach(participants) { participant in
-                SpeakerChip(participant: participant,
-                            color: cache.color(named: participant.name,
-                                               isYou: participant.isYou),
-                            renaming: $renamingSpeaker,
-                            onRename: onRename)
-            }
-            Spacer(minLength: 0)
         }
     }
 
@@ -3223,76 +3148,6 @@ private struct ColumnGrip: View {
     }
 }
 
-/// One voice in a meeting, as the header shows it.
-///
-/// `isYou` is not decoration: the owner is the one participant whose name is
-/// not a guess the app made, so it is the one chip that does not offer to be
-/// renamed.
-struct Participant: Identifiable, Hashable {
-    let name: String
-    let isYou: Bool
-    var id: String { name }
-}
-
-/// A participant in the transcript's header: the speaker's colour, their name,
-/// and a way into the same rename popover their turns carry.
-///
-/// Quiet metadata until it is pointed at — this is a subtitle line, not a
-/// toolbar. The chip's padding is the same whether it is hovered or not and
-/// only the background behind it changes, so lighting one up cannot move the
-/// header around (the same rule as the copy chips down the transcript).
-private struct SpeakerChip: View {
-    let participant: Participant
-    let color: Color
-    @Binding var renaming: String?
-    let onRename: (String, String) -> Void
-
-    @State private var hovering = false
-    @State private var draft = ""
-
-    private var isOpen: Bool { renaming == participant.name }
-
-    var body: some View {
-        let label = HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 5, height: 5)
-            Text(participant.name)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 1)
-        .background(
-            DS.chipShape
-                .fill(hovering || isOpen ? DS.hoverFill : .clear)
-        )
-        .animation(.easeOut(duration: DS.fade), value: hovering)
-
-        // "You" is the person reading this window, not a name the app invented
-        // — there is nothing to correct, so it is a fact rather than a control.
-        if participant.isYou {
-            label
-        } else {
-            Button {
-                draft = participant.name
-                renaming = participant.name
-            } label: { label }
-            .buttonStyle(.plain)
-            .onHover { hovering = $0 }
-            .help(L("Rename this speaker"))
-            .popover(isPresented: Binding(get: { isOpen },
-                                          set: { if !$0, isOpen { renaming = nil } }),
-                     arrowEdge: .bottom) {
-                SpeakerRenamePopover(draft: $draft, width: 180) { newName in
-                    renaming = nil
-                    guard let newName else { return }
-                    onRename(participant.name, newName)
-                }
-            }
-        }
-    }
-}
-
 /// The one surface for renaming a voice, reached from a turn's speaker name and
 /// from the header's participant chips. `nil` from `commit` means the user
 /// backed out.
@@ -3950,34 +3805,6 @@ private struct StatusStrip: View {
     }
 }
 
-/// Five brand bars dancing with the live level — flat when silent, alive
-/// when anyone speaks. The window's proof of hearing.
-///
-/// Measured before this was rewritten: 11.3% of a core, for the whole length of
-/// every call, from five 3pt bars. The cause is the one this window has now
-/// been bitten by three times — `frame(height:)` under an implicit animation.
-/// Each audio level (about twelve a second) started a fresh 0.12 s curve on a
-/// LAYOUT property, and each of those asks AppKit to re-lay out the window —
-/// the transcript included — every display frame. Since the curves are longer
-/// than the gap between levels, that re-layout never stopped.
-///
-/// Now the bars are the shared WaveBar: their height is a transform, the layout
-/// engine only ever sees one fixed slot, and there is no implicit animation
-/// anywhere — the meter simply follows the level it is given, which arrives
-/// often enough (~12 Hz) to look alive on its own.
-private struct LevelWave: View {
-    let level: Double
-    private static let profile: [Double] = [0.36, 0.64, 1.0, 0.64, 0.36]
-    private static let slot: CGFloat = 16
-
-    var body: some View {
-        WaveShape(heights: Self.profile.map { CGFloat(4 + 12 * level * $0) },
-                  barWidth: 3, spacing: 2.5)
-            .fill(DS.you)
-            .frame(width: 5 * 3 + 4 * 2.5, height: Self.slot)
-    }
-}
-
 /// Recording indicator: a red dot with a slow, calm pulse.
 ///
 /// The pulse is STEPPED by a schedule, not faded by an implicit animation.
@@ -4385,47 +4212,6 @@ private struct TagChip: View {
     }
 }
 
-
-/// One line of the contents block: when it starts, and what was discussed
-/// there. Clicking scrolls the transcript to that moment.
-///
-/// The timestamp is monospaced and dim, the line is ordinary text — the same
-/// pairing the transcript itself uses for a turn, so the contents read as an
-/// index OF this document rather than as a separate widget bolted above it.
-private struct SectionLink: View {
-    let section: TranscriptSection
-    let onJump: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: onJump) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(section.time.prefix(5))
-                    .font(DS.timestamp)
-                    .foregroundStyle(.secondary)
-                Text(section.line)
-                    // A step below the summary AND below the transcript, so
-                    // this block reads as an index rather than as a third
-                    // block of prose competing with the two around it.
-                    .font(.caption)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(
-                DS.shape
-                    .fill(hovering ? DS.hoverFill : .clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: DS.fade), value: hovering)
-    }
-}
 
 /// One list-column row: our own selection (12% tint + 3 px edge, 13a) and a
 /// hover wash — the List has no selection binding, so both live here.

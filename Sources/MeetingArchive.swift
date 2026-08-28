@@ -718,30 +718,6 @@ enum MeetingArchive {
         return rewrite(url, with: updated)
     }
 
-    /// Renames one tag everywhere in the archive.
-    ///
-    /// The escape valve the research says a vocabulary cannot live without: a
-    /// term WILL fork eventually — a typo, a change of mind about what the
-    /// engagement is called — and a system with no way to merge two tags is a
-    /// system whose answers quietly get worse. Cheap here because a tag lives
-    /// in the file, so merging is a rewrite of a header line, not a migration.
-    ///
-    /// Returns how many transcripts changed.
-    @discardableResult
-    static func renameTag(from old: String, to new: String) -> Int {
-        guard let from = MeetingTags.normalize(old),
-              let to = MeetingTags.normalize(new), from != to else { return 0 }
-        var changed = 0
-        for meeting in list(youLabel: L("You")) where meeting.tags.contains(from) {
-            // Through `unique` so renaming onto an existing tag MERGES rather
-            // than writing it twice.
-            let updated = MeetingTags.unique(meeting.tags.map { $0 == from ? to : $0 })
-            if setTags(updated, in: meeting.url) { changed += 1 }
-        }
-        Log.d("tags: renamed #\(from) -> #\(to) in \(changed) transcript(s)")
-        return changed
-    }
-
     /// Every tag in the archive with how many meetings carry it — what
     /// completion offers, so the familiar tag is the easy one to type.
     static func tagCounts(in meetings: [ArchivedMeeting]) -> [(tag: String, count: Int)] {

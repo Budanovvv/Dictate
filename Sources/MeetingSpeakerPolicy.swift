@@ -36,13 +36,6 @@ enum MeetingSpeakerPolicy {
         /// the strongest statement available that this is a real person, and
         /// it is never overruled by acoustics.
         var renamed: Bool = false
-
-        init(ordinal: Int, entries: Int, seconds: Double, renamed: Bool = false) {
-            self.ordinal = ordinal
-            self.entries = entries
-            self.seconds = seconds
-            self.renamed = renamed
-        }
     }
 
     /// What was decided for one micro-cluster. Every case except `.merge`

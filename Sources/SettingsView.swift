@@ -639,8 +639,7 @@ struct SettingsView: View {
                         Text(Self.appVersion)
                         Text("·").foregroundStyle(.tertiary)
                         Button(L("Check for Updates")) { onCheckForUpdates() }
-                        .buttonStyle(.dsSmall)
-                            .buttonStyle(.link)
+                            .buttonStyle(.dsSmall)
                     }
                 }
                 // When the daily silent check last ran — the proof the
@@ -736,6 +735,17 @@ struct SettingsView: View {
                 .buttonStyle(.dsSmall)
                 .controlSize(.small)
             }
+        } else if APIKey.canUndoRemove(for: provider), keyDraft.isEmpty {
+            // The help promises "⌘Z puts it back" — this is that promise
+            // kept: the removed key is held in memory for the process's
+            // life, and one keystroke (or click) restores it.
+            Button(L("Undo remove")) {
+                _ = APIKey.undoRemove(for: provider)
+                keyRevision += 1
+            }
+            .buttonStyle(.dsSmall)
+            .controlSize(.small)
+            .keyboardShortcut("z", modifiers: .command)
         } else {
             VStack(alignment: .trailing, spacing: 3) {
                 HStack(spacing: 8) {

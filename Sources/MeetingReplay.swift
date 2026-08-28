@@ -191,8 +191,6 @@ final class MeetingReplay {
     var onYou: ((Data, Double) -> Void)?
     var onThem: ((Data, Double) -> Void)?
     /// Both files ran dry. The session stays up — stopping is the owner's
-    /// call, exactly as in a live meeting.
-    var onFinished: (() -> Void)?
 
     private var youPCM: Data
     private var themPCM: Data
@@ -251,7 +249,7 @@ final class MeetingReplay {
         guard offset < youPCM.count || offset < themPCM.count else {
             stop()
             Log.d("replay: files drained — stop the session when ready")
-            onFinished?()
+            // replay drained — MeetingSession notices by silence
             return
         }
         for (pcm, deliver) in [(youPCM, onYou), (themPCM, onThem)] {

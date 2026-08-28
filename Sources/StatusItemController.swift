@@ -387,12 +387,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.target = self
         menu.addItem(item)
     }
-    /// "12 Aug · Agent Discussion". Only the TITLE is ever cut — the date is
-    /// the part that has to survive, and it is what makes the column scannable.
-    private static func row(for meeting: RecentMeeting) -> String {
-        Self.shortDate(meeting.started) + " · " + shortened(meeting.name)
-    }
-
     /// One line per key, saying which key and what comes out of it:
     ///
     ///     Right Option (⌥) — dictate in Russian
@@ -481,71 +475,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
-    private struct RecentMeeting {
-        let url: URL
-        let started: Date
-        /// The meeting's name, or the time of day it happened when the model
-        /// never managed to name it (the date is on the row already).
-        let name: String
-    }
-
-    /// The newest transcripts, read the cheap way — this runs on every single
-    /// open of the menu.
-    ///
-    /// `MeetingArchive.list()` opens and fully parses EVERY file in the folder
-    /// (entries, summary, sections), which is right for the library window and
-    /// wrong here: nineteen meetings today, a working year of them later, all
-    /// to print five titles. So the directory is only *listed* (names, no
-    /// reads), the date comes out of our own file names, and exactly five files
-    /// are opened — the first 4 KB of each, which is far more than an H1 and
-    /// the italic date line under it ever need. Cost per menu open: one
-    /// readdir plus five short reads, flat in the size of the archive.
-    private static func recentMeetings(limit: Int = 5) -> [RecentMeeting] {
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(
-            at: MeetingArchive.directory, includingPropertiesForKeys: [.creationDateKey],
-            options: [.skipsHiddenFiles]) else { return [] }
-        let newest = files
-            .filter { $0.pathExtension == "md" }
-            .map { url -> (URL, Date) in
-                (url, MeetingArchive.startedDate(fileName: url.lastPathComponent)
-                    ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
-                    ?? .distantPast)
-            }
-            .sorted { $0.1 > $1.1 }
-            .prefix(limit)
-        return newest.map { url, started in
-            RecentMeeting(url: url, started: started,
-                          name: head(of: url).flatMap(MeetingArchive.parseTitle) ?? timeOfDay(started))
-        }
-    }
-
-    /// The first bytes of a transcript — its heading, not the meeting.
-    private static func head(of url: URL, bytes: Int = 4096) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: bytes) else { return nil }
-        // The cut can land mid-character; decoding leniently keeps the title,
-        // which is at the very top, readable regardless.
-        return String(decoding: data, as: UTF8.self)
-    }
-
-    /// "12 Aug" — the day as a number and the month as the locale's own short
-    /// word, from a TEMPLATE rather than a fixed pattern, so the pieces come
-    /// out in the order that locale writes them.
-    private static func shortDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.setLocalizedDateFormatFromTemplate("d MMM")
-        return f.string(from: date)
-    }
-
-    private static func timeOfDay(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f.string(from: date)
-    }
-
     @objc private func copyHistoryItem(_ sender: NSMenuItem) {
         guard let text = sender.representedObject as? String else { return }
         let pb = NSPasteboard.general
@@ -586,11 +515,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // Screenshot harness (design pass): open/close the menu without a mouse.
     func debugOpenMenu() { item.button?.performClick(nil) }
     func debugCloseMenu() { item.menu?.cancelTracking() }
-
-    @objc private func openMeeting(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        showMeetings(url)
-    }
 
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)

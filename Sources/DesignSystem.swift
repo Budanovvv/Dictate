@@ -63,15 +63,6 @@ enum DS {
     /// typewriter (measured: proportional digits swing 38% in width).
     static let timestamp = Font.caption.monospacedDigit()
 
-    /// The written-by-the-model voice: summaries and briefs read in serif so
-    /// generated prose is legible AS a different voice next to the verbatim
-    /// transcript — provenance carried by typography, not by badges.
-    static let aiProse = Font.body.leading(.loose)
-
-    static func aiProseStyled(_ text: Text) -> Text {
-        text.fontDesign(.serif)
-    }
-
     // MARK: - The 13a specification (design handoff, 2026-08-27)
 
     /// One appearance-aware colour from two sRGB values.
@@ -120,14 +111,8 @@ enum DS {
     /// The 72-character measure reading columns cap at.
     static let readingMeasure: CGFloat = 620
     static let windowTitle = Font.system(size: 13.5, weight: .semibold)
-    static let interfaceBody = Font.system(size: 13)
     static let helpText = Font.system(size: 11.5)
     static let sectionLabel = Font.system(size: 11, weight: .semibold)
-
-    // Metrics.
-    static let toolbarDocument: CGFloat = 52
-    static let toolbarUtility: CGFloat = 46
-    static let contentPadding: CGFloat = 24
 
     /// The transcript's reading scale (design MeetingOutline: textSize).
     ///

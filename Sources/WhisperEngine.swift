@@ -202,11 +202,11 @@ actor WhisperEngine {
         let noSpeechProb: Double
         let avgLogprob: Double
         /// Max across segments — one looping segment is enough to condemn.
+        // (segment count itself is not kept: nothing read it)
         let compressionRatio: Double
         /// Highest temperature the decoder had to fall back to. Not part of
         /// any rule yet (no calibration data), logged so it can become one.
         let temperature: Double
-        let segments: Int
     }
 
     /// Transcribes audio (16 kHz float) with the given tier's model.
@@ -290,7 +290,7 @@ actor WhisperEngine {
             // No segments at all means no text either — neutral numbers, and
             // the caller's word count decides.
             return DecodeQuality(noSpeechProb: 0, avgLogprob: 0, compressionRatio: 1,
-                                 temperature: 0, segments: 0)
+                                 temperature: 0)
         }
         let weights = segments.map { Double(max($0.duration, 0.01)) }
         let total = weights.reduce(0, +)
@@ -301,7 +301,6 @@ actor WhisperEngine {
             noSpeechProb: weighted { $0.noSpeechProb },
             avgLogprob: weighted { $0.avgLogprob },
             compressionRatio: Double(segments.map(\.compressionRatio).max() ?? 1),
-            temperature: Double(segments.map(\.temperature).max() ?? 0),
-            segments: segments.count)
+            temperature: Double(segments.map(\.temperature).max() ?? 0))
     }
 }

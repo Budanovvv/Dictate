@@ -154,7 +154,7 @@ final class HotkeyMonitor {
     /// timestamp this says whether flagsState currently reflects the physical
     /// keyboard — a synthetic ⌘V rewrites it (see Paster.lastSyntheticPasteAt)
     /// and only the next real flags event repairs it.
-    fileprivate(set) static var lastRealFlagsEventAt = Date.distantPast
+    private(set) static var lastRealFlagsEventAt = Date.distantPast
 
     /// False from the moment a synthetic paste clobbers the session flags
     /// state until the next real flagsChanged repairs it. While false,

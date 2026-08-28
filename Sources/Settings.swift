@@ -196,12 +196,6 @@ final class Settings {
         set { d.set(newValue, forKey: "transcriptTextSize") }
     }
 
-    /// "Hide outline" in the transcript head — a reading preference.
-    var outlineHidden: Bool {
-        get { d.bool(forKey: "outlineHidden") }
-        set { d.set(newValue, forKey: "outlineHidden") }
-    }
-
     /// Final insertion route (Settings › Keys, design: "Insert text by").
     /// false = paste at once (default); true = type it out through the same
     /// unicode-event route live typing uses — for apps that block paste.

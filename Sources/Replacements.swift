@@ -46,11 +46,6 @@ enum Replacements {
                ("tandang padamdam", "!"), ("tandang pananong", "?"), ("tutuldok", ":")],
     ]
 
-    /// Commands for the settings showcase, in the given UI language.
-    static func commands(for languageCode: String) -> [(phrase: String, output: String)] {
-        commandsByLanguage[languageCode] ?? commandsByLanguage["en"]!
-    }
-
     /// Filler words per language — deliberately conservative: only sounds
     /// that are near-never meaningful. NOT "ну"/"like"/"you know" (often
     /// carry meaning). Applied STRICTLY to the language of this dictation:

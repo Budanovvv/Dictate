@@ -17,8 +17,6 @@ struct GeneratedBrief: Sendable {
 enum GenerationFailure: Error {
     /// No engine at all: no local model on disk and no Apple Intelligence.
     case unavailable
-    /// The model declined the content ("Detected content likely to be unsafe").
-    case refused(String)
     /// Anything else: a context overflow, a dead child process, a parse error.
     case failed(String)
 }

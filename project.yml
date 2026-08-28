@@ -110,8 +110,6 @@ targets:
       - path: Sources/AskHistoryStore.swift
       # Pulled in by RecordingHUD, which the tests compile.
       - path: Sources/DesignSystem.swift
-      # The portal home's facts — a pure rule, tested like every policy.
-      - path: Sources/MeetingBriefPolicy.swift
       - path: Sources/LanguageList.swift
       - path: Sources/Replacements.swift
       - path: Sources/CommitEngine.swift

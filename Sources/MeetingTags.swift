@@ -170,14 +170,12 @@ enum MeetingTags {
         guard name.contains("@") else { return normalize(name) }
         let parts = name.split(separator: "@")
         guard parts.count == 2 else { return normalize(name) }
-        let local = String(parts[0])
         let domain = String(parts[1]).split(separator: ".").first.map(String.init) ?? ""
         // A work address is usually name@company; a personal one is usually
         // name@gmail. The company is the useful tag, the mail provider is not.
         let providers: Set<String> = ["gmail", "icloud", "me", "outlook", "hotmail",
                                       "yahoo", "proton", "protonmail", "yandex", "mail"]
         guard !domain.isEmpty, !providers.contains(domain.lowercased()) else { return nil }
-        _ = local
         return normalize(domain)
     }
 }
