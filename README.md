@@ -20,13 +20,13 @@ Dictate does four things, and does them all on your Mac. No cloud, no account, n
 
 **2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated on this Mac, like everything else.
 
-**3 · Meetings, recorded and structured.** Record any call — Zoom, Google Meet in a browser, anything — and get more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
+**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
 
-**4 · An agent that knows your meetings.** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and the recordings themselves never leave your Mac.
+**4 · An agent that knows your meetings (Ask).** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and the recordings themselves never leave your Mac.
 
 ## The details
 
-- **Private by architecture** — the microphone listens only during a dictation or a recording you started; recognition never touches the network. The one-time model download (~630 MB) is the only time Dictate needs the internet.
+- **Private by architecture** — the microphone listens only during a dictation or a recording you started; recognition never touches the network. The one-time model download (~626 MB) is the only time Dictate needs the internet.
 - **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.
 - **Honest utility** — no settings maze, no account, no subscription. Auto-updates via Sparkle, cryptographically signed.
 
@@ -44,7 +44,7 @@ There are other good free, open dictation apps too — [Handy](https://github.co
 2. Open it and drag **Dictate** into **Applications**.
 3. Launch. Dictate walks you through the rest: a one-time model download, picking your key, and two macOS permissions.
 
-**Requirements:** macOS 15+, **Apple Silicon** (Intel Macs run it too — it's a universal binary — but recognition is much slower without a Neural Engine), ~1 GB of free disk space for the speech model.
+**Requirements:** macOS 15+, **Apple Silicon** (Intel Macs run it too — it's a universal binary — but recognition is much slower without a Neural Engine), ~1.2 GB of free disk space for the speech model.
 
 ### About the two permissions
 
@@ -59,8 +59,7 @@ There are other good free, open dictation apps too — [Handy](https://github.co
 brew install xcodegen cmake
 git clone https://github.com/Budanovvv/Dictate.git && cd Dictate
 ./tools/build-llama-server.sh   # once: builds the text helper (~5 min)
-xcodegen generate
-./build.sh            # Release build (pick your signing Team in Xcode once)
+./build.sh            # Release build (runs xcodegen itself; pick your signing Team in Xcode once)
 ./test.sh             # unit tests + bundle checks
 ```
 
@@ -71,5 +70,7 @@ Stack: Swift / SwiftUI / AppKit, [WhisperKit](https://github.com/argmaxinc/Whisp
 ## License
 
 [GPL-3.0](LICENSE) — free forever; forks stay open.
+
+Bugs and ideas: [Issues](https://github.com/Budanovvv/Dictate/issues).
 
 Made by [Valentyn Budanov](https://github.com/Budanovvv).
