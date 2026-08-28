@@ -39,11 +39,15 @@ final class CallPrompt {
             platform: platform,
             firstEver: firstEver,
             onRecord: { [weak self] in
+                Log.d("call: prompt → record")
                 Settings.shared.meetingConsentSeen = true
                 self?.hide()
                 record()
             },
-            onDecline: { [weak self] in self?.hide() }))
+            onDecline: { [weak self] in
+                Log.d("call: prompt → not this one")
+                self?.hide()
+            }))
         hosting.frame.size = hosting.fittingSize
         panel.contentView = hosting
         panel.setContentSize(hosting.fittingSize)
@@ -54,12 +58,16 @@ final class CallPrompt {
             panel.setFrameOrigin(NSPoint(x: v.midX - panel.frame.width / 2,
                                          y: v.maxY - panel.frame.height - 12))
         }
+        Log.d("call: prompt shown (\(platform ?? "unnamed")) at \(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y)) on \(NSScreen.main?.localizedName ?? "?")")
         panel.orderFrontRegardless()
         self.panel = panel
         // Untouched, it leaves by itself — the menu bar and the Record
         // button in the list remain the ways to catch the call later.
         dismissTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.hide() }
+            Task { @MainActor in
+                Log.d("call: prompt → timed out")
+                self?.hide()
+            }
         }
     }
 

@@ -66,6 +66,7 @@ final class CallDetector {
         // stay latched so the end of the recording is not a fresh call.
         if isRecording() { inCall = true; quietTicks = 0; unidentifiedTicks = 0; return }
         if MeetingSession.callHolderPresent() {
+            if quietTicks > 0 { Log.d("call: holder back after \(quietTicks * 4)s") }
             quietTicks = 0
             guard !inCall else { return }
             if let platform = MeetingSession.detectCallApp() {
@@ -92,6 +93,7 @@ final class CallDetector {
             unidentifiedTicks = 0
             if inCall {
                 quietTicks += 1
+                if quietTicks == 1 { Log.d("call: holder quiet") }
                 // Five ticks (~20 s), not two: a live Meet releases the mic
                 // for ~10 s stretches around its lobby and permission
                 // screens, and an 8 s patience read each one as the call
@@ -99,7 +101,7 @@ final class CallDetector {
                 if quietTicks >= 5 {
                     inCall = false
                     quietTicks = 0
-                    Log.d("call: over")
+                    Log.d("call: over (quiet \(5 * 4)s)")
                 }
             }
         }
