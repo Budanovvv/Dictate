@@ -6,14 +6,16 @@ import AppKit
 /// keeps this quiet: a voice memo or a chat assistant holding the mic is
 /// somebody's business, not a call, and never prompts.
 ///
-/// One shot per call: the detector latches when a platform appears and does
-/// not fire again until the platform has been gone for two ticks (~8 s), so
-/// declining a prompt stays declined for that call and a network hiccup in
-/// the middle does not re-ask.
+/// One shot per call, where a call is a microphone EPISODE: the detector
+/// latches when a call appears and unlatches once nothing call-shaped has
+/// held the mic for two ticks (~8 s). Back-to-back calls need that short
+/// gap between them to be told apart — a deliberate simplicity (owner's
+/// call, 2026-08-29: no exotic identity tracking).
 ///
-/// A poll, not a CoreAudio listener, on purpose: four seconds of latency is
-/// invisible next to the seconds a call takes to join, and the process-list
-/// read is microseconds.
+/// The latch is HELD by the loose test — any call-shaped process on the
+/// mic, whatever tab is frontmost — so switching to a document tab mid-call
+/// neither unlatches nor re-prompts. Only the initial firing needs the
+/// strict, title-verified detection.
 @MainActor
 final class CallDetector {
     /// A call was recognised; the string is the platform's display name.
@@ -44,10 +46,10 @@ final class CallDetector {
         // While we record, the platform is "in a call" by definition —
         // stay latched so the end of the recording is not a fresh call.
         if isRecording() { inCall = true; quietTicks = 0; return }
-        let platform = MeetingSession.detectCallApp()
-        if let platform {
+        if MeetingSession.callHolderPresent() {
             quietTicks = 0
             guard !inCall else { return }
+            guard let platform = MeetingSession.detectCallApp() else { return }
             inCall = true
             Log.d("call: detected — \(platform)")
             onCallDetected?(platform)
