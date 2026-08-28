@@ -21,6 +21,62 @@ final class MeetingPill {
     private let onStop: () -> Void
     private let onExpand: () -> Void
     private let onHide: () -> Void
+    /// The user dragged the pill this session — following is off until the
+    /// pill is next shown.
+    private var pinnedByDrag = false
+    /// Repositions the pill onto the display the user is working on.
+    private var followTimer: Timer?
+    /// Ticks the mouse has been on a different display than the pill.
+    private var awayTicks = 0
+
+    /// The pill follows the person ACROSS DISPLAYS: Spaces are covered by
+    /// canJoinAllSpaces, but a window's coordinates live on one monitor —
+    /// so a 2 s watch moves it to the display the pointer has settled on
+    /// (two ticks of hysteresis; a passing mouse does not drag it around).
+    /// The pill keeps its relative position on the new screen. Off after a
+    /// manual drag: a hand-placed pill is a choice.
+    private func startFollowing() {
+        pinnedByDrag = false
+        awayTicks = 0
+        followTimer?.invalidate()
+        followTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.followTick() }
+        }
+    }
+
+    private func stopFollowing() {
+        followTimer?.invalidate()
+        followTimer = nil
+        awayTicks = 0
+    }
+
+    private func followTick() {
+        guard let panel, panel.isVisible, !pinnedByDrag else { return }
+        let mouse = NSEvent.mouseLocation
+        guard let target = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
+              let current = panel.screen, target !== current else {
+            awayTicks = 0
+            return
+        }
+        awayTicks += 1
+        guard awayTicks >= 2 else { return }
+        awayTicks = 0
+        // Same RELATIVE spot on the new display, clamped inside it.
+        let from = current.visibleFrame
+        let to = target.visibleFrame
+        let size = panel.frame.size
+        let fx = from.width > size.width
+            ? (panel.frame.minX - from.minX) / (from.width - size.width) : 0.5
+        let fy = from.height > size.height
+            ? (panel.frame.minY - from.minY) / (from.height - size.height) : 0
+        positioningProgrammatically = true
+        panel.setFrameOrigin(NSPoint(
+            x: to.minX + fx * max(to.width - size.width, 0),
+            y: to.minY + fy * max(to.height - size.height, 0)))
+        positioningProgrammatically = false
+        Log.d("pill: followed to \(target.localizedName)")
+    }
+
     /// True while position() moves the panel itself, so the did-move observer
     /// records only the USER's drags — a programmatic placement must not
     /// overwrite a remembered spot.
@@ -67,6 +123,7 @@ final class MeetingPill {
             panel.alphaValue = 0
         }
         panel.orderFrontRegardless()
+        startFollowing()
         Log.d("pill: meeting pill shown at \(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y))")
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
@@ -75,6 +132,7 @@ final class MeetingPill {
     }
 
     func hide() {
+        stopFollowing()
         guard let panel, panel.isVisible else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
@@ -108,7 +166,10 @@ final class MeetingPill {
         // where the next meeting finds it (AppKit remembers the frame for the
         // life of the process, which is as long as this panel exists).
         panel.isMovableByWindowBackground = true
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        // All Spaces, not move-once: the pill is the recording's visible
+        // mark and must be wherever the person is looking (owner's call,
+        // 2026-08-29) — including других apps' full-screen Spaces.
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         // A drag is a choice worth keeping ACROSS launches, not just for the
         // life of the process — the next meeting's pill appears where the last
@@ -119,6 +180,9 @@ final class MeetingPill {
             guard let self, !self.positioningProgrammatically,
                   let origin = self.panel?.frame.origin else { return }
             UserDefaults.standard.set([origin.x, origin.y], forKey: Self.originKey)
+            // A hand-placed pill stays where the hand put it: dragging turns
+            // the display-following off until the next recording.
+            self.pinnedByDrag = true
         }
         self.panel = panel
         return panel
