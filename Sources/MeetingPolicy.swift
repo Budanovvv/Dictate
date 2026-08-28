@@ -505,21 +505,64 @@ enum MeetingPolicy {
 
     // MARK: - The forgotten recording
 
-    /// How long the CALL side may stay silent before the recording stops
-    /// itself. Ten minutes, not two: a meeting where the others mostly
-    /// listen is a normal meeting, and only a silence no conversation
-    /// survives may end one.
-    static let callSilenceStop: TimeInterval = 10 * 60
+    /// What the auto-stop check decided, and why — the reason goes into the
+    /// log and the transcript's closing marker, so every stop can be audited
+    /// against the call it ended.
+    enum AutoStopVerdict: Equatable {
+        case keep
+        /// The call's process released the microphone and stayed away.
+        case callEnded
+        /// Nothing recognisable as a call around, and nobody has spoken.
+        case deadAir
+    }
 
-    /// Should a running recording stop itself because everyone left?
+    /// How long a vanished call process must STAY vanished (and the air stay
+    /// quiet) before the recording ends itself. Bench-measured on the HAL
+    /// (2026-08-29, standalone probes): a released or crashed holder leaves
+    /// the process list within one second and the signal never flaps — so
+    /// ninety seconds is pure reconnect insurance, not measurement slack.
+    static let callEndGrace: TimeInterval = 90
+
+    /// The backstop for sessions with no recognisable call around them
+    /// (unknown VoIP apps, phone on speaker, room recordings): this long
+    /// without a single voiced window on ANY channel ends the recording. Ten
+    /// minutes is deliberately conservative — the market's silence backstops
+    /// run up to an hour, and a silence-only signal must never beat a person
+    /// to the button.
+    static let deadAirStop: TimeInterval = 10 * 60
+
+    /// The forgotten-recording rule, hardened after the weak-case review
+    /// (2026-08-29). The INVARIANT does the safety work: while any call
+    /// process is holding the microphone the recording never stops itself —
+    /// a hold, a silent co-working call and a document-reading pause are all
+    /// legitimate silence. Everything below the invariant only runs once no
+    /// call is in sight.
     ///
-    /// The signal is the call channel going quiet AFTER having spoken: a
-    /// session where the other side never said anything is an in-person
-    /// recording (the tap channel is silent by nature there) and is never
-    /// touched by this rule — the person in the room stops it themselves.
-    static func shouldAutoStop(lastThemSpeech: Date?, now: Date) -> Bool {
-        guard let lastThemSpeech else { return false }
-        return now.timeIntervalSince(lastThemSpeech) > callSilenceStop
+    /// - platformAliveNow: a call app — or a browser, REGARDLESS of which
+    ///   tab is frontmost — is holding the microphone right now. Loose on
+    ///   purpose: the browser's window title names a platform once, at
+    ///   detection; aliveness must not depend on the user never switching
+    ///   tabs mid-call.
+    /// - platformEverSeen / lastAliveAt: a title-verified call was observed
+    ///   during THIS session, and when a call holder was last present.
+    /// - lastVoicedAt: the last VAD-voiced window on either channel — raw
+    ///   voice, not recognized text, so a rejected phantom still counts as
+    ///   somebody speaking.
+    static func autoStopVerdict(platformEverSeen: Bool,
+                                platformAliveNow: Bool,
+                                lastAliveAt: Date?,
+                                lastVoicedAt: Date,
+                                now: Date) -> AutoStopVerdict {
+        if platformAliveNow { return .keep }
+        if platformEverSeen, let lastAliveAt,
+           now.timeIntervalSince(lastAliveAt) > callEndGrace,
+           now.timeIntervalSince(lastVoicedAt) > callEndGrace {
+            return .callEnded
+        }
+        if now.timeIntervalSince(lastVoicedAt) > deadAirStop {
+            return .deadAir
+        }
+        return .keep
     }
 
     // MARK: - Call platform from a browser window title

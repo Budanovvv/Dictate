@@ -113,12 +113,14 @@ final class MeetingSession: ObservableObject {
     /// explicit Sleep, which no assertion can refuse.
     private var sleepObserver: NSObjectProtocol?
     private var endedBySleep = false
-    /// Marks the transcript when the recording stopped itself over a silent
-    /// call channel (MeetingPolicy.shouldAutoStop).
-    private var endedBySilence = false
-    /// When the CALL side last produced recognized words — nil until it ever
-    /// does, which is what keeps in-person recordings out of the auto-stop.
-    private var lastThemVoicedAt: Date?
+    /// Why the recording ended itself, for the transcript's closing marker.
+    private var autoStopReason: MeetingPolicy.AutoStopVerdict?
+    /// A title-verified call was observed during this session.
+    private var platformEverSeen = false
+    /// When something call-shaped last held the microphone.
+    private var lastPlatformAliveAt: Date?
+    /// The last VAD-voiced window on EITHER channel (raw voice, not text).
+    private var lastVoicedAt = Date()
     // Per-channel language pinning (owner report 2026-08-28: per-window
     // auto-detect flip-flopped a bilingual caller pt→uk→ru). Votes until one
     // language clearly leads (≥80% of ≥5 windows), then pins; every 8th
@@ -382,8 +384,10 @@ final class MeetingSession: ObservableObject {
         diskTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.checkDiskSpace()
         }
-        lastThemVoicedAt = nil
-        endedBySilence = false
+        autoStopReason = nil
+        platformEverSeen = false
+        lastPlatformAliveAt = nil
+        lastVoicedAt = Date()
         langVotes = [:]
         langPinned = [:]
         langProbe = [:]
@@ -515,6 +519,21 @@ final class MeetingSession: ObservableObject {
         return nil
     }
 
+    /// Is anything call-shaped holding the microphone RIGHT NOW — a known
+    /// call app, or a browser regardless of which tab is frontmost? This is
+    /// the auto-stop invariant's loose aliveness test: the strict, title-
+    /// verified detector above says a call was SEEN; this one only says the
+    /// call has not ended (a Meet user reading a doc in another tab must not
+    /// read as "call over").
+    static func callHolderPresent() -> Bool {
+        let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
+        let apps = ["zoom", "teams", "facetime", "webex", "discord", "slack"]
+        return names.contains { name in
+            let lower = name.lowercased()
+            return apps.contains { lower.contains($0) } || MeetingPolicy.isBrowser(appNamed: name)
+        }
+    }
+
     /// Reads the AX window titles of the named app and asks the policy
     /// whether any of them is a live call. Best-effort at every step: no
     /// running app, no AX consent, no windows — all mean nil, never an error.
@@ -565,12 +584,22 @@ final class MeetingSession: ObservableObject {
     /// transcript; running on until the write fails would not.
     private func checkDiskSpace() {
         guard isActive, let url = fileURL else { return }
-        // The forgotten recording: the call side spoke, then went silent for
-        // longer than any conversation survives — everyone left, the mic is
-        // recording an empty room. Stop and say so in the file.
-        if MeetingPolicy.shouldAutoStop(lastThemSpeech: lastThemVoicedAt, now: Date()) {
-            Log.d("meeting: call channel silent for \(Int(MeetingPolicy.callSilenceStop / 60)) min — stopping by itself")
-            endedBySilence = true
+        // The forgotten recording (hardened 2026-08-29, HAL bench-verified):
+        // while a call process holds the mic we never stop ourselves; a call
+        // that released it and stayed away — or dead air with no call in
+        // sight — ends the session, and the file says which one it was.
+        let aliveNow = Self.callHolderPresent()
+        if aliveNow { lastPlatformAliveAt = Date() }
+        if !platformEverSeen, Self.detectCallApp() != nil { platformEverSeen = true }
+        let verdict = MeetingPolicy.autoStopVerdict(
+            platformEverSeen: platformEverSeen,
+            platformAliveNow: aliveNow,
+            lastAliveAt: lastPlatformAliveAt,
+            lastVoicedAt: lastVoicedAt,
+            now: Date())
+        if verdict != .keep {
+            Log.d("meeting: auto-stop (\(verdict)) — platformSeen=\(platformEverSeen), quiet for \(Int(Date().timeIntervalSince(lastVoicedAt)))s")
+            autoStopReason = verdict
             stop()
             return
         }
@@ -949,6 +978,11 @@ final class MeetingSession: ObservableObject {
     private func recognize(_ floats: [Float], stats: (chunks: Int, voiced: Int)?,
                            language: String, channel: Channel,
                            tag: String) async -> String? {
+        // Raw VAD evidence, before recognition can reject anything: a voiced
+        // window on any channel means somebody is speaking (auto-stop clock).
+        if let stats, stats.voiced > 0 {
+            await MainActor.run { self.lastVoicedAt = Date() }
+        }
         if let stats, !MeetingPolicy.windowWorthTranscribing(voicedChunks: stats.voiced) {
             Log.d("meeting: \(tag) skipped (voiced \(stats.voiced)/\(stats.chunks) — not enough speech)")
             return nil
@@ -970,7 +1004,6 @@ final class MeetingSession: ObservableObject {
             floats: speechFloats, tier: .fast, language: effectiveLanguage,
             isCancelled: { self.cancelled.isCancelled }) else { return nil }
         await MainActor.run {
-            if channel == .them, !result.text.isEmpty { lastThemVoicedAt = Date() }
             let det = result.detectedLanguage
             guard !det.isEmpty else { return }
             if langPinned[channel] == nil {
@@ -1102,9 +1135,12 @@ final class MeetingSession: ObservableObject {
             endedBySleep = false
             fileHandle?.write(Data(("\n_" + L("Recording ended here — this Mac went to sleep.") + "_\n").utf8))
         }
-        if endedBySilence {
-            endedBySilence = false
-            fileHandle?.write(Data(("\n_" + L("Recording stopped by itself — the call had been silent for ten minutes.") + "_\n").utf8))
+        if let reason = autoStopReason {
+            autoStopReason = nil
+            let line = reason == .callEnded
+                ? L("Recording stopped by itself — the call ended.")
+                : L("Recording stopped by itself — ten minutes of silence.")
+            fileHandle?.write(Data(("\n_" + line + "_\n").utf8))
         }
         try? fileHandle?.close()
         fileHandle = nil

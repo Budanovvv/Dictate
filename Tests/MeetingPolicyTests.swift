@@ -440,26 +440,58 @@ final class CallPlatformTitleTests: XCTestCase {
     }
 }
 
-// The forgotten recording: the call side spoke, then went silent.
+// The forgotten recording, hardened: the invariant, the two rules, and the
+// weak cases the review found — each one pinned as a test.
 final class AutoStopTests: XCTestCase {
-    func testSilenceAfterSpeechStops() {
-        let spoke = Date(timeIntervalSince1970: 1000)
-        XCTAssertTrue(MeetingPolicy.shouldAutoStop(
-            lastThemSpeech: spoke,
-            now: spoke.addingTimeInterval(MeetingPolicy.callSilenceStop + 1)))
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    func testLiveCallNeverStopsHoweverLongTheSilence() {
+        // The hold, the silent co-working call, the document-reading pause:
+        // a call process on the mic means every silence is legitimate.
+        XCTAssertEqual(MeetingPolicy.autoStopVerdict(
+            platformEverSeen: true, platformAliveNow: true,
+            lastAliveAt: t0, lastVoicedAt: t0,
+            now: t0.addingTimeInterval(3600 * 3)), .keep)
     }
 
-    func testRecentSpeechKeepsRecording() {
-        let spoke = Date(timeIntervalSince1970: 1000)
-        XCTAssertFalse(MeetingPolicy.shouldAutoStop(
-            lastThemSpeech: spoke,
-            now: spoke.addingTimeInterval(MeetingPolicy.callSilenceStop - 60)))
+    func testCallGoneAndQuietStops() {
+        XCTAssertEqual(MeetingPolicy.autoStopVerdict(
+            platformEverSeen: true, platformAliveNow: false,
+            lastAliveAt: t0, lastVoicedAt: t0,
+            now: t0.addingTimeInterval(MeetingPolicy.callEndGrace + 5)), .callEnded)
     }
 
-    func testInPersonRecordingIsNeverTouched() {
-        // The call channel never spoke — the tap is silent by NATURE in a
-        // room recording, and only a person may end one.
-        XCTAssertFalse(MeetingPolicy.shouldAutoStop(
-            lastThemSpeech: nil, now: Date(timeIntervalSince1970: 99_999_999)))
+    func testCallGoneButPeopleStillTalkingKeeps() {
+        // The call moved to a phone on speaker: the platform is gone but the
+        // room is speaking — the recording follows the voices, not the app.
+        let now = t0.addingTimeInterval(MeetingPolicy.callEndGrace + 5)
+        XCTAssertEqual(MeetingPolicy.autoStopVerdict(
+            platformEverSeen: true, platformAliveNow: false,
+            lastAliveAt: t0, lastVoicedAt: now.addingTimeInterval(-10),
+            now: now), .keep)
+    }
+
+    func testReconnectInsideGraceKeeps() {
+        XCTAssertEqual(MeetingPolicy.autoStopVerdict(
+            platformEverSeen: true, platformAliveNow: false,
+            lastAliveAt: t0, lastVoicedAt: t0,
+            now: t0.addingTimeInterval(MeetingPolicy.callEndGrace - 10)), .keep)
+    }
+
+    func testDeadAirStopsAnUndetectableSession() {
+        // No platform was ever seen (unknown VoIP app, a room recording):
+        // only the long full-silence backstop may end it.
+        XCTAssertEqual(MeetingPolicy.autoStopVerdict(
+            platformEverSeen: false, platformAliveNow: false,
+            lastAliveAt: nil, lastVoicedAt: t0,
+            now: t0.addingTimeInterval(MeetingPolicy.deadAirStop + 1)), .deadAir)
+    }
+
+    func testFreshVoiceKeepsAnUndetectableSession() {
+        let now = t0.addingTimeInterval(MeetingPolicy.deadAirStop + 100)
+        XCTAssertEqual(MeetingPolicy.autoStopVerdict(
+            platformEverSeen: false, platformAliveNow: false,
+            lastAliveAt: nil, lastVoicedAt: now.addingTimeInterval(-60),
+            now: now), .keep)
     }
 }
