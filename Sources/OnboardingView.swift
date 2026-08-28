@@ -360,8 +360,22 @@ private struct ModelStep: View {
             if case .downloading(let p) = state {
                 if p < 0.999 { downloading(p) } else { preparing }
             } else if state == .ready {
-                Label(L("Model ready"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(DS.good)
+                // The model is already on disk (a re-run, or a fast return
+                // through Back): the step still tells its story — a bare
+                // checkmark floating in an empty window read as broken.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("On-device recognition"))
+                        .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+                    Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
+                        .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Label(L("Model ready"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(DS.good)
+                        .font(.system(size: 13, weight: .medium))
+                        .padding(.top, 6)
+                }
+                .frame(maxWidth: 560, alignment: .leading)
             } else if failed {
                 stopped
             } else {
