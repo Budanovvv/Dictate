@@ -41,7 +41,6 @@ struct MeetingsView: View {
     /// The semantic index — meetings that match what was typed by MEANING,
     /// which is a different question from "contains these characters" and gets
     /// its own group in the list.
-    @ObservedObject private var meaning = MeetingMeaning.shared
     /// Whether the optional text model may still be offered here. Observed so
     /// that "Not now" empties every surface at once.
     @ObservedObject private var offer = LocalTextModelOffer.shared
@@ -252,7 +251,7 @@ struct MeetingsView: View {
                    !question.isEmpty {
                     askScope = nil
                     answer.scopePath = nil
-                    answer.ask(question, from: sources(from: related), using: oracle)
+                    answer.ask(question, from: [], using: oracle)
                     selection = .ask
                 }
                 connectQuestion = nil
@@ -426,13 +425,6 @@ struct MeetingsView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 searchField
-                if query.isEmpty {
-                    Text(L("Words, or a question — I'll match by meaning"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .padding(.horizontal, 2)
-                }
             }
             .padding(.horizontal, 12)
             // With the sidebar folded this column owns the window's top-left
@@ -464,17 +456,6 @@ struct MeetingsView: View {
                 Section(group.title) {
                     ForEach(group.meetings) { meeting in
                         selectable(meetingRow(meeting), .archived(meeting.url))
-                    }
-                }
-            }
-            // Meetings that don't contain the words but were about them. Last,
-            // and under a heading that says why they are here: the exact hits
-            // are what was asked for, and these are the answer to a question
-            // that wasn't quite typed.
-            if !related.isEmpty {
-                Section(L("Related by meaning")) {
-                    ForEach(related) { hit in
-                        selectable(relatedRow(hit), hit.selection)
                     }
                 }
             }
@@ -512,7 +493,7 @@ struct MeetingsView: View {
             // Appends to the running conversation: the session is the window's
             // lifetime, and a question asked from a fresh search joins it with
             // its fresh passages rather than starting over.
-            answer.ask(question, from: sources(from: related), using: oracle)
+            answer.ask(question, from: [], using: oracle)
         }
         .listStyle(.sidebar)
         // The list draws itself on the sidebar material above, instead of
@@ -523,7 +504,7 @@ struct MeetingsView: View {
         // longer moves anything itself. Same order the eye reads.
         .onMoveCommand { direction in moveSelection(direction) }
         .overlay {
-            if filtered.isEmpty && related.isEmpty && !session.isActive,
+            if filtered.isEmpty && !session.isActive,
                !meetings.isEmpty, !MeetingSearch.split(query: query).tags.isEmpty {
                 // Tag filters combine with AND, and that rule is exactly what
                 // an empty tag-filtered list needs to say (design: tagEmpty) —
@@ -543,30 +524,15 @@ struct MeetingsView: View {
                         query = MeetingSearch.split(query: query).text
                     }
                 }
-            } else if filtered.isEmpty && related.isEmpty && !session.isActive {
+            } else if filtered.isEmpty && !session.isActive {
                 ListEmptyState(
                     title: meetings.isEmpty ? L("No meetings yet") : L("Nothing found"),
                     blurb: meetings.isEmpty
                          ? L("Start a transcript from the menu bar during a call.")
                          : L("No transcript contains that.")) {
-                    // The second place the absence shows, and the sharper of
-                    // the two: the search that came back empty matches by
-                    // MEANING, and meaning is read out of the summaries and
-                    // section lines the model writes. With no model there is
-                    // nothing to match against — this search is not worse, it
-                    // does not function. An empty result is exactly when to
-                    // say so.
-                    if showsSearchOffer {
-                        TextModelOffer(line: L("Searching by meaning needs summaries and sections, and nothing on this Mac writes them yet. A one-time download does, and it stays here."))
-                            .frame(maxWidth: MeetingsChrome.sidebarWidth)
-                    }
                 }
             }
         }
-        // What was typed, scored against every meeting's subject. English is
-        // answered on this keystroke; another language waits for the typing to
-        // settle and hops through Apple Translation. Nothing here polls.
-        .onChange(of: query) { meaning.search($0) }
     }
 
     /// The library's header: the control that closes the library, and nothing
@@ -690,7 +656,6 @@ struct MeetingsView: View {
         var out: [Selection] = []
         if session.isActive { out.append(.live) }
         for group in groupedMeetings { out += group.meetings.map { .archived($0.url) } }
-        out += related.map(\.selection)
         if Settings.shared.askArchive,
            !query.trimmingCharacters(in: .whitespaces).isEmpty {
             out.append(.answer(query))
@@ -784,50 +749,6 @@ struct MeetingsView: View {
         .padding(.vertical, 3)
     }
 
-    /// A row under "Related by meaning". Either the meeting as a whole (its
-    /// title or its summary was what matched) or a MOMENT inside it — a
-    /// section, with the line the model wrote about it and the time it starts.
-    struct RelatedHit: Identifiable {
-        let meeting: ArchivedMeeting
-        /// nil when the whole meeting matched rather than one passage of it.
-        let section: TranscriptSection?
-
-        var selection: Selection {
-            guard let section else { return .archived(meeting.url) }
-            return .moment(meeting.url, section.time)
-        }
-        var id: Selection { selection }
-    }
-
-    @ViewBuilder
-    private func relatedRow(_ hit: RelatedHit) -> some View {
-        if let section = hit.section {
-            // The section's line leads, because it is the answer; the meeting
-            // it came out of is the context underneath. The other way round —
-            // the meeting first — is what the row above the "Related" heading
-            // already does, and it is what makes a fifty-minute transcript
-            // look like the answer to a three-minute question.
-            VStack(alignment: .leading, spacing: 3) {
-                Text(section.line)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(3)
-                HStack(spacing: 7) {
-                    // Monospaced, like every other time in this window, so a
-                    // column of them lines up.
-                    Text(clock(section.time))
-                        .font(DS.timestamp)
-                    Text(hit.meeting.title ?? dayAndTime(hit.meeting.started))
-                        .lineLimit(1)
-                        .font(.caption)
-                }
-                .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 3)
-            .help(section.line)
-        } else {
-            meetingRow(hit.meeting)
-        }
-    }
 
     /// "10:26:17" as the hour and minute a person would say. The seconds are
     /// in the transcript where they belong; in a list they are noise.
@@ -860,12 +781,7 @@ struct MeetingsView: View {
         HStack(spacing: 6) {
             Image(systemName: "text.magnifyingglass")
                 .foregroundStyle(DS.accentText)
-            // With found moments the row says what the answer will be built
-            // from; without them it still works — the agent goes looking with
-            // its own tools — and says so in one word less.
-            Text(related.isEmpty
-                 ? L("Ask the agent about this")
-                 : Lf("Answer this from %@ moments", "\(related.count)"))
+            Text(L("Ask the agent about this"))
                 .lineLimit(1)
         }
         .padding(.vertical, 2)
@@ -1391,27 +1307,6 @@ struct MeetingsView: View {
     }
 
     /// Meetings that are ABOUT what was typed without containing it.
-    ///
-    /// Empty unless the owner has typed something, unless the model is on this
-    /// Mac, and unless something actually scores — so the group below appears
-    /// only when it has an answer. The literal hits are excluded here rather
-    /// than in the ranking: they are already on screen above, and the same
-    /// meeting offered twice reads as two answers.
-    /// The passages an answer would be allowed to use — the same ones already
-    /// on screen under "Related by meaning", with the words that go with them.
-    ///
-    /// The window is eight entries from the moment.
-    ///
-    /// Three was too mean. A decision is rarely made in the line where the
-    /// subject is raised — somebody proposes, somebody objects, and the thing
-    /// that was actually agreed lands four or five turns later, outside a
-    /// three-line window. Eight of them across five passages is still a prompt
-    /// rather than a transcript, and it is the strongest lever available here:
-    /// widening the window sends MORE OF WHAT WAS ACTUALLY SAID, where every
-    /// other option sends our own summary of it.
-    ///
-    /// It stays short enough for the source card to be checked by looking
-    /// rather than by reading, which is the whole point of showing it.
     /// "38 meetings · 26 h of audio" for the docked composer (design).
     private var askStats: String? {
         guard !meetings.isEmpty else { return nil }
@@ -1422,28 +1317,6 @@ struct MeetingsView: View {
             : Lf("%d meetings · %d min of audio", meetings.count, max(1, Int(seconds / 60)))
     }
 
-    private func sources(from hits: [RelatedHit]) -> [MeetingSource] {
-        hits.compactMap { hit -> MeetingSource? in
-            let entries = hit.meeting.entries
-            let lines: [TranscriptEntry]
-            if let section = hit.section,
-               let start = entries.firstIndex(where: { $0.time == section.time }) {
-                lines = Array(entries[start..<min(start + 8, entries.count)])
-            } else {
-                lines = Array(entries.prefix(8))
-            }
-            guard !lines.isEmpty else { return nil }
-            return MeetingSource(
-                url: hit.meeting.url,
-                title: hit.meeting.title ?? hit.meeting.url.deletingPathExtension().lastPathComponent,
-                date: DateFormatter.localizedString(from: hit.meeting.started,
-                                                    dateStyle: .medium, timeStyle: .none),
-                time: hit.section?.time,
-                text: lines.map { "[\($0.time)] \($0.speaker): \($0.text)" }.joined(separator: "\n"),
-                channelIsYou: lines.first?.isYou,
-                channelLabel: lines.first?.speaker)
-        }
-    }
 
     /// The answer currently on screen, if any. A StateObject rather than local
     /// state because it outlives every redraw of the list beneath it and has to
@@ -1532,24 +1405,6 @@ struct MeetingsView: View {
         }
     }
 
-    private var related: [RelatedHit] {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
-        let exact = Set(filtered.map(\.url))
-        return MeetingSearch.related(meaning.matches, background: meaning.background,
-                                     excluding: exact)
-            .compactMap { match -> RelatedHit? in
-                guard let meeting = meetings.first(where: { $0.url == match.id })
-                else { return nil }
-                // The moment is only as good as the line that goes with it: a
-                // contents block rewritten between the query and the click
-                // would leave a timestamp pointing at nothing to say, and then
-                // the row is simply the meeting again.
-                let section = match.moment.flatMap { moment in
-                    meeting.sections.first { $0.time == moment }
-                }
-                return RelatedHit(meeting: meeting, section: section)
-            }
-    }
 
     // MARK: - Where the missing text model is offered
 
@@ -1564,16 +1419,6 @@ struct MeetingsView: View {
     private var showsLibraryOffer: Bool {
         offer.allowed && !session.isActive && !meetings.isEmpty
             && !meetings.contains { $0.title != nil }
-            && !showsSearchOffer
-    }
-
-    /// The search's offer: something was typed, nothing came back, and nothing
-    /// could have — no meeting in the archive has a summary or a contents
-    /// block, so the semantic index has an empty vocabulary to score against.
-    private var showsSearchOffer: Bool {
-        offer.allowed && !query.trimmingCharacters(in: .whitespaces).isEmpty
-            && !meetings.isEmpty && filtered.isEmpty && related.isEmpty
-            && !meetings.contains { $0.summary != nil || !$0.sections.isEmpty }
     }
 
     /// The macOS 26 case: a meeting Apple's model would not describe.
@@ -1652,10 +1497,6 @@ struct MeetingsView: View {
                     if let old = previous[fresh.url], old.sameContent(as: fresh) { return old }
                     return fresh
                 }
-                // Eighteen short strings: cheap enough to do inline, and
-                // cheapest of all on a reload that changed nothing (the
-                // vectors are kept).
-                meaning.index(meetings)
                 done()
             }
         }

@@ -20,7 +20,7 @@ Dictate does four things, and does them all on your Mac. No cloud, no account, n
 
 **2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated on this Mac, like everything else.
 
-**3 · Meetings, recorded and structured.** Record any call — Zoom, Google Meet in a browser, anything — and get more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search that finds meetings by meaning, not just by words. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
+**3 · Meetings, recorded and structured.** Record any call — Zoom, Google Meet in a browser, anything — and get more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
 
 **4 · An agent that knows your meetings.** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and the recordings themselves never leave your Mac.
 

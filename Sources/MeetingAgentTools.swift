@@ -23,7 +23,7 @@ enum MeetingAgentTool: String, CaseIterable {
         case .listMeetings:
             return "List every recorded meeting: file name, date, duration, title and one-line summary. Use it to orient before searching or reading."
         case .searchMeetings:
-            return "Search the whole archive by meaning and by exact words. The query must be in English. Returns the best-matching meetings, each with its file name and, where known, the moment that matched."
+            return "Search every transcript, title, summary and outline line for the given words (case-insensitive substring). Query in the language the meetings are in; try a few different words if the first search comes back empty. Returns matching meetings with their file names."
         case .readMeeting:
             return "Read one meeting's transcript in full, speaker-attributed with timestamps. Identify the meeting by the exact file name that list_meetings or search_meetings returned."
         }
@@ -37,7 +37,7 @@ enum MeetingAgentTool: String, CaseIterable {
         case .searchMeetings:
             return ["type": "object",
                     "properties": ["query": ["type": "string",
-                                             "description": "What to look for, in English."]],
+                                             "description": "Words to look for, in the meetings' own language."]],
                     "required": ["query"]]
         case .readMeeting:
             return ["type": "object",
@@ -89,25 +89,14 @@ enum MeetingAgentTool: String, CaseIterable {
                 return "search_meetings needs a query."
             }
             await progress(L("Searching your meetings…"))
-            let semantic = await MainActor.run { () -> [MeetingMatch] in
-                // The index normally exists (the library built it), but the
-                // call is cheap when nothing changed and makes the tool
-                // self-sufficient.
-                MeetingMeaning.shared.index(meetings)
-                return MeetingMeaning.shared.agentMatches(for: query)
-            }
+            // Literal only — the semantic ranking was retired with the
+            // library's (MeetingSearch's header tells the story). The model
+            // compensates the way a person does: by trying another word.
             let literal = MeetingSearch.literal(meetings, query: query)
-            var lines: [String] = []
-            for meeting in literal.prefix(5) {
-                lines.append("Exact words match: " + Self.line(for: meeting))
+            guard !literal.isEmpty else {
+                return "Nothing in the archive matches that. Try different words, or list_meetings to orient."
             }
-            for match in semantic.prefix(8) {
-                guard let meeting = meetings.first(where: { $0.url == match.id }) else { continue }
-                var line = Self.line(for: meeting)
-                if let moment = match.moment { line += " — best moment at \(moment)" }
-                lines.append(String(format: "Related (%.2f): ", match.score) + line)
-            }
-            return lines.isEmpty ? "Nothing in the archive matches that." : lines.joined(separator: "\n")
+            return literal.prefix(10).map(Self.line(for:)).joined(separator: "\n")
 
         case .readMeeting:
             guard let file = arguments["file"] as? String, !file.isEmpty else {
