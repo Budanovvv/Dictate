@@ -824,6 +824,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
+        // Always light (owner's call 2026-08-29): a first-run user has not
+        // chosen Dictate an appearance yet, and the mockups' canonical face
+        // is the light one — the theme choice comes later, in Settings.
+        window.appearance = NSAppearance(named: .aqua)
         onboardingWindow = window
         present(window)
     }

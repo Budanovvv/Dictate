@@ -27,6 +27,8 @@ enum AppRelocator {
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
         panel.isReleasedWhenClosed = false
+        // First-run surface, same rule as onboarding: light by default.
+        panel.appearance = NSAppearance(named: .aqua)
         let hosting = NSHostingView(rootView: RelocateCard(
             quit: { NSApp.stopModal(withCode: .cancel) },
             moveNow: { NSApp.stopModal(withCode: .OK) }))
