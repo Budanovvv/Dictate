@@ -65,13 +65,13 @@ enum MeetingPolicy {
         return sinceLoud >= silenceCut ? .cutTranscribe : .keep
     }
 
-    // NOTE: there is deliberately NO call-end auto-stop rule here. It was
-    // built, field-tested and REMOVED (owner's call, 2026-08-10): the
-    // mic-holder enumeration counts always-listening system daemons
-    // (corespeechd), so "mic free" never held and the rule was inert — and
-    // an inert rule that can only misfire mid-call is worse than the honest
-    // model "stopping is manual, the red menu-bar dot reminds you". The
-    // return design (a daemon-free userAppsRunningInput) lives in GRABLI.
+    // NOTE on auto-stop history: a call-end rule keyed on "the microphone is
+    // free" was built, field-tested and REMOVED (owner's call, 2026-08-10) —
+    // the mic-holder enumeration counts always-listening system daemons
+    // (corespeechd), so "mic free" never held and the rule was inert. The
+    // rule that exists today (shouldAutoStop below, owner's ask 2026-08-29)
+    // uses a DIFFERENT signal immune to that failure: recognized speech on
+    // the call channel going silent — daemons do not talk.
 
     // NOTE: pause detection deliberately has NO energy-threshold helpers
     // here. Fixed 0.08 failed on the no-AEC busy-mic path, and an adaptive
@@ -501,6 +501,25 @@ enum MeetingPolicy {
             count += 1
         }
         return count
+    }
+
+    // MARK: - The forgotten recording
+
+    /// How long the CALL side may stay silent before the recording stops
+    /// itself. Ten minutes, not two: a meeting where the others mostly
+    /// listen is a normal meeting, and only a silence no conversation
+    /// survives may end one.
+    static let callSilenceStop: TimeInterval = 10 * 60
+
+    /// Should a running recording stop itself because everyone left?
+    ///
+    /// The signal is the call channel going quiet AFTER having spoken: a
+    /// session where the other side never said anything is an in-person
+    /// recording (the tap channel is silent by nature there) and is never
+    /// touched by this rule — the person in the room stops it themselves.
+    static func shouldAutoStop(lastThemSpeech: Date?, now: Date) -> Bool {
+        guard let lastThemSpeech else { return false }
+        return now.timeIntervalSince(lastThemSpeech) > callSilenceStop
     }
 
     // MARK: - Call platform from a browser window title

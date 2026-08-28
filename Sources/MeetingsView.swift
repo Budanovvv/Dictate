@@ -432,6 +432,30 @@ struct MeetingsView: View {
             .padding(.leading, sidebarHidden ? MeetingsChrome.trafficLights - 12 : 0)
             .padding(.vertical, 8)
             Divider()
+            if !session.isActive {
+                Button {
+                    onRecord()
+                } label: {
+                    HStack(spacing: 7) {
+                        Circle().fill(.white).frame(width: 7, height: 7)
+                        Text(L("Record"))
+                            .font(.system(size: 12.5, weight: .medium))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 26)
+                    // Accent, not record-red: the house rule keeps red for
+                    // "recording is HAPPENING", never for a button at rest.
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(DS.accent))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverEmphasis(scale: 1.02)
+                .help(L("Record this call"))
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            }
             tagFilterRow
                 .padding(.horizontal, 12)
                 .padding(.top, 6)

@@ -113,6 +113,12 @@ final class MeetingSession: ObservableObject {
     /// explicit Sleep, which no assertion can refuse.
     private var sleepObserver: NSObjectProtocol?
     private var endedBySleep = false
+    /// Marks the transcript when the recording stopped itself over a silent
+    /// call channel (MeetingPolicy.shouldAutoStop).
+    private var endedBySilence = false
+    /// When the CALL side last produced recognized words — nil until it ever
+    /// does, which is what keeps in-person recordings out of the auto-stop.
+    private var lastThemVoicedAt: Date?
     // Per-channel language pinning (owner report 2026-08-28: per-window
     // auto-detect flip-flopped a bilingual caller pt→uk→ru). Votes until one
     // language clearly leads (≥80% of ≥5 windows), then pins; every 8th
@@ -376,6 +382,8 @@ final class MeetingSession: ObservableObject {
         diskTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.checkDiskSpace()
         }
+        lastThemVoicedAt = nil
+        endedBySilence = false
         langVotes = [:]
         langPinned = [:]
         langProbe = [:]
@@ -485,7 +493,7 @@ final class MeetingSession: ObservableObject {
     /// Which known call app holds the microphone right now — "Zoom",
     /// "FaceTime"… Browsers hold it for every web call alike, so they name no
     /// platform (nil → the library's "other" bucket). Best-effort by design.
-    private static func detectCallApp() -> String? {
+    static func detectCallApp() -> String? {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         let map: [(String, String)] = [
             ("zoom", "Zoom"), ("teams", "Microsoft Teams"), ("facetime", "FaceTime"),
@@ -557,6 +565,15 @@ final class MeetingSession: ObservableObject {
     /// transcript; running on until the write fails would not.
     private func checkDiskSpace() {
         guard isActive, let url = fileURL else { return }
+        // The forgotten recording: the call side spoke, then went silent for
+        // longer than any conversation survives — everyone left, the mic is
+        // recording an empty room. Stop and say so in the file.
+        if MeetingPolicy.shouldAutoStop(lastThemSpeech: lastThemVoicedAt, now: Date()) {
+            Log.d("meeting: call channel silent for \(Int(MeetingPolicy.callSilenceStop / 60)) min — stopping by itself")
+            endedBySilence = true
+            stop()
+            return
+        }
         let free = (try? url.deletingLastPathComponent()
             .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? .max
@@ -953,6 +970,7 @@ final class MeetingSession: ObservableObject {
             floats: speechFloats, tier: .fast, language: effectiveLanguage,
             isCancelled: { self.cancelled.isCancelled }) else { return nil }
         await MainActor.run {
+            if channel == .them, !result.text.isEmpty { lastThemVoicedAt = Date() }
             let det = result.detectedLanguage
             guard !det.isEmpty else { return }
             if langPinned[channel] == nil {
@@ -1083,6 +1101,10 @@ final class MeetingSession: ObservableObject {
         if endedBySleep {
             endedBySleep = false
             fileHandle?.write(Data(("\n_" + L("Recording ended here — this Mac went to sleep.") + "_\n").utf8))
+        }
+        if endedBySilence {
+            endedBySilence = false
+            fileHandle?.write(Data(("\n_" + L("Recording stopped by itself — the call had been silent for ten minutes.") + "_\n").utf8))
         }
         try? fileHandle?.close()
         fileHandle = nil

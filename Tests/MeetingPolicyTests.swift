@@ -439,3 +439,27 @@ final class CallPlatformTitleTests: XCTestCase {
         XCTAssertFalse(MeetingPolicy.isBrowser(appNamed: "Notion"))
     }
 }
+
+// The forgotten recording: the call side spoke, then went silent.
+final class AutoStopTests: XCTestCase {
+    func testSilenceAfterSpeechStops() {
+        let spoke = Date(timeIntervalSince1970: 1000)
+        XCTAssertTrue(MeetingPolicy.shouldAutoStop(
+            lastThemSpeech: spoke,
+            now: spoke.addingTimeInterval(MeetingPolicy.callSilenceStop + 1)))
+    }
+
+    func testRecentSpeechKeepsRecording() {
+        let spoke = Date(timeIntervalSince1970: 1000)
+        XCTAssertFalse(MeetingPolicy.shouldAutoStop(
+            lastThemSpeech: spoke,
+            now: spoke.addingTimeInterval(MeetingPolicy.callSilenceStop - 60)))
+    }
+
+    func testInPersonRecordingIsNeverTouched() {
+        // The call channel never spoke — the tap is silent by NATURE in a
+        // room recording, and only a person may end one.
+        XCTAssertFalse(MeetingPolicy.shouldAutoStop(
+            lastThemSpeech: nil, now: Date(timeIntervalSince1970: 99_999_999)))
+    }
+}

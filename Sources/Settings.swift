@@ -181,6 +181,15 @@ final class Settings {
         set { d.set(newValue, forKey: "liveTyping") }
     }
 
+    /// Start recording detected calls without asking (the call prompt's
+    /// "always record my calls" checkbox). Off by default — ask-first is the
+    /// only default consistent with a privacy-forward product; this is the
+    /// self-service upgrade for people who want a black box.
+    var autoRecordCalls: Bool {
+        get { d.bool(forKey: "autoRecordCalls") }
+        set { d.set(newValue, forKey: "autoRecordCalls") }
+    }
+
     /// The app's appearance: "system" follows macOS, "light"/"dark" hold
     /// Dictate to one look everywhere (design: Settings › General).
     var appearance: String {

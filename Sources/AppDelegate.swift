@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var updateRelaunchTimer: Timer?
     private var resultShown = false
     private var onboardingWindow: NSWindow?
+    private let callDetector = CallDetector()
+    private let callPrompt = CallPrompt()
     private var settingsWindow: NSWindow?
     /// Invisible 1×1 panel hosting the Apple Translation session (the
     /// framework only works through a SwiftUI view — see AppleTranslator).
@@ -293,6 +295,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // anything they acted on, and deserves the notice again.
             Settings.shared.meetingConsentSeen = true
         }
+        startMeetingSession()
+    }
+
+    /// The actual start, shared by the menu, the window's Record control and
+    /// the call prompt (which carries its own consent line, so it comes here
+    /// directly).
+    private func startMeetingSession() {
+        callPrompt.hide()
         do {
             try meeting.start()
             statusController.applyState(dictation.state)   // show the red mark
@@ -303,10 +313,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         }
     }
 
+    /// A call was recognised (CallDetector): the market's converged answer —
+    /// detect, then ask. Auto mode skips the asking; the pill and the menu
+    /// bar mark keep the recording visible either way.
+    private func callDetected(platform: String) {
+        guard !meeting.isActive else { return }
+        if Settings.shared.autoRecordCalls, Settings.shared.meetingConsentSeen {
+            Log.d("call: auto-recording (\(platform))")
+            startMeetingSession()
+        } else {
+            callPrompt.show(platform: platform) { [weak self] in
+                self?.startMeetingSession()
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
         // WindowServer freeze) and write evidence to ~/Library/Logs/Dictate.
         MainThreadWatchdog.shared.start()
+
+        // Call detection (the prompt's trigger). Armed only after onboarding:
+        // a first-run user meets the consent story in order, not as a popup
+        // over their call.
+        callDetector.isRecording = { [weak self] in self?.meeting.isActive ?? false }
+        callDetector.onCallDetected = { [weak self] platform in
+            self?.callDetected(platform: platform)
+        }
+        if Settings.shared.onboardingDone { callDetector.start() }
 
         // Before anything acquires state worth keeping: a translocated run is
         // offered a one-click move to /Applications (or quits) — every launch
