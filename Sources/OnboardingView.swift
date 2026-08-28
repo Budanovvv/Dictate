@@ -38,6 +38,9 @@ struct OnboardingView: View {
     /// The download was refused before it began: not enough disk.
     @State private var diskShortfall: (needed: Int, free: Int)?
     @State private var downloadTotalMB = OnboardingView.onboardingTiers.map(\.sizeMB).reduce(0, +)
+    /// How many MB had landed when a download stopped — the design's failed
+    /// state names the number ("The download stopped at 412 MB").
+    @State private var downloadedMB = 0
     /// At least one try-out task completed — only then Return triggers Finish,
     /// so the aha-moment can't be skipped by a reflexive Enter (the button
     /// itself stays clickable always: no hard gate).
@@ -128,6 +131,7 @@ struct OnboardingView: View {
         switch step {
         case 0: WelcomeStep()
         case 1: ModelStep(state: $modelState, failed: downloadFailed, totalMB: downloadTotalMB,
+                          failedAtMB: downloadedMB,
                           rate: downloadRate, diskShortfall: diskShortfall)
         case 2: HotkeyStep(language: $obLanguage, translateTarget: $obTranslateTarget)
         case 3: PermissionsStep()
@@ -165,7 +169,9 @@ struct OnboardingView: View {
             case .downloading:
                 ProgressView().controlSize(.small)
             case .notReady:
-                Button(L("Download & continue")) { startDownload() }
+                Button(downloadFailed ? L("Resume Download") : L("Download & continue")) {
+                    startDownload()
+                }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.dsPrimary)
             }
@@ -176,11 +182,11 @@ struct OnboardingView: View {
                 .disabled(!allGranted)
         case totalSteps - 1:
             if tryTaskDone {
-                Button(L("Finish")) { finish() }
+                Button(L("Start Using Dictate")) { finish() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.dsPrimary)
             } else {
-                Button(L("Finish")) { finish() }
+                Button(L("Start Using Dictate")) { finish() }
                     .buttonStyle(.dsPrimary)
             }
         case 0:
@@ -246,6 +252,7 @@ struct OnboardingView: View {
                         }
                         DispatchQueue.main.async {
                             modelState = .downloading(overall)
+                            downloadedMB = Int(overall * totalMB)
                             if let rate { downloadRate = rate }
                         }
                     }
@@ -330,6 +337,8 @@ private struct ModelStep: View {
     @Binding var state: OnboardingView.ModelState
     var failed = false
     var totalMB = ModelTier.fast.sizeMB
+    /// MB on disk when the download stopped (design: failed state).
+    var failedAtMB = 0
     /// Live transfer rate + ETA while downloading (nil until stable).
     var rate: String?
     /// Set when the download was refused up front for lack of disk space.
@@ -340,55 +349,133 @@ private struct ModelStep: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L("On-device recognition")).font(.system(size: 20, weight: .semibold)).kerning(-0.4)
-            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-
+        // The design centres every state of this step vertically — a single
+        // paragraph and a bar float in the window's middle, not at its top.
+        VStack(alignment: .leading, spacing: 20) {
+            Spacer(minLength: 0)
             if case .downloading(let p) = state {
-                VStack(alignment: .leading, spacing: 10) {
-                    if p < 0.999 {
-                        Text(L("Downloading model…")).font(.headline)
-                        ProgressView(value: p).frame(maxWidth: 360)
-                        Text(Lf("Downloaded %d of %d MB", Int(p * Double(totalMB)), totalMB))
-                            .font(DS.timestamp).foregroundStyle(.secondary)
-                        if let rate {
-                            Text(rate)
-                                .font(DS.timestamp).foregroundStyle(.tertiary)
-                        }
-                        Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text(L("Preparing the model for the Neural Engine… A few minutes, one time."))
-                                .font(.headline)
-                        }
-                    }
-                }
-                .padding(.top, 6)
+                if p < 0.999 { downloading(p) } else { preparing }
             } else if state == .ready {
                 Label(L("Model ready"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(DS.good).padding(.top, 4)
+                    .foregroundStyle(DS.good)
+            } else if failed {
+                stopped
             } else {
-                Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
-                    .font(.headline)
-                if let short = diskShortfall {
-                    // Refused before it began — failing at the end of a
-                    // gigabyte would be the worse version of this message.
-                    Label(Lf("Not enough disk space: the download needs about %d MB and %d MB is free. Free up space and try again.",
-                             short.needed, short.free),
-                          systemImage: "externaldrive.badge.exclamationmark")
-                        .foregroundStyle(DS.warn)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if failed {
-                    Label(L("Download failed. Check your connection and retry."),
-                          systemImage: "wifi.exclamationmark")
-                        .foregroundStyle(DS.warn)
+                intro
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Before anything was asked for: what the download is and why.
+    @ViewBuilder
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L("On-device recognition"))
+                .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
+                .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
+                .font(.system(size: 12)).foregroundStyle(.tertiary)
+                .padding(.top, 4)
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+        if let short = diskShortfall {
+            // Refused before it began — failing at the end of a gigabyte
+            // would be the worse version of this message.
+            Label(Lf("Not enough disk space: the download needs about %d MB and %d MB is free. Free up space and try again.",
+                     short.needed, short.free),
+                  systemImage: "externaldrive.badge.exclamationmark")
+                .foregroundStyle(DS.warn)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 560, alignment: .leading)
+        }
+    }
+
+    private func downloading(_ p: Double) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L("Downloading the speech model"))
+                    .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+                Text(L("This happens once. The model stays on your Mac and is the reason dictation works without an internet connection afterwards."))
+                    .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                bar(p, tint: DS.accent)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(Lf("%d MB of %d MB", Int(p * Double(totalMB)), totalMB))
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    if let rate {
+                        Text(rate)
+                            .font(.system(size: 12).monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer(minLength: 0)
                 }
             }
-            Spacer()
         }
+        .frame(maxWidth: 560, alignment: .leading)
+    }
+
+    /// The design's stopped screen: what happened, at which megabyte, and
+    /// the promise that resuming keeps what already landed.
+    private var stopped: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 9) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(DS.warn)
+                    Text(Lf("The download stopped at %d MB", failedAtMB))
+                        .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(Lf("The connection was interrupted. Resuming continues from where it stopped — you will not download the whole %d MB again.", totalMB))
+                    .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                bar(Double(failedAtMB) / Double(max(totalMB, 1)), tint: DS.warn)
+                Text(Lf("Stopped · %d MB of %d MB kept on disk", failedAtMB, totalMB))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+    }
+
+    private var preparing: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                ProgressView().controlSize(.small)
+                Text(L("Preparing the model for this Mac"))
+                    .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+            }
+            Text(L("The model is being compiled for your chip so recognition is fast later. This takes a minute on first launch and never happens again."))
+                .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+    }
+
+    /// The design's 6 pt bar — one rounded track, one tinted fill.
+    private func bar(_ fraction: Double, tint: Color) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(tint)
+                    .frame(width: max(6, geo.size.width * fraction))
+            }
+        }
+        .frame(height: 6)
     }
 }
 
@@ -575,26 +662,42 @@ private struct PermissionsStep: View {
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L("macOS permissions")).font(.system(size: 20, weight: .semibold)).kerning(-0.4)
-            Text(L("Two permissions, granted once — each does exactly one job. Dictate doesn't read your screen, doesn't log your typing, and doesn't send anything anywhere: recognition is fully on this Mac. When both turn green, you're ready."))
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(L("Two permissions from macOS"))
+                    .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+                Text(L("macOS asks for these, not us. Dictate cannot work without both."))
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            PermissionRow(icon: "mic.fill", tint: DS.accent,
-                          title: L("Microphone"),
-                          explain: L("listens only during a dictation you started — never in the background on its own"),
-                          status: mic) {
-                Permissions.requestMicrophoneIfNeeded { _ in refresh() }
+            VStack(alignment: .leading, spacing: 10) {
+                PermissionRow(title: L("Microphone"),
+                              explain: L("To hear you. Audio is processed on this Mac and discarded."),
+                              status: mic) {
+                    Permissions.requestMicrophoneIfNeeded { _ in refresh() }
+                }
+                PermissionRow(title: L("Accessibility"),
+                              explain: L("To type the recognized text into the app you are using. It is the only way an app can insert text elsewhere."),
+                              status: ax) {
+                    Permissions.promptAccessibilityIfNeeded()
+                }
             }
-            PermissionRow(icon: "accessibility", tint: DS.accent,
-                          title: L("Accessibility"),
-                          explain: L("for exactly two things: to hear your dictation key and to type the text for you. Nothing else."),
-                          status: ax) {
-                Permissions.promptAccessibilityIfNeeded()
+            .frame(maxWidth: 620, alignment: .leading)
+
+            HStack(spacing: 8) {
+                Text(L("Already clicked and nothing changed?"))
+                    .foregroundStyle(.tertiary)
+                Button(L("Show me where to look")) {
+                    Permissions.openSettingsPane("Privacy_Accessibility")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.accentText)
+                .pointerStyle(.link)
             }
+            .font(.system(size: 12))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(L("In the macOS window, click “Open System Settings” and turn on the switch next to Dictate. (If you accidentally hit “Deny”, no harm done — the “No window appeared?” link below opens the same settings.)"))
                 // The stale-entry dead end (seen live after an app update): the
                 // switch in System Settings is already ON, yet macOS reports
                 // "not trusted", the prompt won't reappear — and without this
@@ -604,10 +707,6 @@ private struct PermissionsStep: View {
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(DS.warn)
                 }
-                Button(L("No window appeared? Open settings manually")) {
-                    Permissions.openSettingsPane("Privacy_Accessibility")
-                }
-                .buttonStyle(.link).font(.caption)
                 // The stale record survives the toggle dance in the worst
                 // cases (deleted-and-reinstalled app, old Deny suppressing the
                 // prompt). Resetting our own TCC record is the sanctioned fix
@@ -635,38 +734,61 @@ private struct PermissionsStep: View {
     }
 }
 
+/// One permission as the design's card: a status circle at the leading end
+/// (green check once granted), the name and its one-sentence reason, and at
+/// the trailing end either quiet "Granted" or the small accent Grant….
 private struct PermissionRow: View {
-    let icon: String
-    let tint: Color
     let title: String
     let explain: String
     let status: Permissions.Status
     let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle().fill(tint.opacity(0.16)).frame(width: 40, height: 40)
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(tint)
+        HStack(alignment: .top, spacing: 12) {
+            Group {
+                if status == .granted {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(DS.good)
+                } else {
+                    Circle()
+                        .strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.4)
+                        .frame(width: 16, height: 16)
+                }
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                Text(explain).font(.callout).foregroundStyle(.secondary)
+            .frame(width: 20)
+            .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13.5, weight: .medium))
+                Text(explain)
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
+            Spacer(minLength: 8)
             if status == .granted {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title2).foregroundStyle(DS.good)
+                Text(L("Granted"))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
             } else {
-                Button(L("Allow"), action: action)
-                    .buttonStyle(.dsSmall)
+                Button(action: action) {
+                    Text(L("Grant…"))
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 23)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(DS.accent))
+                }
+                .buttonStyle(.plain)
+                .hoverEmphasis()
             }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.5)))
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 9).fill(.quaternary.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 9)
+            .strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.5))
     }
 }
 
@@ -714,7 +836,13 @@ private struct TryItStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("Try it out")).font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L("Try it here first"))
+                    .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+                Text(L("Nothing here leaves this window. Two small things to try, then you are done."))
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             // Honest state while the one-time Neural Engine compile is still
             // running: the tasks stay visible but dimmed, and the banner says
             // what the wait is — without it the first keypress just shows a
@@ -759,12 +887,21 @@ private struct TryItStep: View {
                     .font(.caption).foregroundStyle(.tertiary)
             }
 
-            Toggle(L("Launch at login"), isOn: $launchAtLogin)
-                .toggleStyle(.switch).controlSize(.small)
-                .onChange(of: launchAtLogin) { on in
-                    if on { try? SMAppService.mainApp.register() }
-                    else { try? SMAppService.mainApp.unregister() }
-                }
+            // The switch leads and the sentence follows (design: playground).
+            HStack(alignment: .top, spacing: 9) {
+                Toggle("", isOn: $launchAtLogin)
+                    .labelsHidden()
+                    .toggleStyle(.switch).controlSize(.small)
+                    .onChange(of: launchAtLogin) { on in
+                        if on { try? SMAppService.mainApp.register() }
+                        else { try? SMAppService.mainApp.unregister() }
+                    }
+                Text(L("Start Dictate when I log in — it appears in the Dock and the menu bar, and the Dock icon can be hidden later in Settings"))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 1)
+            }
 
             Spacer()
         }

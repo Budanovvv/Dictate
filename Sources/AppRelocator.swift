@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// Moves a translocated app into /Applications instead of only warning about
 /// it (the LetsMove pattern). Translocation means macOS is running a random
@@ -15,12 +16,27 @@ enum AppRelocator {
     static func offerMoveIfTranslocated() {
         guard Permissions.isTranslocated else { return }
         NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = L("Dictate is running from its disk image")
-        alert.informativeText = L("Permissions granted from a disk image are lost as soon as it is ejected, and the model would download again every time. Move Dictate to your Applications folder first.")
-        alert.addButton(withTitle: L("Move to Applications"))
-        alert.addButton(withTitle: L("Quit"))
-        if alert.runModal() == .alertFirstButtonReturn, move() {
+        // The app's own dialog vocabulary (design Onboarding: dmg), not
+        // NSAlert's — this window is the first thing a new user ever sees.
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 10),
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered, defer: false
+        )
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isMovableByWindowBackground = true
+        panel.isReleasedWhenClosed = false
+        let hosting = NSHostingView(rootView: RelocateCard(
+            quit: { NSApp.stopModal(withCode: .cancel) },
+            moveNow: { NSApp.stopModal(withCode: .OK) }))
+        hosting.frame.size = hosting.fittingSize
+        panel.contentView = hosting
+        panel.setContentSize(hosting.fittingSize)
+        panel.center()
+        let response = NSApp.runModal(for: panel)
+        panel.orderOut(nil)
+        if response == .OK, move() {
             relaunchInstalledCopyAndQuit()
         } else {
             NSApp.terminate(nil)
@@ -70,5 +86,67 @@ enum AppRelocator {
         p.arguments = ["-c", "sleep 0.7; /usr/bin/open \"\(destination.path)\""]
         try? p.run()
         NSApp.terminate(nil)
+    }
+}
+
+/// The design's dmg screen, as a dialog: the warning and its reason, the
+/// "Dictate.dmg → Applications" picture of what will happen, and the two
+/// ways out. Return moves, Esc quits.
+private struct RelocateCard: View {
+    let quit: () -> Void
+    let moveNow: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 17))
+                        .foregroundStyle(DS.warn)
+                    Text(L("Dictate is running from its disk image"))
+                        .font(.system(size: 20, weight: .semibold))
+                        .kerning(-0.4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(L("Permissions granted from a disk image are lost as soon as it is ejected, and the model would download again every time. Move Dictate to your Applications folder first."))
+                    .font(.system(size: 13.5))
+                    .lineSpacing(13.5 * 0.28)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    Text(verbatim: "Dictate.dmg")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                    Text(L("Applications"))
+                        .font(.system(size: 12.5, weight: .medium))
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 9)
+                    .fill(.quaternary.opacity(0.5)))
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.5))
+                .padding(.top, 8)
+            }
+            .padding(EdgeInsets(top: 24, leading: 24, bottom: 20, trailing: 24))
+            Divider()
+            HStack(spacing: 12) {
+                Spacer(minLength: 0)
+                Button(L("Quit"), action: quit)
+                    .buttonStyle(.dsRegular)
+                    .keyboardShortcut(.cancelAction)
+                Button(L("Move to Applications"), action: moveNow)
+                    .buttonStyle(.dsPrimary)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 13)
+        }
+        .frame(width: 560)
     }
 }
