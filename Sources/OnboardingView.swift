@@ -28,19 +28,36 @@ struct OnboardingView: View {
     /// Models needed at onboarding — one, since translation moved to macOS.
     static var onboardingTiers: [ModelTier] { [.fast] }
 
-    @State private var modelState: ModelState =
-        OnboardingView.onboardingTiers.allSatisfy { WhisperEngine.shared.isModelDownloaded(tier: $0) }
-            ? .ready : .notReady
-    @State private var downloadFailed = false
+    /// Screenshot harness only: `defaults write … debugShotModel
+    /// "idle|downloading|failed"` forces the model step's state for one
+    /// launch, so states this Mac cannot reach (the model is on disk) can
+    /// still be photographed. One-shot, like debugShot itself.
+    private static let debugModel: String? = {
+        guard let v = UserDefaults.standard.string(forKey: "debugShotModel") else { return nil }
+        UserDefaults.standard.removeObject(forKey: "debugShotModel")
+        return v
+    }()
+
+    @State private var modelState: ModelState = {
+        switch OnboardingView.debugModel {
+        case "idle", "failed": return .notReady
+        case "downloading": return .downloading(0.65)
+        default:
+            return OnboardingView.onboardingTiers.allSatisfy { WhisperEngine.shared.isModelDownloaded(tier: $0) }
+                ? .ready : .notReady
+        }
+    }()
+    @State private var downloadFailed = OnboardingView.debugModel == "failed"
     /// "8.4 MB/s · about 30 sec left" while downloading (nil before the first
     /// stable reading).
-    @State private var downloadRate: String?
+    @State private var downloadRate: String? =
+        OnboardingView.debugModel == "downloading" ? "8.4 MB/s · about 30 sec left" : nil
     /// The download was refused before it began: not enough disk.
     @State private var diskShortfall: (needed: Int, free: Int)?
     @State private var downloadTotalMB = OnboardingView.onboardingTiers.map(\.sizeMB).reduce(0, +)
     /// How many MB had landed when a download stopped — the design's failed
     /// state names the number ("The download stopped at 412 MB").
-    @State private var downloadedMB = 0
+    @State private var downloadedMB = OnboardingView.debugModel == "failed" ? 412 : 0
     /// At least one try-out task completed — only then Return triggers Finish,
     /// so the aha-moment can't be skipped by a reflexive Enter (the button
     /// itself stays clickable always: no hard gate).
@@ -349,7 +366,8 @@ private struct ModelStep: View {
     var diskShortfall: (needed: Int, free: Int)?
 
     private var sizeHint: String {
-        totalMB >= 1000 ? String(format: "~%.1f GB", Double(totalMB) / 1000) : "~\(totalMB) MB"
+        // No tilde: the sentence around it already says "About".
+        totalMB >= 1000 ? String(format: "%.1f GB", Double(totalMB) / 1000) : "\(totalMB) MB"
     }
 
     var body: some View {
