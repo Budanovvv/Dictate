@@ -113,7 +113,7 @@ enum TurnCopy {
     /// The resting chip's ink. Built as an appearance-aware NSColor rather than
     /// read from the SwiftUI environment on purpose: the turns are `.equatable()`
     /// rows in a scrolling list, and a colour that resolves itself at draw time
-    /// keeps them out of the comparison entirely (same trick as Brand.indigoLabel).
+    /// keeps them out of the comparison entirely (NSAttributedString attribute-free copy).
     static let restingInk = Color(nsColor: NSColor(name: nil) { appearance in
         let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         return (dark ? NSColor.white : NSColor.black)

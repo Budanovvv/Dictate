@@ -140,5 +140,17 @@ if [ "$INSTALL" = 1 ]; then
     fi
     rm -rf /Applications/Dictate.app
     ditto "$APP" /Applications/Dictate.app
+    # The build copy has done its job. A second runnable Dictate on disk is
+    # the double-paste grabli, and once `open` has ever touched it, Launchpad
+    # lists two Dictates (2026-08-27). /Applications is now the only copy;
+    # test.sh falls back to it when the cache one is gone.
+    rm -rf "$APP"
     echo "==> Installed: /Applications/Dictate.app"
+    # The quit above must not be the end state: an install that leaves the
+    # menu-bar app dead reads as "the build broke it" (2026-08-27, twice in
+    # one morning before this line existed). LaunchServices returns -600 if
+    # `open` fires while the old process is still exiting — wait it out.
+    for _ in $(seq 8); do pgrep -x Dictate >/dev/null || break; sleep 0.25; done
+    open -a /Applications/Dictate.app
+    echo "==> Relaunched"
 fi

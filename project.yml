@@ -70,9 +70,10 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         # Hardened runtime requires an explicit microphone entitlement:
         CODE_SIGN_ENTITLEMENTS: Sources/Dictate.entitlements
-        # Menu bar utility, no Dock presence. The Dock icon appears dynamically
-        # while a window is open (onboarding/settings) — see AppDelegate.
-        LSUIElement: YES
+        # No LSUIElement: the app is a REGULAR app (Dock icon by default);
+        # main.swift sets the activation policy from the Show-in-Dock setting
+        # at launch. (An LSUIElement key here under `settings:` never reached
+        # the Info.plist anyway — xcodegen only reads `info:` for plist keys.)
       configs:
         # Release ships outside the App Store (DMG + Sparkle), so it must be
         # signed with the Developer ID Application cert and carry a secure
@@ -102,6 +103,17 @@ targets:
       - path: Sources/Localization.swift
       - path: Sources/KeyNames.swift
       - path: Sources/Settings.swift
+      # Pulled in by Settings.askProvider, whose type it defines.
+      - path: Sources/APIKey.swift
+      # The Ask conversation store — deliberately dependency-free (plain
+      # Codable + FileManager) so its round-trip/cap/rename rules test here.
+      - path: Sources/AskHistoryStore.swift
+      # Which answer sentences a quote actually backs — pure text policy.
+      - path: Sources/AnswerSupportPolicy.swift
+      # Pulled in by RecordingHUD, which the tests compile.
+      - path: Sources/DesignSystem.swift
+      # The portal home's facts — a pure rule, tested like every policy.
+      - path: Sources/MeetingBriefPolicy.swift
       - path: Sources/LanguageList.swift
       - path: Sources/Replacements.swift
       - path: Sources/CommitEngine.swift
@@ -140,7 +152,8 @@ targets:
       - path: Sources/Log.swift
       - path: Sources/WhisperEngine.swift
       - path: Sources/RecordingHUD.swift
-      - path: Sources/Brand.swift
+      # The mark family RecordingHUD draws its state glyphs with.
+      - path: Sources/FamilyGlyph.swift
       - path: Sources/ObjCExceptionCatcher.h
       - path: Sources/ObjCExceptionCatcher.m
     dependencies:

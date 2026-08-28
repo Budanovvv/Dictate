@@ -46,6 +46,9 @@ struct MeetingsView: View {
     /// that "Not now" empties every surface at once.
     @ObservedObject private var offer = LocalTextModelOffer.shared
     let onStop: () -> Void
+    /// Starts a meeting recording through the owner's consent-aware path —
+    /// the same flow the menu bar uses (first-run consent alert included).
+    let onRecord: () -> Void
     /// The window owner resizes/levels the panel when the library opens.
 
     // The library is always here. It used to fold away, and during a live
@@ -67,6 +70,28 @@ struct MeetingsView: View {
     /// may finish out of order; only the latest is allowed to land.
     @State private var reloadGeneration = 0
     @State private var query = ""
+    /// The "How this works" popover on the first-run empty state.
+    @State private var showingHowItWorks = false
+    /// The bottom-left corner menu (design).
+    @State private var settingsMenuOpen = false
+    /// The adjustable column widths (a preference of the eyes, like text
+    /// size): the design's 214/296 until dragged, then whatever was chosen.
+    @State private var navWidth: CGFloat = {
+        let v = UserDefaults.standard.double(forKey: "meetingsNavWidth")
+        return v > 0 ? CGFloat(v) : 214
+    }()
+    @State private var listWidth: CGFloat = {
+        let v = UserDefaults.standard.double(forKey: "meetingsListWidth")
+        return v > 0 ? CGFloat(v) : 296
+    }()
+
+    /// Bumped on every star toggle — the one thing that makes a UserDefaults
+    /// write visible to SwiftUI (see body).
+    @State private var starRevision = 0
+    /// Same disease, different organ: Ask on/off lives in Settings (plain
+    /// UserDefaults). Turning it off in the Settings window must take the Ask
+    /// row, header button and footer link out of THIS window immediately.
+    @State private var askArchiveOn = Settings.shared.askArchive
     /// The toolbar's Rename… routes to the same popover the title carries,
     /// so there is one editing surface no matter how you get to it.
     @State private var renamingFromMenu = false
@@ -85,10 +110,14 @@ struct MeetingsView: View {
         /// top: clicking any meeting returns, and nothing the reader was
         /// looking at is destroyed.
         case answer(String)
+        /// The conversation itself, entered cold from the pinned sidebar row —
+        /// no question yet, just the place where asking happens. The same
+        /// pane as `.answer`; the difference is only how one arrives.
+        case ask
 
         var url: URL? {
             switch self {
-            case .live, .answer: return nil
+            case .live, .answer, .ask: return nil
             case .archived(let url), .moment(let url, _): return url
             }
         }
@@ -110,12 +139,45 @@ struct MeetingsView: View {
     /// HStack has no opinions, so both columns sit on MeetingsChrome's grid and
     /// the rule under the two headers is a single line.
     var body: some View {
+        // Stars live in UserDefaults, not in the meetings array — toggling
+        // one changes nothing SwiftUI diffs, so the click LOOKED dead (field
+        // report 2026-08-27). Reading the revision here makes the whole tree
+        // re-evaluate on every toggle: the header star fills, the sidebar
+        // count moves.
+        let _ = starRevision
+        let _ = askArchiveOn
+        // Three columns, the design's own (t13): navigation 214, the meeting
+        // list 296, and the reading pane. Selecting Ask drops the list column
+        // so the answer gets the width (t2); All Meetings brings it back.
+        // The first two dividers drag (owner 2026-08-29) — widths persist,
+        // clamped so neither column can crush its content or eat the pane.
         HStack(spacing: 0) {
-            sidebar.frame(width: MeetingsChrome.sidebarWidth)
-            Divider()
+            navColumn.frame(width: navWidth)
+            ColumnGrip { delta in
+                navWidth = min(max(navWidth + delta, 180), 320)
+            } done: {
+                UserDefaults.standard.set(Double(navWidth), forKey: "meetingsNavWidth")
+            }
+            if selection != .ask {
+                listColumn.frame(width: listWidth)
+                ColumnGrip { delta in
+                    listWidth = min(max(listWidth + delta, 240), 420)
+                } done: {
+                    UserDefaults.standard.set(Double(listWidth), forKey: "meetingsListWidth")
+                }
+            }
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Any defaults write, filtered down to the one this window must
+        // mirror live: the Ask switch in the Settings window.
+        .onReceive(NotificationCenter.default.publisher(
+            for: UserDefaults.didChangeNotification).receive(on: RunLoop.main)) { _ in
+            if Settings.shared.askArchive != askArchiveOn {
+                askArchiveOn = Settings.shared.askArchive
+                if !askArchiveOn, selection == .ask { selection = nil }
+            }
+        }
         .onAppear {
             // During a call the window is a glanceable strip over the call;
             // opened afterwards it is a library. The sidebar decides which —
@@ -129,11 +191,23 @@ struct MeetingsView: View {
                 // window that cannot hold focus yet and is dropped.
                 DispatchQueue.main.async { listFocused = true }
             }
-            reload {
-                if !session.isActive, selection == nil {
-                    selection = meetings.first.map { .archived($0.url) }
+            // Screenshot harness (design pass): select the newest meeting
+            // once the archive has loaded.
+            if UserDefaults.standard.string(forKey: "debugShotMeetings") == "first" {
+                UserDefaults.standard.removeObject(forKey: "debugShotMeetings")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    if let first = meetings.first { selection = .archived(first.url) }
                 }
-                // A meeting picked in the menu wins over both defaults — the
+            }
+            // Ask is the selected item at launch (design t2) — the window
+            // opens on the question, not on a transcript. With the agent off
+            // the nil selection keeps the old portal home, which carries the
+            // connect offer.
+            if Settings.shared.askArchive, selection == nil, !session.isActive {
+                selection = .ask
+            }
+            reload {
+                // A meeting picked in the menu wins over the default — the
                 // window is opening BECAUSE of it.
                 applyRequest()
                 backfillSummaries()
@@ -151,8 +225,9 @@ struct MeetingsView: View {
             // Deliberately NOT backfilling here. A session that has just gone
             // inactive is still being titled and summarized by finalizeIfDrained,
             // and a backfill started in the same breath would ask the model
-            // about the very same meeting twice. The next time the library is
-            // opened is soon enough.
+            // about the very same meeting twice. The session kicks the
+            // backfills itself the moment that titling is done
+            // (MeetingSession.kickBackfills).
         }
         // A summary landed on disk for one of the older meetings: pick it up.
         // Only ever a handful of times, and only while the backfill runs —
@@ -161,6 +236,24 @@ struct MeetingsView: View {
         // A contents block landed. Same story, and just as rare: only while
         // the backfill runs, and nothing here ticks.
         .onChange(of: sections.written) { _ in reload() }
+        .sheet(isPresented: $showConnect) {
+            AgentConnectSheet(question: connectQuestion, onConnected: {
+                showConnect = false
+                // The first success is the answer to the question they came
+                // with — with whatever passages the search had already found.
+                if let question = connectQuestion?.trimmingCharacters(in: .whitespaces),
+                   !question.isEmpty {
+                    askScope = nil
+                    answer.scopePath = nil
+                    answer.ask(question, from: sources(from: related), using: oracle)
+                    selection = .ask
+                }
+                connectQuestion = nil
+            }, onCancel: {
+                showConnect = false
+                connectQuestion = nil
+            })
+        }
     }
 
     // MARK: - Sidebar
@@ -169,21 +262,22 @@ struct MeetingsView: View {
     /// transcript's header, then the list. The two headers share one horizontal
     /// rule that runs the full width of the window — the cheapest possible
     /// proof that the two panes are one surface and not two.
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            headerRow
-            Divider()
-            searchArea
-            list
-            // The first of the two places the missing model is physically
-            // visible: a column of meetings that are all named by their date.
-            // At the FOOT of the column, under a rule — where a mail client
-            // puts "downloading messages": it is the last thing read, not the
-            // first, and it pushes nothing out of the way.
+    /// Column one (214, design t13): the window's own buttons up top, the
+    /// Library and Sources navigation, and an ambient footer — "watching" at
+    /// rest, the recording controls while a session runs.
+    private var navColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The traffic lights' zone. AppKit draws them over the title-bar
+            // band; this row only reserves their height so the nav starts
+            // under them — the one place the system owns the corner.
+            Color.clear.frame(height: MeetingsChrome.headerHeight)
+            libraryNav
+            Spacer(minLength: 0)
             if showsLibraryOffer {
-                Divider()
                 TextModelOffer(line: L("Your meetings are named by their date. A one-time download, kept on this Mac, writes titles, summaries and a table of contents."))
             }
+            Divider()
+            navFooter
         }
         // An explicit AppKit sidebar material, not the window's background:
         // it distinguishes the library from the transcript in both themes, and
@@ -191,17 +285,175 @@ struct MeetingsView: View {
         .background(SidebarMaterial())
     }
 
+    /// The sidebar's bottom line: readiness at rest, the recording controls
+    /// while a session runs — with no clock (one clock per surface, 12d; the
+    /// header carries this window's).
+    @ViewBuilder
+    private var navFooter: some View {
+        if session.isActive {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    PulsingDot()
+                    Text(L("Recording"))
+                        .font(.system(size: 11.5, weight: .semibold))
+                }
+                Button {
+                    session.stop()
+                } label: {
+                    Text(L("Stop Recording"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DS.record)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 24)
+                }
+                .buttonStyle(.plain)
+                .background(DS.hoverFill,
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .hoverHighlight(radius: 7)
+            }
+            .padding(11)
+        } else {
+            HStack(spacing: 9) {
+                Circle().fill(DS.good).frame(width: 8, height: 8)
+                Text(L("Watching for browser calls"))
+                    .font(DS.helpText)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+        }
+        // The corner Settings row (design): the gear, the word, the ⌘, —
+        // and a small menu of the destinations that used to need the menu
+        // bar (Settings, shortcuts, appearance, models, updates, quit).
+        Button {
+            settingsMenuOpen.toggle()
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12))
+                    .frame(width: 15)
+                Text(L("Settings"))
+                    .font(.system(size: 12.5))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("⌘,")
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight()
+        .popover(isPresented: $settingsMenuOpen, arrowEdge: .top) {
+            settingsCornerMenu
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
+    }
+
+    /// The corner menu (design): quick doors in the app's own menu
+    /// vocabulary. Every row closes the menu and goes.
+    private var settingsCornerMenu: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            cornerRow(L("Settings…"), trailing: "⌘,") { openSettingsWindow(tab: nil) }
+            cornerRow(L("Keyboard shortcuts")) { openSettingsWindow(tab: "keys") }
+            Divider().padding(.vertical, 4)
+            cornerRow(L("Appearance"), trailing: appearanceValue) { openSettingsWindow(tab: "general") }
+            cornerRow(L("Storage & models")) { openSettingsWindow(tab: "meetings") }
+            Divider().padding(.vertical, 4)
+            cornerRow(L("Check for updates")) {
+                settingsMenuOpen = false
+                NotificationCenter.default.post(name: .init("dictate.checkUpdates"), object: nil)
+            }
+            cornerRow(L("Quit Dictate"), trailing: "⌘Q") {
+                NSApp.terminate(nil)
+            }
+        }
+        .padding(5)
+        .frame(width: 212)
+    }
+
+    private var appearanceValue: String {
+        switch Settings.shared.appearance {
+        case "light": return L("Light")
+        case "dark": return L("Dark")
+        default: return L("Match system")
+        }
+    }
+
+    private func openSettingsWindow(tab: String?) {
+        settingsMenuOpen = false
+        if let tab { UserDefaults.standard.set(tab, forKey: "settingsOpenTab") }
+        NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
+    }
+
+    private func cornerRow(_ title: String, trailing: String? = nil,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.system(size: 12.5))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight()
+    }
+
+    /// Column two (296): search up top in its own 52 pt header, the meetings
+    /// by day beneath, the search-scoped offers at the foot.
+    private var listColumn: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                searchField
+                if query.isEmpty {
+                    Text(L("Words, or a question — I'll match by meaning"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 2)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
+            tagFilterRow
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+            list
+        }
+    }
+
     private var list: some View {
-        List(selection: $selection) {
+        // Selection is OURS, not the List's: the system sidebar pill is a
+        // solid accent fill, and the design's selection is a 12% tint with a
+        // 3 px accent edge (13a) — the two cannot coexist, so the List gets
+        // no selection binding and the rows carry the look themselves.
+        // Arrow keys are re-wired below (onMoveCommand), which is what once
+        // kept this on the system look.
+        List {
             if session.isActive {
                 Section(L("Now")) {
-                    liveRow.tag(Selection.live)
+                    selectable(liveRow, .live)
                 }
             }
             ForEach(groupedMeetings, id: \.title) { group in
                 Section(group.title) {
                     ForEach(group.meetings) { meeting in
-                        meetingRow(meeting).tag(Selection.archived(meeting.url))
+                        selectable(meetingRow(meeting), .archived(meeting.url))
                     }
                 }
             }
@@ -211,21 +463,34 @@ struct MeetingsView: View {
             // that wasn't quite typed.
             if !related.isEmpty {
                 Section(L("Related by meaning")) {
-                    // Asking is one row, not a second field. Nothing is ever
-                    // inferred from what was typed — this appears because the
-                    // search already found passages, and is clicked because
-                    // somebody wanted an answer. It cannot offer to answer a
-                    // question it has no sources for, which is the failure this
-                    // whole category ships with.
-                    // Off by default, and off means absent. A greyed-out row
-                    // would still be telling somebody who chose local-only that
-                    // there is an online thing here they are missing.
-                    if Settings.shared.askArchive {
-                        askRow.tag(Selection.answer(query))
-                    }
                     ForEach(related) { hit in
-                        relatedRow(hit).tag(hit.selection)
+                        selectable(relatedRow(hit), hit.selection)
                     }
+                }
+            }
+            // Asking is one row, not a second field, and it is LAST — under
+            // the results, never instead of them (the pattern search-plus-AI
+            // products converge on: the literal results stay primary, the
+            // escalation is explicit). It used to require the meaning search
+            // to have found something — honest while the model could only
+            // read supplied passages, a dead end now that the agent can list,
+            // search and read the archive itself.
+            // Off by default, and off means absent. A greyed-out row would
+            // still be telling somebody who chose local-only that there is an
+            // online thing here they are missing.
+            if Settings.shared.askArchive,
+               !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                Section {
+                    selectable(askRow, .answer(query))
+                }
+            } else if !Settings.shared.askArchive,
+                      !query.trimmingCharacters(in: .whitespaces).isEmpty,
+                      agentOffer.allowed {
+                // The agent is off and somebody just typed a question it
+                // could answer — the one moment a pointer is honest rather
+                // than a banner. Same budget and dismissal as every offer.
+                Section {
+                    connectTeaserRow
                 }
             }
         }
@@ -233,7 +498,10 @@ struct MeetingsView: View {
         // timer, not a guess about what the words meant — a person chose it.
         .onChange(of: selection) { picked in
             guard case .answer(let question) = picked else { return }
-            guard answer.question != question || answer.failure != nil else { return }
+            guard answer.lastQuestion != question || answer.lastFailure != nil else { return }
+            // Appends to the running conversation: the session is the window's
+            // lifetime, and a question asked from a fresh search joins it with
+            // its fresh passages rather than starting over.
             answer.ask(question, from: sources(from: related), using: oracle)
         }
         .listStyle(.sidebar)
@@ -241,16 +509,36 @@ struct MeetingsView: View {
         // stacking a second, opaque panel of its own on top of it.
         .scrollContentBackground(.hidden)
         .focused($listFocused)
+        // Arrow keys, hand-wired: without a selection binding the List no
+        // longer moves anything itself. Same order the eye reads.
+        .onMoveCommand { direction in moveSelection(direction) }
         .overlay {
-            if filtered.isEmpty && related.isEmpty && !session.isActive {
-                ContentUnavailableView {
-                    Label(meetings.isEmpty ? L("No meetings yet") : L("Nothing found"),
-                          systemImage: meetings.isEmpty ? "text.bubble" : "magnifyingglass")
-                } description: {
-                    Text(meetings.isEmpty
+            if filtered.isEmpty && related.isEmpty && !session.isActive,
+               !meetings.isEmpty, !MeetingSearch.split(query: query).tags.isEmpty {
+                // Tag filters combine with AND, and that rule is exactly what
+                // an empty tag-filtered list needs to say (design: tagEmpty) —
+                // with the one-click ways out beside it. Compact, hand-built:
+                // ContentUnavailableView is a full-window poster, and in the
+                // 296 pt column it wrapped its own buttons past the edges
+                // (field report 2026-08-28).
+                let activeTags = MeetingSearch.split(query: query).tags
+                ListEmptyState(
+                    title: activeTags.count == 1 ? L("No meeting has this tag")
+                                                 : L("No meeting has all of these tags"),
+                    blurb: L("Tag filters combine with “and” — a meeting must carry every selected tag to appear.")) {
+                    if activeTags.count > 1, let last = activeTags.last {
+                        Button(Lf("Remove “%@”", last)) { toggleTagFilter(last) }
+                    }
+                    Button(L("Clear All Filters")) {
+                        query = MeetingSearch.split(query: query).text
+                    }
+                }
+            } else if filtered.isEmpty && related.isEmpty && !session.isActive {
+                ListEmptyState(
+                    title: meetings.isEmpty ? L("No meetings yet") : L("Nothing found"),
+                    blurb: meetings.isEmpty
                          ? L("Start a transcript from the menu bar during a call.")
-                         : L("No transcript contains that."))
-                } actions: {
+                         : L("No transcript contains that.")) {
                     // The second place the absence shows, and the sharper of
                     // the two: the search that came back empty matches by
                     // MEANING, and meaning is read out of the summaries and
@@ -280,54 +568,6 @@ struct MeetingsView: View {
     /// column, so it belongs over this column and not across the divider from
     /// it. And moving it out gives the transcript's header a single left edge:
     /// with the toggle in it, the meeting's title started 50pt in while the
-    /// words underneath started at 14, which — next to the divider, which is a
-    /// hard vertical reference — was the most visible instance of "things do
-    /// not line up".
-    private var headerRow: some View {
-        HStack(spacing: 2) {
-            Spacer(minLength: 0)
-        }
-        // The library holds the window's top-left corner while it is open, and
-        // the window's own buttons live there — so this row starts after them
-        // rather than on the list's margin. Everything BELOW the row keeps the
-        // sidebar's 10pt inset; the row above them is the one place in the
-        // window where the system, not the design, owns the left edge.
-        .padding(.leading, MeetingsChrome.trafficLights)
-        .padding(.trailing, MeetingsChrome.sidebarInset)
-        .frame(height: MeetingsChrome.headerHeight)
-    }
-
-    /// The search field, across the column, and one line saying what it can do.
-    ///
-    /// The field used to share the header row with the sidebar toggle, which
-    /// left it about 120pt — narrow enough that "Search transcripts" truncated
-    /// in ENGLISH, which is why the placeholder had been cut to one word. That
-    /// was the wrong thing to shrink. This search matches by MEANING, and a
-    /// magnifying glass with "Search" beside it promises the opposite: literal
-    /// words. Below the divider the field has the whole 240pt column, which is
-    /// room for a placeholder that asks a question and for a caption that says
-    /// what will happen to the answer.
-    private var searchArea: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            searchField
-            // Only until the first keystroke. It is an invitation, and once
-            // typing has started it would be a permanent caption on a working
-            // control — the results themselves say what the search did.
-            // The invitation goes once typing starts; the tags stay, because
-            // they are a control rather than a caption.
-            if query.isEmpty {
-                Text(L("Words, or a question — I'll match by meaning"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 2)
-            }
-            tagFilterRow
-        }
-        .padding(.horizontal, MeetingsChrome.sidebarInset)
-        .padding(.vertical, 8)
-    }
-
     /// The archive's tags, most-used first, as a scrollable line of chips —
     /// always, not only while the field is empty.
     ///
@@ -385,9 +625,12 @@ struct MeetingsView: View {
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill").imageScale(.small)
+                        .padding(2)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.tertiary)
+                .hoverHighlight(radius: 6)
+                .padding(-2)
                 .help(L("Clear search"))
             }
         }
@@ -399,30 +642,62 @@ struct MeetingsView: View {
         // the brand indigo — the system's own focus ring is drawn around
         // AppKit's field, and this one is ours.
         .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
+            DS.shape
+                .fill(DS.restingFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(searchFocused ? Brand.indigoLabel : Color.primary.opacity(0.12),
+            DS.shape
+                .strokeBorder(searchFocused ? DS.accentText : Color.primary.opacity(0.12),
                               lineWidth: searchFocused ? 1.5 : 1)
         )
     }
 
     private var liveRow: some View {
+        // No clock here: elapsed time lives once per surface, and this
+        // window's home for it is the header (12d) — a second clock one inch
+        // away could visibly disagree with it by a second.
         HStack(spacing: 8) {
             PulsingDot()
-            VStack(alignment: .leading, spacing: 1) {
-                Text(L("Recording now"))
-                    .font(.callout.weight(.medium))
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(elapsed(at: context.date))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Text(L("Recording now"))
+                .font(.callout.weight(.medium))
         }
         .padding(.vertical, 2)
+    }
+
+    /// The design's selection (13a): a 12% accent tint with a 3 px accent
+    /// edge on the left — never a filled row. Tap selects; the row keeps its
+    /// text colours in both states, which is the point of a tint.
+    @ViewBuilder
+    private func selectable<V: View>(_ content: V, _ value: Selection) -> some View {
+        SelectableRow(selected: selection == value,
+                      tap: { selection = value }) { content }
+            .id(value)
+    }
+
+    /// Everything currently in the list, top to bottom — the path the arrow
+    /// keys walk.
+    private func visibleSelections() -> [Selection] {
+        var out: [Selection] = []
+        if session.isActive { out.append(.live) }
+        for group in groupedMeetings { out += group.meetings.map { .archived($0.url) } }
+        out += related.map(\.selection)
+        if Settings.shared.askArchive,
+           !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            out.append(.answer(query))
+        }
+        return out
+    }
+
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        guard direction == .up || direction == .down else { return }
+        let order = visibleSelections()
+        guard !order.isEmpty else { return }
+        guard let current = selection, let idx = order.firstIndex(of: current) else {
+            selection = direction == .down ? order.first : order.last
+            return
+        }
+        let next = direction == .down ? min(idx + 1, order.count - 1) : max(idx - 1, 0)
+        selection = order[next]
     }
 
     private func meetingRow(_ meeting: ArchivedMeeting) -> some View {
@@ -489,8 +764,8 @@ struct MeetingsView: View {
                             .font(.caption2)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(Capsule().fill(Brand.indigoLabel.opacity(0.12)))
-                            .foregroundStyle(Brand.indigoLabel)
+                            .background(Capsule().fill(DS.accentText.opacity(0.12)))
+                            .foregroundStyle(DS.accentText)
                     }
                 }
                 .lineLimit(1)
@@ -530,7 +805,7 @@ struct MeetingsView: View {
                     // Monospaced, like every other time in this window, so a
                     // column of them lines up.
                     Text(clock(section.time))
-                        .font(.caption.monospacedDigit())
+                        .font(DS.timestamp)
                     Text(hit.meeting.title ?? dayAndTime(hit.meeting.started))
                         .lineLimit(1)
                         .font(.caption)
@@ -560,6 +835,8 @@ struct MeetingsView: View {
         if let duration = meeting.duration, duration >= 1 {
             facts.append(compactDuration(duration))
         }
+        // The platform, when the recording knew it ("· Google Meet").
+        if let source = meeting.source { facts.append(source) }
         return facts
     }
 
@@ -572,27 +849,255 @@ struct MeetingsView: View {
     private var askRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "text.magnifyingglass")
-                .foregroundStyle(Brand.indigoLabel)
-            Text(Lf("Answer this from %@ moments", "\(related.count)"))
+                .foregroundStyle(DS.accentText)
+            // With found moments the row says what the answer will be built
+            // from; without them it still works — the agent goes looking with
+            // its own tools — and says so in one word less.
+            Text(related.isEmpty
+                 ? L("Ask the agent about this")
+                 : Lf("Answer this from %@ moments", "\(related.count)"))
                 .lineLimit(1)
         }
         .padding(.vertical, 2)
     }
 
+    /// The pointer shown in place of the ask row while the agent is off.
+    private var connectTeaserRow: some View {
+        Button {
+            connectQuestion = query
+            showConnect = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.bubble")
+                    .foregroundStyle(DS.accentText)
+                Text(L("The agent could answer this — connect Claude or ChatGPT."))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight()
+        .onAppear { agentOffer.noteShown() }
+    }
+
+    /// The Library block at the top of the sidebar (design t2): Ask, the
+    /// whole archive, the starred shortlist, and the platforms the calls ran
+    /// on. Selection wears the tint-plus-edge, never a filled row (13a).
+    @ViewBuilder
+    private var libraryNav: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(L("Library"))
+                .font(DS.sectionLabel)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+                .padding(.bottom, 3)
+            if Settings.shared.askArchive {
+                navRow(icon: "questionmark.bubble", title: L("Ask"),
+                       selected: selection == .ask) {
+                    askScope = nil
+                    selection = .ask
+                    // One lit row, always (owner's report 2026-08-29: Ask and
+                    // Starred glowed together). Entering Ask retires the list
+                    // filters — they are a place in the library, and Ask is
+                    // another place.
+                    starredOnly = false
+                    recentOnly = false
+                    sourceFilter = nil
+                }
+            }
+            navRow(icon: "rectangle.grid.1x2", title: L("All Meetings"),
+                   count: meetings.count,
+                   selected: selection != .ask && !starredOnly && !recentOnly
+                             && sourceFilter == nil) {
+                starredOnly = false
+                recentOnly = false
+                sourceFilter = nil
+                if selection == .ask, let newest = meetings.first {
+                    selection = .archived(newest.url)
+                }
+            }
+            let starredCount = meetings.filter { MeetingStars.isStarred($0.started) }.count
+            if starredCount > 0 || starredOnly {
+                navRow(icon: starredOnly ? "star.fill" : "star", title: L("Starred"),
+                       count: starredCount, selected: starredOnly) {
+                    starredOnly.toggle()
+                    if starredOnly { recentOnly = false; sourceFilter = nil }
+                    leaveAsk()
+                }
+            }
+            navRow(icon: "clock", title: L("Recently Added"),
+                   selected: recentOnly) {
+                recentOnly.toggle()
+                if recentOnly { starredOnly = false; sourceFilter = nil }
+                leaveAsk()
+            }
+            let sources = sourcesPresent
+            // Shown whenever anything is bucketed at all (design): even one
+            // "Other browser calls" row tells where the archive came from.
+            if !sources.isEmpty || sourceFilter != nil {
+                Text(L("Sources"))
+                    .font(DS.sectionLabel)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+                    .padding(.bottom, 3)
+                ForEach(sources, id: \.name) { source in
+                    let name = source.name == Self.otherSourcesBucket
+                        ? L("Other browser calls") : source.name
+                    navRow(icon: "video", dot: Self.sourceDot(source.name),
+                           title: name, count: source.count,
+                           selected: sourceFilter == source.name) {
+                        sourceFilter = sourceFilter == source.name ? nil : source.name
+                        if sourceFilter != nil { starredOnly = false; recentOnly = false }
+                        leaveAsk()
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, MeetingsChrome.sidebarInset)
+        .padding(.bottom, 6)
+    }
+
+    /// A filter row was clicked while Ask was open: the person asked to SEE
+    /// that slice of the library, so the pane goes back to reading — the same
+    /// move the All Meetings row already makes.
+    private func leaveAsk() {
+        if selection == .ask, let newest = meetings.first {
+            selection = .archived(newest.url)
+        }
+    }
+
+    /// The platform marker dots of the Sources group (design): Meet blue,
+    /// Zoom teal, everything else violet.
+    private static func sourceDot(_ name: String) -> Color {
+        switch name {
+        case "Google Meet": return DS.accent
+        case "Zoom": return DS.you
+        default: return DS.them
+        }
+    }
+
+    private func navRow(icon: String, dot: Color? = nil, title: String,
+                        count: Int? = nil,
+                        selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if let dot {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(dot)
+                        .frame(width: 8, height: 8)
+                        .frame(width: 16)
+                } else {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .frame(width: 16)
+                    .foregroundStyle(selected ? DS.accentText : .secondary)
+                }
+                Text(title)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if let count, count > 0 {
+                    Text("\(count)")
+                        .font(DS.timestamp)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .background(
+            HStack(spacing: 0) {
+                if selected {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(DS.accent)
+                        .frame(width: DS.selectionEdge)
+                }
+                Rectangle().fill(selected ? DS.selectionTint : .clear)
+            }
+        )
+        .hoverHighlight()
+        .clipShape(DS.shape)
+    }
+
     @ViewBuilder
     private var answerPane: some View {
-        AnswerPane(answer: answer) { source in
+        AnswerPane(answer: answer,
+                   suggestions: askSuggestions,
+                   headerNote: askHeaderNote,
+                   open: { source in
             // Going to the passage is an ordinary selection, so the answer
             // stays behind in the list and one click comes back to it.
             selection = source.time.map { .moment(source.url, $0) } ?? .archived(source.url)
+        }, followUp: { question in
+            // One Ask, always global (16): no new passages — a question typed
+            // in the pane leans on the conversation and on the agent's own
+            // tools, which search and read the whole archive.
+            answer.ask(question, from: [], using: oracle)
+        }, newChat: {
+            answer.clear()
+            askScope = nil
+        }, onAddKey: {
+            connectQuestion = answer.lastQuestion ?? ""
+        }, stats: askStats)
+    }
+
+    /// A copy of the transcript wherever the user points — the .md is the
+    /// export format (it IS the file), so this is a save panel and a copy.
+    private func exportTranscript(_ meeting: ArchivedMeeting) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = meeting.url.lastPathComponent
+        panel.canCreateDirectories = true
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url else { return }
+            try? FileManager.default.removeItem(at: destination)
+            try? FileManager.default.copyItem(at: meeting.url, to: destination)
         }
+    }
+
+    /// The honest line under the Ask title: search is local, the written
+    /// answer is not — it comes from the user's provider with their own key
+    /// (design 16; the header must never claim "answered on this Mac").
+    private var askHeaderNote: String? {
+        guard let provider = Settings.shared.askProvider else { return nil }
+        return meetings.isEmpty
+            ? Lf("Quotes come from your transcripts; the written answer comes from %@ with your own key.", provider.productName)
+            : Lf("Across all %d meetings · answered by %@", meetings.count, provider.productName)
+    }
+
+    /// Seeds for the cold conversation — a blank prompt box is a question
+    /// nobody can answer (the articulation barrier), so the pane opens with
+    /// three the archive can. The third names the newest titled meeting: the
+    /// one suggestion that proves the agent has read THIS person's calls.
+    private var askSuggestions: [String] {
+        var out = [L("What did I promise, and to whom?"),
+                   L("What decisions were made this week?")]
+        if let titled = meetings.compactMap(\.title).first {
+            out.append(Lf("What was “%@” about?", titled))
+        }
+        return out
     }
 
     @ViewBuilder
     private var detail: some View {
         switch selection {
-        case .answer:
-            answerPane
+        case .answer, .ask:
+            // The Ask view brings its conversation column (11j): past
+            // questions, titled by their first one, opened without re-asking.
+            HStack(spacing: 0) {
+                ConversationsColumn(answer: answer,
+                                    onOpen: { answer.restore($0) },
+                                    onNew: { answer.clear() })
+                    .frame(width: 268)
+                Divider()
+                answerPane
+            }
         case .live:
             // A running meeting has no title yet (it is written when the
             // transcript closes), and its file is open for appending — so
@@ -662,18 +1167,52 @@ struct MeetingsView: View {
                                overviewSummary: meeting.summary,
                                overviewSections: meeting.sections,
                                onRecut: { recut(meeting, to: $0) },
+                               onGrow: { detail, done in growCut(meeting, to: detail, done: done) },
                                recutting: recutting == meeting.url,
                                recutLevel: sectionLevel[meeting.url],
                                recutLevels: SectionCache.levels(for: meeting.url,
                                                                 entries: meeting.entries),
+                               cuts: {
+                                   var out: [MeetingPolicy.SectionDetail: [TranscriptSection]] = [:]
+                                   for level in MeetingPolicy.SectionDetail.allCases {
+                                       if let cut = SectionCache.cut(meeting.url, meeting.entries, level) {
+                                           out[level] = cut
+                                       }
+                                   }
+                                   return out
+                               }(),
+                               durationMinutes: Int((meeting.duration ?? 0) / 60),
 
                                notice: declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
-                                   : nil) {
+                                   : nil,
+                               // One Ask, never scoped (16): a transcript's
+                               // ask affordance is a door to the single
+                               // global Ask — the answer names the meeting
+                               // itself, in prose and in every quote.
+                               onAsk: Settings.shared.askArchive ? {
+                                   askScope = nil
+                                   answer.scopePath = nil
+                                   selection = .ask
+                               } : nil,
+                               starred: MeetingStars.isStarred(meeting.started),
+                               onStar: {
+                                   MeetingStars.toggle(meeting.started)
+                                   starRevision += 1
+                                   reload()
+                               },
+                               onExport: { exportTranscript(meeting) }) {
+                    Button(MeetingStars.isStarred(meeting.started)
+                           ? L("Unstar meeting") : L("Star meeting")) {
+                        MeetingStars.toggle(meeting.started)
+                        starRevision += 1
+                        reload()
+                    }
                     Button(L("Rename meeting…")) { renamingFromMenu = true }
                     Button(L("Copy transcript")) {
                         TranscriptCopy.put(TranscriptCopy.transcript(meeting.entries))
                     }
+                    Button(L("Export transcript…")) { exportTranscript(meeting) }
                     Button(L("Show in Finder")) {
                         NSWorkspace.shared.activateFileViewerSelecting([meeting.url])
                     }
@@ -688,8 +1227,47 @@ struct MeetingsView: View {
                 placeholder
             }
         case nil:
-            placeholder
+            // The brief-portal is retired (the design's launch view is Ask):
+            // with nothing selected the pane shows the first-run empty state
+            // (10a) or the plain placeholder, never a dashboard.
+            if meetings.isEmpty, !session.isActive {
+                firstRunEmpty
+            } else {
+                placeholder
+            }
         }
+    }
+
+    /// The whole window before anything was ever recorded (design 10a): the
+    /// monochrome mark and one sentence, with the way to start.
+    private var firstRunEmpty: some View {
+        VStack(spacing: 13) {
+            GlyphMark(state: .idle, color: .primary.opacity(0.22), width: 46)
+            Text(L("No meetings yet"))
+                .font(.system(size: 15, weight: .semibold))
+            Text(L("Dictate can record a browser call and keep the transcript on this Mac. Start one from the menu bar when your next call begins — you will be asked for consent once."))
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 380)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button(L("Start Recording a Meeting")) { onRecord() }
+                    .buttonStyle(.dsPrimary)
+                Button(L("How this works")) { showingHowItWorks = true }
+                    .buttonStyle(.dsRegular)
+                    .popover(isPresented: $showingHowItWorks, arrowEdge: .bottom) {
+                        Text(L("Join a call in the browser, then start recording. Dictate captures your microphone and the call audio, transcribes both on this Mac, and keeps the transcript here. Nothing is uploaded."))
+                            .font(.system(size: 12))
+                            .lineSpacing(3)
+                            .frame(width: 280, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(14)
+                    }
+            }
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Nothing selected — but the window still has to look like the same
@@ -710,8 +1288,10 @@ struct MeetingsView: View {
             Divider()
             VStack(spacing: 10) {
                 // Still: nothing is happening, and an ornament that dances on
-                // an empty pane is the window asking to be looked at.
-                WaveMark(height: 40, animated: false).opacity(0.45)
+                // an empty pane is the window asking to be looked at. The mark
+                // is the identity glyph — the one drawing, every surface.
+                GlyphMark(state: session.isActive ? .meeting : .idle,
+                          color: .primary.opacity(0.25), width: 46)
                 Text(session.isActive ? L("Recording now") : L("Select a meeting"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -725,7 +1305,35 @@ struct MeetingsView: View {
     // MARK: - Data
 
     private var filtered: [ArchivedMeeting] {
-        MeetingSearch.literal(meetings, query: query)
+        var out = MeetingSearch.literal(meetings, query: query)
+        if starredOnly { out = out.filter { MeetingStars.isStarred($0.started) } }
+        if recentOnly {
+            let cutoff = Date().addingTimeInterval(-7 * 86400)
+            out = out.filter { $0.started >= cutoff }
+        }
+        if let sourceFilter {
+            out = out.filter { ($0.source ?? Self.otherSourcesBucket) == sourceFilter }
+        }
+        return out
+    }
+
+    /// The bucket every un-attributed call falls into ("Other browser calls"
+    /// in the sidebar) — a browser holds the mic for every web call alike, so
+    /// most history lives here honestly.
+    static let otherSourcesBucket = "…"
+
+    /// Platforms present in the archive, most-used first, with the "other"
+    /// bucket last when anything is unattributed.
+    private var sourcesPresent: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for meeting in meetings { counts[meeting.source ?? Self.otherSourcesBucket, default: 0] += 1 }
+        var out = counts.filter { $0.key != Self.otherSourcesBucket }
+            .map { (name: $0.key, count: $0.value) }
+            .sorted { $0.count > $1.count }
+        if let other = counts[Self.otherSourcesBucket] {
+            out.append((name: Self.otherSourcesBucket, count: other))
+        }
+        return out
     }
 
     /// Meetings that are ABOUT what was typed without containing it.
@@ -750,6 +1358,16 @@ struct MeetingsView: View {
     ///
     /// It stays short enough for the source card to be checked by looking
     /// rather than by reading, which is the whole point of showing it.
+    /// "38 meetings · 26 h of audio" for the docked composer (design).
+    private var askStats: String? {
+        guard !meetings.isEmpty else { return nil }
+        let seconds = meetings.reduce(0.0) { $0 + ($1.duration ?? 0) }
+        let hours = Int((seconds / 3600).rounded())
+        return hours >= 1
+            ? Lf("%d meetings · %d h of audio", meetings.count, hours)
+            : Lf("%d meetings · %d min of audio", meetings.count, max(1, Int(seconds / 60)))
+    }
+
     private func sources(from hits: [RelatedHit]) -> [MeetingSource] {
         hits.compactMap { hit -> MeetingSource? in
             let entries = hit.meeting.entries
@@ -767,7 +1385,9 @@ struct MeetingsView: View {
                 date: DateFormatter.localizedString(from: hit.meeting.started,
                                                     dateStyle: .medium, timeStyle: .none),
                 time: hit.section?.time,
-                text: lines.map { "[\($0.time)] \($0.speaker): \($0.text)" }.joined(separator: "\n"))
+                text: lines.map { "[\($0.time)] \($0.speaker): \($0.text)" }.joined(separator: "\n"),
+                channelIsYou: lines.first?.isYou,
+                channelLabel: lines.first?.speaker)
         }
     }
 
@@ -788,6 +1408,21 @@ struct MeetingsView: View {
     /// model time and answers a question nobody asked. This is somebody
     /// looking at THIS call and wanting a finer map of it, and it takes the
     /// seconds a dozen short model calls take.
+    /// Generates a granularity into the cache WITHOUT touching the file —
+    /// the outline's depth control needs the cut, not a rewritten document.
+    private func growCut(_ meeting: ArchivedMeeting, to detail: MeetingPolicy.SectionDetail,
+                         done: @escaping () -> Void) {
+        if SectionCache.cut(meeting.url, meeting.entries, detail) != nil { done(); return }
+        Task { @MainActor in
+            let sections = await MeetingSectioner.sections(for: meeting.entries, detail: detail)
+            if !sections.isEmpty {
+                SectionCache.remember(sections, for: meeting.url, meeting.entries, detail)
+            }
+            reload()
+            done()
+        }
+    }
+
     private func recut(_ meeting: ArchivedMeeting, to detail: MeetingPolicy.SectionDetail) {
         guard recutting == nil else { return }
         // A cut already made is put back instantly. Half a minute is a fair
@@ -813,9 +1448,35 @@ struct MeetingsView: View {
 
     @StateObject private var answer = MeetingAnswer()
 
-    /// Who answers. One line to change when a hosted tier arrives — everything
-    /// above this knows only the protocol.
-    private var oracle: MeetingOracle { ClaudeAPIOracle() }
+    /// The meeting the conversation is currently scoped to — set by the
+    /// transcript header's ask button, cleared by the portal, the pinned
+    /// entry and New chat. The scope rides into the prompt (see
+    /// scopedSources), not into the UI state machine.
+    @State private var askScope: ArchivedMeeting?
+
+    /// Library filters (sidebar): the starred shortlist and one platform.
+    @State private var starredOnly = false
+    /// The sidebar's Recently Added filter (design): the last seven days.
+    @State private var recentOnly = false
+    @State private var sourceFilter: String?
+
+    /// The connect sheet, and the question that opened it — asked the moment
+    /// the key verifies, because the first success must be an answer, not a
+    /// stored credential.
+    @ObservedObject private var agentOffer = AgentOffer.shared
+    @State private var showConnect = false
+    @State private var connectQuestion: String?
+
+    /// Who answers — the provider picked in Settings; everything above this
+    /// knows only the protocol.
+    private var oracle: MeetingOracle {
+        switch Settings.shared.askProvider {
+        case .openai: return OpenAIAPIOracle()
+        // Off never reaches here (the ask row is gated on askArchive), and if
+        // it somehow did, an oracle whose key is missing fails politely.
+        case .anthropic, nil: return ClaudeAPIOracle()
+        }
+    }
 
     private var related: [RelatedHit] {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
@@ -1003,11 +1664,9 @@ struct MeetingsView: View {
         if let duration = meeting.duration, duration >= 1 {
             parts.append(compactDuration(duration))
         }
-        // The participants used to be spliced in here as plain text. They are
-        // chips now (see Participant): the same words, in the speaker's own
-        // colour, and each one opens the rename popover its turns already
-        // carry — because the moment you want to fix "Speaker 2" is the moment
-        // you are looking at the header, not twenty minutes up the transcript.
+        // Where the call ran (design: "· Google Meet") — the fact that used
+        // to hide in the list row belongs with the meeting's own facts.
+        if let source = meeting.source { parts.append(source) }
         return parts.joined(separator: " · ")
     }
 
@@ -1070,7 +1729,7 @@ enum MeetingsChrome {
     /// than that band is a point the window's own buttons sit above everything
     /// beside them. At 40 the two centres are 5pt apart, which reads as one
     /// row; at 46 it read as buttons floating over a row.
-    static let headerHeight: CGFloat = 40
+    static let headerHeight: CGFloat = 52
     /// Margin of the transcript pane — its header, its turns and its copy
     /// column all start here.
     static let inset: CGFloat = 14
@@ -1122,14 +1781,14 @@ private struct StopButton: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Capsule().fill(Color.red.opacity(hovering ? 0.18 : 0.10)))
+            .background(Capsule().fill(DS.record.opacity(hovering ? 0.18 : 0.10)))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.red)
+        .foregroundStyle(DS.record)
         .help(L("Stop recording"))
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.1), value: hovering)
+        .animation(.easeOut(duration: DS.fade), value: hovering)
     }
 }
 
@@ -1166,14 +1825,14 @@ private struct ChromeGlyph: View {
             .imageScale(.medium)
             .frame(width: TurnCopy.chipSize, height: TurnCopy.chipSize)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                DS.shape
                     .fill((tint ?? Color.primary).opacity(hovering ? (tint == nil ? 0.08 : 0.16) : 0))
             )
             // Same rule as the copy chip: the target is the square around the
             // chip, so most of what takes the click is invisible padding.
             .frame(width: TurnCopy.targetSize, height: TurnCopy.targetSize)
             .contentShape(Rectangle())
-            .animation(.easeOut(duration: 0.1), value: hovering)
+            .animation(.easeOut(duration: DS.fade), value: hovering)
     }
 }
 
@@ -1201,7 +1860,7 @@ private struct ChromeGlyph: View {
 /// paper, which is exactly the relationship macOS itself draws — sidebar
 /// darker than the content in light, lighter than it in dark — without a
 /// single hardcoded grey to keep in step with two appearances by hand.
-private struct SidebarMaterial: View {
+struct SidebarMaterial: View {
     var body: some View {
         Color(nsColor: .windowBackgroundColor)
             .overlay(Color.primary.opacity(0.05))
@@ -1278,7 +1937,7 @@ private struct TextModelOffer: View {
                 // and 2.5 GB behind a spinner is indistinguishable from a hang.
                 ProgressView(value: fraction).frame(width: 90)
                 Text("\(Int(fraction * 100))%")
-                    .font(.caption.monospacedDigit())
+                    .font(DS.timestamp)
                     .foregroundStyle(.secondary)
             }
         case .verifying:
@@ -1358,6 +2017,9 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// the control because that is where somebody is looking at the result;
     /// the work belongs to whoever owns the file, so it is handed in.
     var onRecut: ((MeetingPolicy.SectionDetail) -> Void)? = nil
+    /// Fills a missing granularity into the cache (no file rewrite) and calls
+    /// back when it is there — the depth control's background growth.
+    var onGrow: ((MeetingPolicy.SectionDetail, @escaping () -> Void) -> Void)? = nil
     /// True while that is happening, so the block can say so instead of
     /// looking broken for the twenty seconds a recut takes.
     var recutting = false
@@ -1368,10 +2030,24 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// Which granularities this meeting actually has. A short call has one
     /// shape; offering three would be a control that lies about what it can do.
     var recutLevels: Set<MeetingPolicy.SectionDetail> = []
+    /// Every cut already generated for this meeting (SectionCache) — the raw
+    /// material the outline nests from.
+    var cuts: [MeetingPolicy.SectionDetail: [TranscriptSection]] = [:]
+    /// The meeting's length in minutes — what decides how many levels the
+    /// outline is allowed (design MeetingOutline).
+    var durationMinutes: Int = 0
     /// A one-line notice under the header — the offer of the text model, on
     /// the one meeting the built-in one refused to describe. nil is the
     /// ordinary case, which is every meeting and every live call.
     var notice: AnyView? = nil
+    /// Opens the conversation scoped to this meeting. nil while the agent is
+    /// off (absent, not greyed) and for live calls.
+    var onAsk: (() -> Void)? = nil
+    /// The header's own quick actions for a finished meeting (design detail
+    /// bar): the star and the export, with names for VoiceOver (8a).
+    var starred: Bool = false
+    var onStar: (() -> Void)? = nil
+    var onExport: (() -> Void)? = nil
     /// What the ⋯ menu offers for this transcript. Passed as items rather than
     /// as a whole menu so both call sites get the identical button.
     @ViewBuilder let menuItems: () -> MenuItems
@@ -1380,7 +2056,21 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// Whether the contents are open. Per pane rather than remembered: a
     /// choice about one meeting's shape is not a preference about all of them,
     /// and it resets when you move on, which is what you would want anyway.
-    @State private var contentsExpanded = false
+    /// The outline opens FOLDED on every meeting (owner's call 2026-08-28):
+    /// expanding is a deliberate act and is not remembered.
+    @State private var outlineFolded = true
+    /// The reading scale (design MeetingOutline: the three-A tray). Global —
+    /// a reading preference follows the eyes, not the meeting.
+    @State private var textScale = DS.TextScale.current
+    /// Fewer / Standard / More — how deep the tree SHOWS (owner's report:
+    /// the control used to re-cut the file and visibly change nothing).
+    @State private var outlineDepth: OutlineDepth = .standard
+    /// Which collapsed branches are open right now.
+    @State private var expandedBranches: Set<String> = []
+    /// A missing granularity is being generated in the background.
+    @State private var growingOutline = false
+
+    enum OutlineDepth: Int, CaseIterable { case fewer = 1, standard = 2, more = 3 }
     @State private var retitling = false
     @State private var titleDraft = ""
     /// Which participant's rename popover is open — one at a time, by name.
@@ -1428,15 +2118,14 @@ private struct TranscriptPane<MenuItems: View>: View {
     var body: some View {
         if DBG.trace { let _ = Self._printChanges() }
         return VStack(spacing: 0) {
-            header
-            Divider()
-            // A row of its own, and not part of the subtitle: that line is
-            // already one unwrappable row fighting for width between the date
-            // and the participants, and tags would be the thing that finally
-            // pushed the two panes' headers out of alignment.
-            if let onTags {
-                TagRow(tags: tags, known: knownTags, onChange: onTags,
-                       onFilter: { onTagFilter?($0) })
+            // Archived meetings carry the MeetingOutline head: the title at
+            // reading size inside the pane, the channel legend under it. A
+            // live call keeps the compact chrome header — its cast and
+            // length are still being written.
+            if live == nil, !entries.isEmpty {
+                archivedHead
+            } else {
+                header
                 Divider()
             }
             if let notice {
@@ -1452,6 +2141,25 @@ private struct TranscriptPane<MenuItems: View>: View {
                 Divider()
                 StatusStrip(session: live)
             }
+            if live == nil, let onAsk {
+                Divider()
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(L("Questions are never limited to one meeting. Ask searches everything you have recorded and the answer names the meeting and the person."))
+                        .font(DS.helpText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button(L("Open Ask")) { onAsk() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DS.accentText)
+                        .hoverHighlight(radius: DS.radiusChip)
+                        .pointerStyle(.link)
+                }
+                .padding(.horizontal, MeetingsChrome.inset)
+                .padding(.top, 11)
+                .padding(.bottom, 13)
+            }
         }
         // The transcript is a reading surface — the paper colour, next to the
         // sidebar's material. Two surfaces, told apart by what they are for.
@@ -1462,6 +2170,113 @@ private struct TranscriptPane<MenuItems: View>: View {
             titleDraft = title
             retitling = true
         }
+    }
+
+    /// The archived meeting's head (design MeetingOutline): the title at
+    /// 19 pt inside the pane — this surface's own headline, not window
+    /// chrome — the date line under it, the actions at the right, and the
+    /// channel legend with the honesty chip, closed by a hairline.
+    private var archivedHead: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let onRetitle {
+                        Button {
+                            titleDraft = title
+                            retitling = true
+                        } label: {
+                            Text(title)
+                                .font(.system(size: 19, weight: .bold))
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                        }
+                        .buttonStyle(.plain)
+                        .hoverHighlight(radius: 5)
+                        .pointerStyle(.link)
+                        .padding(.horizontal, -4)
+                        .help(L("Rename this meeting"))
+                        .popover(isPresented: $retitling, arrowEdge: .bottom) {
+                            retitlePopover(onRetitle)
+                        }
+                    } else {
+                        Text(title)
+                            .font(.system(size: 19, weight: .bold))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 11.5).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 8) {
+                    // The reading-size tray (design MeetingOutline): part of
+                    // the head's actions, parted from them by a hair of rail.
+                    DSTextSizeTray(scale: Binding(
+                        get: { textScale },
+                        set: { newValue in
+                            textScale = newValue
+                            Settings.shared.transcriptTextSize = newValue.rawValue
+                        }))
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.12))
+                        .frame(width: 0.5, height: 20)
+                    HStack(spacing: 2) {
+                        if let onStar {
+                            ChromeButton(icon: starred ? "star.fill" : "star",
+                                         help: starred ? L("Unstar meeting") : L("Star meeting"),
+                                         tint: starred ? DS.accentText : nil,
+                                         action: onStar)
+                        }
+                        if let onExport {
+                            ChromeButton(icon: "square.and.arrow.up",
+                                         help: L("Export transcript…"),
+                                         action: onExport)
+                        }
+                        menuButton
+                    }
+                }
+                .padding(.top, 2)
+            }
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(L("Voices"))
+                        .font(DS.sectionLabel)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+                    FlowRow(spacing: 6) {
+                        ForEach(speakingShares, id: \.name) { share in
+                            VoiceChip(name: share.name, isYou: share.isYou,
+                                      minutes: share.minutes, onRename: onRename)
+                        }
+                    }
+                }
+                Spacer(minLength: 8)
+                HStack(spacing: 7) {
+                    Text(L("Recognized on this Mac"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("whisper-large-v3-turbo")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .frame(height: 19)
+                        .background(RoundedRectangle(cornerRadius: 5)
+                            .fill(.quaternary.opacity(0.5)))
+                }
+                .padding(.top, 18)
+            }
+            .padding(.bottom, 14)
+        }
+        .padding(.top, 16)
+        .padding(.horizontal, 24)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     /// One row, one height, the same margins as the turns below it: the
@@ -1487,15 +2302,20 @@ private struct TranscriptPane<MenuItems: View>: View {
                         titleDraft = title
                         retitling = true
                     } label: {
-                        Text(title).font(.headline).lineLimit(1)
+                        Text(title).font(DS.windowTitle).lineLimit(1)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
                     }
                     .buttonStyle(.plain)
+                    .hoverHighlight(radius: 5)
+                    .pointerStyle(.link)
+                    .padding(.horizontal, -4)
                     .help(L("Rename this meeting"))
                     .popover(isPresented: $retitling, arrowEdge: .bottom) {
                         retitlePopover(onRetitle)
                     }
                 } else {
-                    Text(title).font(.headline).lineLimit(1)
+                    Text(title).font(DS.windowTitle).lineLimit(1)
                 }
                 subtitleLine
             }
@@ -1507,10 +2327,23 @@ private struct TranscriptPane<MenuItems: View>: View {
                                 Int(context.date.timeIntervalSince(live.startedAt)) % 60))
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                        .animation(.snappy(duration: DS.reveal), value: context.date)
                 }
                 if let onStop {
                     StopButton(action: onStop)
                 }
+            }
+            if let onStar {
+                ChromeButton(icon: starred ? "star.fill" : "star",
+                             help: starred ? L("Unstar meeting") : L("Star meeting"),
+                             tint: starred ? DS.accentText : nil,
+                             action: onStar)
+            }
+            if let onExport {
+                ChromeButton(icon: "square.and.arrow.up",
+                             help: L("Export transcript…"),
+                             action: onExport)
             }
             menuButton
         }
@@ -1529,6 +2362,57 @@ private struct TranscriptPane<MenuItems: View>: View {
         .padding(.trailing, MeetingsChrome.inset)
     }
 
+    /// Seconds-of-day of the meeting's first entry — the zero the relative
+    /// stamps count from.
+    private var startSeconds: Int? {
+        entries.first.flatMap { MeetingArchive.seconds(fromClock: $0.time) }
+    }
+
+    /// "02:12" from the wall clock — the design's meeting-relative stamp.
+    /// Falls back to the wall clock when either end fails to parse.
+    private func relativeStamp(_ clock: String) -> String {
+        guard let sec = MeetingArchive.seconds(fromClock: clock),
+              let zero = startSeconds else { return clock }
+        let d = (sec - zero + 86400) % 86400
+        return d >= 3600
+            ? String(format: "%d:%02d:%02d", d / 3600, (d % 3600) / 60, d % 60)
+            : String(format: "%02d:%02d", d / 60, d % 60)
+    }
+
+    /// Rough speaking share per side of the call: each entry counts until the
+    /// next one starts, capped at 25 s (a cap because the gap after the LAST
+    /// word of a monologue is silence, not speech). An estimate presented as
+    /// one ("~14 min") — good enough for "who did the talking".
+    private var speakingShares: [(name: String, isYou: Bool, minutes: Int)] {
+        var seconds: [String: Int] = [:]
+        var isYou: [String: Bool] = [:]
+        var order: [String] = []
+        for (i, entry) in entries.enumerated() {
+            guard let start = MeetingArchive.seconds(fromClock: entry.time) else { continue }
+            let next = i + 1 < entries.count
+                ? MeetingArchive.seconds(fromClock: entries[i + 1].time) : nil
+            let span = min(max((next ?? start + 10) - start, 2), 25)
+            if seconds[entry.speaker] == nil { order.append(entry.speaker) }
+            seconds[entry.speaker, default: 0] += span
+            isYou[entry.speaker] = entry.isYou
+        }
+        return order.map { (name: $0, isYou: isYou[$0] ?? false,
+                            minutes: max(1, (seconds[$0] ?? 0) / 60)) }
+    }
+
+    /// The legend's two channels (design): everything of yours on one dot,
+    /// everything of the call's — however many voices — on the other. The
+    /// per-voice split lives in the turns, where the names are.
+    private var channelShares: [(name: String, isYou: Bool, minutes: Int)] {
+        let you = speakingShares.filter(\.isYou).reduce(0) { $0 + $1.minutes }
+        let them = speakingShares.filter { !$0.isYou }.reduce(0) { $0 + $1.minutes }
+        var out: [(String, Bool, Int)] = []
+        if you > 0 { out.append((L("You"), true, you)) }
+        if them > 0 { out.append((L("Call audio"), false, them)) }
+        return out.map { (name: $0.0, isYou: $0.1, minutes: $0.2) }
+    }
+
+
     /// The line under the meeting's name: when it happened, then who was in it.
     ///
     /// ONE line, always. A long German subtitle with five speakers in it used to
@@ -1545,18 +2429,17 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// the width; the turns can always rename a speaker either way.
     @ViewBuilder
     private var subtitleLine: some View {
+        // Facts only (design): date · length · source. The speaker chips are
+        // gone from here — a four-voice call turned the subtitle into a
+        // wrapping chip pile, and renaming lives on the turns anyway.
         let facts = subtitle ?? ""
-        if !facts.isEmpty || !participants.isEmpty {
-            ViewThatFits(in: .horizontal) {
-                chips(leadingFacts: facts)
-                chips(leadingFacts: "")
-                Text(facts)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .frame(height: 16)
+        if !facts.isEmpty {
+            Text(facts)
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(height: 14)
         }
     }
 
@@ -1602,32 +2485,55 @@ private struct TranscriptPane<MenuItems: View>: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
                 .onSubmit { retitling = false; commit(titleDraft) }
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
                 Button(L("Cancel")) { retitling = false }
+                    .buttonStyle(.dsSmall)
                 Button(L("Save")) { retitling = false; commit(titleDraft) }
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.dsSmall)
             }
         }
         .padding(12)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             Spacer()
             // Still even during a live call, which is the case this was most
             // tempting to animate. Measured at the size it actually renders,
-            // an animating wave costs ~19% of a core for as long as it is on
+            // an animating mark costs ~19% of a core for as long as it is on
             // screen — and the moment it would be on screen is the top of a
             // call, with Meet, a screen share and Whisper already on the same
             // cores. It would also be saying something the window says twice
             // already and more cheaply: the header carries the recording dot
             // and the running time, and the status strip below carries a live
             // level meter and the word "Listening…". The mark is a mark.
-            WaveMark(height: 34, animated: false).opacity(0.5)
-            Text(live != nil ? L("Waiting for speech…") : L("This transcript is empty"))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            GlyphMark(state: live != nil ? .meeting : .idle,
+                      color: .primary.opacity(0.22), width: 46)
+            if live != nil {
+                Text(L("Waiting for speech…"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                // An archived recording with no words in it (design: noSpeech).
+                // Named as a diagnosis, not shrugged off as "empty": in the
+                // field this is almost always the call audio never arriving.
+                Text(L("Nothing was said, or nothing was heard"))
+                    .font(.system(size: 15, weight: .semibold))
+                Text(L("The recording ran, but no speech was recognized on either side. Usually this means the call audio was never captured — a browser tab without audio permission, or the wrong output device."))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(L("Check Audio Setup")) {
+                    NSWorkspace.shared.open(URL(
+                        string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!)
+                }
+                .buttonStyle(.dsRegular)
+                .padding(.top, 2)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -1647,120 +2553,265 @@ private struct TranscriptPane<MenuItems: View>: View {
     /// words. Scroll down and it is gone.
     @ViewBuilder
     private func overview(jump: @escaping (String) -> Void) -> some View {
-        if overviewSummary != nil || !overviewSections.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                if let overviewSummary {
-                    // A rule down the side, not a bigger face.
-                    //
-                    // Size was tried and does not work here: everything around
-                    // this is prose too, so one step up reads as a slightly
-                    // louder paragraph rather than as a different kind of
-                    // thing. What the eye needs is a signal of a different
-                    // ORDER — and a coloured rule beside a block is the mark
-                    // typesetting has used for the standfirst since long
-                    // before screens. It also stays clear of the contents
-                    // below, which is marked by a fill: two blocks, two
-                    // different devices, no competition between them.
-                    HStack(alignment: .top, spacing: 10) {
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(Brand.indigoLabel.opacity(0.55))
-                            .frame(width: 3)
-                        Text(overviewSummary)
-                            .font(.body)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
+            // Tags first (design MeetingOutline): part of the document's
+            // head matter, labelled like its siblings.
+            if let onTags {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(L("Tags"))
+                        .font(DS.sectionLabel)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+                    TagRow(tags: tags, known: knownTags, onChange: onTags,
+                           onFilter: { onTagFilter?($0) })
                 }
-                if !overviewSections.isEmpty {
-                    contentsBlock(jump: jump)
-                }
-                // Not a hairline. Above it is what this meeting WAS; below it
-                // is what was said, and the eye should not have to work out
-                // where one becomes the other — which was the whole complaint.
-                Rectangle()
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(height: 1)
-                    .padding(.top, 2)
             }
-            .padding(.bottom, 10)
+            if let overviewSummary {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L("Summary"))
+                        .font(DS.sectionLabel)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+                    Text(overviewSummary)
+                        .font(.system(size: textScale.body))
+                        .lineSpacing(textScale.extraLeading / 2)
+                        .frame(maxWidth: DS.readingMeasure, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+            outlineBlock(jump: jump)
+            // Not a hairline. Above it is what this meeting WAS; below it
+            // is what was said, and the eye should not have to work out
+            // where one becomes the other — which was the whole complaint.
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
+                .padding(.top, 2)
+        }
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
+
+    /// One outline row: the stamp in accent, the line, an optional trailing
+    /// figure (a section's span, a collapsed branch's count).
+    private func outlineRow(time: String, line: String, weight: Font,
+                            ink: Color, trailing: String? = nil,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(relativeStamp(time))
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(DS.accentText)
+                    .frame(width: 44, alignment: .leading)
+                    .help(time)
+                Text(line)
+                    .font(weight)
+                    .foregroundStyle(ink)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let trailing {
+                    Spacer(minLength: 8)
+                    Text(trailing)
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight(radius: 7)
+        .padding(.horizontal, -8)
+        .pointerStyle(.link)
+    }
+
+    /// The rail an indented level hangs from (design: 0.5 pt line).
+    private func rail<V: View>(@ViewBuilder _ content: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 6) { content() }
+            .padding(.leading, 16)
+            .overlay(alignment: .leading) {
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 0.5)
+            }
+            .padding(.leading, 20)
+    }
+
+    /// The navigation (design MeetingOutline). Folded on every open; the
+    /// depth control decides how much of the tree SHOWS — Fewer is sections
+    /// alone, Standard opens one level, More opens everything — and a depth
+    /// the cuts cannot serve yet is grown in the background under shimmer
+    /// rows. Under ten minutes there is nothing to navigate at all.
+    @ViewBuilder
+    private func outlineBlock(jump: @escaping (String) -> Void) -> some View {
+        let outline = MeetingOutlineModel.build(
+            cuts: effectiveCuts, minutes: durationMinutes)
+        if !outline.nodes.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Text(outlineEyebrow(outline))
+                        .font(DS.sectionLabel)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+                    if !outlineFolded {
+                        DSSegmented(options: [
+                            (OutlineDepth.fewer, L("Fewer")),
+                            (OutlineDepth.standard, L("Standard")),
+                            (OutlineDepth.more, L("More")),
+                        ], selection: $outlineDepth)
+                        .onChange(of: outlineDepth) { _ in growForDepth(outline) }
+                        if growingOutline {
+                            ProgressView().controlSize(.small).scaleEffect(0.6)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Button(outlineFolded ? L("Show outline") : L("Hide outline")) {
+                        withAnimation(.easeOut(duration: DS.fade)) {
+                            outlineFolded.toggle()
+                        }
+                        if !outlineFolded { growForDepth(outline) }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(DS.accentText)
+                    .hoverHighlight(radius: DS.radiusChip)
+                    .pointerStyle(.link)
+                }
+                if !outlineFolded {
+                    outlineTree(outline, jump: jump)
+                        .frame(maxWidth: DS.readingMeasure, alignment: .leading)
+                    if growingOutline { shimmerRows }
+                }
+            }
         }
     }
 
-    /// The contents, as an index rather than as more prose.
-    ///
-    /// It used to sit here as a bare list one size below the summary, between
-    /// two blocks of body text, and the three zones read as one texture. The
-    /// fix is not a bigger heading: it is admitting that this is a DIFFERENT
-    /// KIND of thing. A list you jump from is furniture, not reading, so it
-    /// gets a fill of its own, smaller type and tighter rows — one object on
-    /// the page instead of sixteen lines pretending to be sentences.
-    ///
-    /// And it collapses. Sixteen moments at reading size fill the pane of a
-    /// 64-minute call, so the transcript — the thing the file exists for —
-    /// begins below the fold.
-    @ViewBuilder
-    private func contentsBlock(jump: @escaping (String) -> Void) -> some View {
-        let all = overviewSections
-        // Four fits a short call whole and leaves a long one's transcript on
-        // screen. A local constant, not a static: TranscriptPane is generic
-        // over its menu items and cannot hold stored type properties.
-        let collapsed = 4
-        let shown = contentsExpanded ? all : Array(all.prefix(collapsed))
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 6) {
-                Text(Lf("%@ moments", "\(all.count)"))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                if all.count > collapsed {
-                    Button(contentsExpanded ? L("Show less") : L("Show all")) {
-                        withAnimation(.easeOut(duration: 0.15)) { contentsExpanded.toggle() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(Brand.indigoLabel)
+    /// How deep the current duration is ALLOWED to go (design: two levels to
+    /// forty minutes, three past it).
+    private var allowedDepth: Int { durationMinutes > 40 ? 3 : 2 }
+
+    /// The depth control asked for more than the cuts can serve — grow the
+    /// next missing granularity in the background.
+    private func growForDepth(_ outline: MeetingOutlineModel) {
+        guard let onGrow, !growingOutline else { return }
+        let want = min(outlineDepth.rawValue, allowedDepth)
+        guard outline.levels < want else { return }
+        let order: [MeetingPolicy.SectionDetail] = [.coarse, .standard, .fine]
+        guard let missing = order.first(where: { effectiveCuts[$0]?.isEmpty ?? true })
+        else { return }
+        growingOutline = true
+        onGrow(missing) { growingOutline = false }
+    }
+
+    /// Placeholder rows while a granularity is being cut (the design's
+    /// shimmer skeleton).
+    private var shimmerRows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(0..<2, id: \.self) { i in
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+                        .frame(width: 44, height: 9)
+                    RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+                        .frame(width: i == 0 ? 260 : 180, height: 9)
                 }
-            }
-            .padding(.bottom, 3)
-            // Only while the block is open. Collapsed, this is a glance at
-            // what a call contained; nobody adjusts granularity from there,
-            // and a control on every closed block would be three words of
-            // furniture on every meeting in the archive.
-            if contentsExpanded, let onRecut, recutLevels.count > 1 {
-                HStack(spacing: 6) {
-                    Picker("", selection: Binding(
-                        get: { recutLevel ?? .standard },
-                        set: { onRecut($0) })) {
-                        if recutLevels.contains(.coarse) {
-                            Text(L("Fewer")).tag(MeetingPolicy.SectionDetail.coarse)
-                        }
-                        if recutLevels.contains(.standard) {
-                            Text(L("Standard")).tag(MeetingPolicy.SectionDetail.standard)
-                        }
-                        if recutLevels.contains(.fine) {
-                            Text(L("More")).tag(MeetingPolicy.SectionDetail.fine)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .disabled(recutting)
-                    if recutting {
-                        ProgressView().controlSize(.small).scaleEffect(0.6)
-                    }
-                }
-                .padding(.bottom, 5)
-            }
-            ForEach(shown, id: \.time) { section in
-                SectionLink(section: section) { jump(section.time) }
             }
         }
-        .padding(9)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-        )
+        .shimmering()
+        .padding(.leading, 8)
+    }
+
+    /// The tree, drawn to the chosen depth. One available level renders in
+    /// the leaf voice — bold section heads exist only once they HAVE children
+    /// (owner's report: a flat list of bold rows read as a bug).
+    @ViewBuilder
+    private func outlineTree(_ outline: MeetingOutlineModel,
+                             jump: @escaping (String) -> Void) -> some View {
+        let depth = min(outlineDepth.rawValue, max(outline.levels, 1))
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(outline.nodes, id: \.section.time) { top in
+                VStack(alignment: .leading, spacing: 3) {
+                    if outline.levels == 1 {
+                        outlineRow(time: top.section.time, line: top.section.line,
+                                   weight: .system(size: textScale.leaf),
+                                   ink: .secondary) { jump(top.section.time) }
+                    } else {
+                        outlineRow(time: top.section.time, line: top.section.line,
+                                   weight: .system(size: 13.5, weight: .semibold),
+                                   ink: .primary,
+                                   trailing: outline.levels == 3 ? top.span : nil) {
+                            jump(top.section.time)
+                        }
+                        if depth >= 2, !top.children.isEmpty {
+                            rail {
+                                ForEach(top.children, id: \.section.time) { mid in
+                                    midBranch(mid, depth: depth, jump: jump)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func midBranch(_ mid: MeetingOutlineModel.Node, depth: Int,
+                           jump: @escaping (String) -> Void) -> some View {
+        if mid.children.isEmpty {
+            outlineRow(time: mid.section.time, line: mid.section.line,
+                       weight: .system(size: textScale.leaf),
+                       ink: .secondary) { jump(mid.section.time) }
+        } else if depth >= 3 || expandedBranches.contains(mid.section.time) {
+            VStack(alignment: .leading, spacing: 2) {
+                outlineRow(time: mid.section.time, line: mid.section.line,
+                           weight: .system(size: 12.5, weight: .medium),
+                           ink: .primary) {
+                    if depth >= 3 { jump(mid.section.time) }
+                    else {
+                        withAnimation(Animation.easeOut(duration: DS.fade)) {
+                            _ = expandedBranches.remove(mid.section.time)
+                        }
+                    }
+                }
+                rail {
+                    ForEach(mid.children, id: \.section.time) { leaf in
+                        outlineRow(time: leaf.section.time, line: leaf.section.line,
+                                   weight: .system(size: textScale.leaf),
+                                   ink: .secondary) { jump(leaf.section.time) }
+                    }
+                }
+            }
+        } else {
+            outlineRow(time: mid.section.time, line: mid.section.line,
+                       weight: .system(size: 12.5, weight: .medium),
+                       ink: .secondary,
+                       trailing: Lf("%d moments", mid.children.count)) {
+                withAnimation(Animation.easeOut(duration: DS.fade)) {
+                    _ = expandedBranches.insert(mid.section.time)
+                }
+            }
+        }
+    }
+
+    private func outlineEyebrow(_ outline: MeetingOutlineModel) -> String {
+        var parts = [L("Outline"), Lf("%d moments", outline.momentCount)]
+        if outline.levels == 3 { parts.append(L("three levels")) }
+        else if outline.levels == 2 { parts.append(L("two levels")) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The cuts on hand: the cache's plus whatever cut the file itself holds
+    /// (the current one, under its level when known — standard otherwise).
+    private var effectiveCuts: [MeetingPolicy.SectionDetail: [TranscriptSection]] {
+        var out = cuts
+        if !overviewSections.isEmpty {
+            out[recutLevel ?? .standard] = overviewSections
+        }
+        return out
     }
 
     private var turnsList: some View {
@@ -1780,9 +2831,15 @@ private struct TranscriptPane<MenuItems: View>: View {
         let missed = max(0, entries.count - frozenAt)
         return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                // The head matter (summary + outline) sits OUTSIDE the lazy
+                // stack: as a lazy row it was unmeasured after a jump to a
+                // moment, and scrolling back up kept landing short of the top
+                // as its real height snapped in (field report 2026-08-28,
+                // second time this class of bug bit).
+                VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 0).id("top")
                     overview { moment in jump(to: moment, proxy) }
+                LazyVStack(alignment: .leading, spacing: textScale.turnGap) {
                     ForEach(cache.turns) { turn in
                         TurnView(turn: turn,
                                  color: cache.color(for: turn),
@@ -1798,6 +2855,8 @@ private struct TranscriptPane<MenuItems: View>: View {
                                  // enough to invalidate the rows when the UI
                                  // language changes (GRABLI).
                                  language: loc.language,
+                                 relative: relativeStamp(turn.time),
+                                 scale: textScale,
                                  onRename: onRename,
                                  onCopy: { turn, attributed in
                                      copy(turn: turn, attributed: attributed)
@@ -1817,6 +2876,8 @@ private struct TranscriptPane<MenuItems: View>: View {
                         listeningLine
                     }
                     Color.clear.frame(height: 1).id("bottom")
+                }
+                .padding(.top, 16)
                 }
                 .padding(.horizontal, MeetingsChrome.inset)
                 .padding(.vertical, 12)
@@ -1878,7 +2939,9 @@ private struct TranscriptPane<MenuItems: View>: View {
             }
             .onChange(of: title) { _ in
                 // A different meeting is a clean slate: nothing is selected,
-                // nothing is being dragged.
+                // nothing is being dragged — and the outline folds again.
+                outlineFolded = true
+                expandedBranches = []
                 allSelected = false
                 interacting = false
                 hovered = nil
@@ -1931,7 +2994,7 @@ private struct TranscriptPane<MenuItems: View>: View {
                 Text(L("Jump to newest")).font(.caption)
                 if missed > 0 {
                     Text("\(missed)")
-                        .font(.caption.monospacedDigit())
+                        .font(DS.timestamp)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1941,6 +3004,7 @@ private struct TranscriptPane<MenuItems: View>: View {
             .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
+        .hoverEmphasis()
         .padding(.bottom, 10)
     }
 
@@ -1955,7 +3019,7 @@ private struct TranscriptPane<MenuItems: View>: View {
             allSelected = false
             interacting = false
             pinned = false
-            withAnimation { proxy.scrollTo("top", anchor: .top) }
+            withAnimation(.easeInOut(duration: DS.reveal)) { proxy.scrollTo("top", anchor: .top) }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.up").imageScale(.small)
@@ -1967,6 +3031,7 @@ private struct TranscriptPane<MenuItems: View>: View {
             .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
+        .hoverEmphasis()
         .padding(.top, 10)
     }
 
@@ -2056,10 +3121,10 @@ private struct TranscriptPane<MenuItems: View>: View {
     private func flashCopied() {
         copyFlash += 1
         let token = copyFlash
-        withAnimation(.easeOut(duration: 0.12)) { copiedVisible = true }
+        withAnimation(.easeOut(duration: DS.fade)) { copiedVisible = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
             guard token == copyFlash else { return }   // a newer copy owns the badge
-            withAnimation(.easeIn(duration: 0.25)) { copiedVisible = false }
+            withAnimation(.easeIn(duration: DS.reveal)) { copiedVisible = false }
         }
     }
 
@@ -2124,23 +3189,58 @@ private struct TranscriptPane<MenuItems: View>: View {
 
     /// The utterance still being spoken — grey and italic, replaced by the
     /// final entry when the window is cut.
+    /// The unconfirmed utterance: upright and at full contrast, marked by a
+    /// coloured rule instead of dim italics (13a) — a hypothesis is still
+    /// words being read, and dimming it punished exactly the line the reader
+    /// is following live. The rule (accent, 2 px) is what says "not final".
     private func currentLine(_ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Circle().fill(Color.red).frame(width: 5, height: 5).padding(.top, 5)
+        HStack(alignment: .top, spacing: 10) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(DS.accent)
+                .frame(width: 2)
             Text(text)
-                .font(.body.italic())
-                .foregroundStyle(.secondary)
+                .font(.system(size: textScale.body))
+                .lineSpacing(textScale.extraLeading / 3)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var listeningLine: some View {
         HStack(spacing: 6) {
-            Circle().fill(Color.red).frame(width: 5, height: 5)
+            Circle().fill(DS.good).frame(width: 5, height: 5)
             Text(L("Listening…")).font(.callout).foregroundStyle(.secondary)
         }
     }
 
+}
+
+/// A draggable column divider: the hairline everyone expects, with a 9 pt
+/// grab zone and the resize cursor. The columns it sits between clamp the
+/// delta — the grip itself has no opinions about widths.
+private struct ColumnGrip: View {
+    let apply: (CGFloat) -> Void
+    let done: () -> Void
+    @State private var last: CGFloat = 0
+
+    var body: some View {
+        Divider()
+            .overlay(
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .pointerStyle(.columnResize)
+                    .gesture(DragGesture(minimumDistance: 1)
+                        .onChanged { value in
+                            apply(value.translation.width - last)
+                            last = value.translation.width
+                        }
+                        .onEnded { _ in
+                            last = 0
+                            done()
+                        })
+            )
+    }
 }
 
 /// One voice in a meeting, as the header shows it.
@@ -2183,10 +3283,10 @@ private struct SpeakerChip: View {
         .padding(.horizontal, 4)
         .padding(.vertical, 1)
         .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.primary.opacity(hovering || isOpen ? 0.08 : 0))
+            DS.chipShape
+                .fill(hovering || isOpen ? DS.hoverFill : .clear)
         )
-        .animation(.easeOut(duration: 0.1), value: hovering)
+        .animation(.easeOut(duration: DS.fade), value: hovering)
 
         // "You" is the person reading this window, not a name the app invented
         // — there is nothing to correct, so it is a fact rather than a control.
@@ -2228,10 +3328,21 @@ private struct SpeakerRenamePopover: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: width)
                 .onSubmit { commit(draft) }
-            HStack {
+            // Plainly said (12h): a voice is an acoustic cluster, not an
+            // identified person — the rename applies to this voice's turns
+            // and the label must not borrow more certainty than that.
+            Text(L("Voices are matched by sound — the name applies only to this voice's turns."))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
                 Spacer()
                 Button(L("Cancel")) { commit(nil) }
-                Button(L("Save")) { commit(draft) }.keyboardShortcut(.defaultAction)
+                    .buttonStyle(.dsSmall)
+                Button(L("Save")) { commit(draft) }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.dsSmall)
             }
         }
         .padding(12)
@@ -2288,23 +3399,18 @@ private final class TurnCache {
     /// The same lookup for a speaker the header knows only by name, so a
     /// participant chip and that speaker's dots are never two different colours.
     func color(named speaker: String, isYou: Bool) -> Color {
-        colors[speaker] ?? (isYou ? Brand.indigoLabel : Brand.cyanLabel)
+        colors[speaker] ?? (isYou ? DS.you : DS.them)
     }
 
-    /// Speakers keep a stable colour within one transcript: the user is
-    /// always the brand indigo, the others take the palette in the order
-    /// they first speak.
+    /// Two streams, two colours (13a: colour does one job) — your microphone
+    /// is teal, everything from the call side is violet. Speakers left the
+    /// accent hue so a name never looks tappable, and the remote VOICES share
+    /// one hue on purpose: their names ("Speaker 1", "Anna") carry identity,
+    /// the colour only carries which side of the call it came from.
     private static func palette(for entries: [TranscriptEntry]) -> [String: Color] {
-        let palette = Brand.speakerPalette
         var colors: [String: Color] = [:]
-        var next = 0
         for entry in entries where colors[entry.speaker] == nil {
-            if entry.isYou {
-                colors[entry.speaker] = Brand.indigoLabel
-            } else {
-                colors[entry.speaker] = palette[next % palette.count]
-                next += 1
-            }
+            colors[entry.speaker] = entry.isYou ? DS.you : DS.them
         }
         return colors
     }
@@ -2651,6 +3757,12 @@ private struct TurnView: View, Equatable {
     /// re-renders the whole list, so the pane observes the localization once
     /// and this is what tells the rows their L() strings went stale (GRABLI).
     let language: AppLanguage
+    /// The meeting-relative stamp ("02:12"), computed by the pane — derived
+    /// from turn.time, so Equatable needs nothing extra.
+    let relative: String
+    /// The reading scale, as a value — rows are Equatable and must re-render
+    /// when the tray is clicked, so the scale is part of their identity.
+    let scale: DS.TextScale
     let onRename: (String, String) -> Void
     /// Copy this turn — the words alone, or the line with speaker and time.
     let onCopy: (TranscriptTurn, Bool) -> Void
@@ -2672,37 +3784,51 @@ private struct TurnView: View, Equatable {
             && a.selected == b.selected
             && a.hovering == b.hovering
             && a.language == b.language
+            && a.scale == b.scale
     }
 
     var body: some View {
         if DBG.trace { let _ = Self._printChanges() }
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Circle().fill(color).frame(width: 7, height: 7)
+        // The design's gutter grammar: a fixed right-aligned speaker column
+        // (the name IS the colour carrier — no dot), the meeting-relative
+        // stamp under it, and the words beside them at reading size. The wall
+        // clock is one hover away on the stamp.
+        return HStack(alignment: .firstTextBaseline, spacing: 18) {
+            VStack(alignment: .trailing, spacing: 1) {
                 Button {
                     draft = turn.speaker
                     renaming = true
                 } label: {
                     Text(turn.speaker)
-                        .font(.caption.weight(.semibold))
+                        .font(.system(size: scale.speaker, weight: .semibold))
                         .foregroundStyle(color)
+                        .padding(.horizontal, 3)
                         // A name long enough to wrap would push the row (and
                         // its click target) around; one line, truncated, keeps
-                        // the header the same shape for every speaker.
+                        // the column the same shape for every speaker.
                         .lineLimit(1)
                 }
                 .buttonStyle(.plain)
+                .hoverHighlight(radius: DS.radiusChip)
+                .pointerStyle(.link)
+                .padding(.horizontal, -3)
                 .help(L("Rename this speaker"))
                 .popover(isPresented: $renaming, arrowEdge: .bottom) {
                     renamePopover
                 }
-                Text(turn.time)
-                    .font(.caption.monospaced())
+                Text(relative)
+                    .font(.system(size: 10.5).monospacedDigit())
                     .foregroundStyle(.tertiary)
-                Spacer(minLength: 0)
+                    .help(turn.time)
             }
+            .frame(width: 84, alignment: .trailing)
+            // Reading type (13a): 15/1.65 on a 72-character measure — the
+            // transcript is the content, and it is finally larger than the
+            // chrome around it.
             Text(turn.text)
-                .font(.body)
+                .font(.system(size: scale.body))
+                .lineSpacing(scale.extraLeading / 2)
+                .frame(maxWidth: DS.readingMeasure, alignment: .leading)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -2716,11 +3842,11 @@ private struct TurnView: View, Equatable {
         // moving a single glyph, so turning a selection — or a hover — on and
         // off never reflows the transcript.
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            DS.shape
                 .fill(highlight)
                 .padding(.horizontal, -6)
                 .padding(.vertical, -3)
-                .animation(.easeOut(duration: 0.1), value: hovering)
+                .animation(.easeOut(duration: DS.fade), value: hovering)
         )
         .contextMenu {
             Button(L("Copy text")) { onCopy(turn, false) }
@@ -2731,8 +3857,8 @@ private struct TurnView: View, Equatable {
     /// ⌘A's selection is the loud one; hover is a whisper whose only job is to
     /// say which block the copy button and ⌘C mean.
     private var highlight: Color {
-        if selected { return Brand.indigoLabel.opacity(0.14) }
-        return hovering ? Color.primary.opacity(0.05) : .clear
+        if selected { return DS.selectionFill }
+        return hovering ? DS.hoverFill : .clear
     }
 
     /// The copy affordance: a chip pinned to the trailing edge, in the same
@@ -2753,8 +3879,8 @@ private struct TurnView: View, Equatable {
                                           : AnyShapeStyle(TurnCopy.restingInk))
                 .frame(width: TurnCopy.chipSize, height: TurnCopy.chipSize)
                 .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.primary.opacity(hovering ? 0.08 : 0))
+                    DS.shape
+                        .fill(hovering ? DS.hoverFill : .clear)
                 )
                 // The target is the square, not the glyph: everything around
                 // the chip is padding that still takes the click.
@@ -2762,7 +3888,7 @@ private struct TurnView: View, Equatable {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.1), value: hovering)
+        .animation(.easeOut(duration: DS.fade), value: hovering)
         .help(L("Copy text"))
     }
 
@@ -2775,27 +3901,72 @@ private struct TurnView: View, Equatable {
     }
 }
 
-/// "It's alive" strip: level bars plus the state in words.
+/// "It's alive" strip: the state as a chip, and BOTH streams metered — the
+/// two-stream speaker model made visible where the recording happens. No
+/// clock here: elapsed time lives once per surface, in the header (12d).
 private struct StatusStrip: View {
     @ObservedObject var session: MeetingSession
     @ObservedObject private var loc = Localization.shared
 
     var body: some View {
-        HStack(spacing: 8) {
-            LevelWave(level: session.audioLevel)
-            if session.modelWarming {
-                ProgressView().controlSize(.mini)
-                Text(L("Warming up the model…")).font(.caption).foregroundStyle(.secondary)
-            } else if session.inflightCount > 0 {
-                ProgressView().controlSize(.mini)
-                Text(L("Recognizing…")).font(.caption).foregroundStyle(.secondary)
-            } else if session.listeningFor != nil {
-                Text(L("Listening…")).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
+        HStack(spacing: 16) {
+            chip
+            meter(label: L("You"), level: session.youLevel, tint: DS.you)
+            meter(label: L("Call"), level: session.themLevel, tint: DS.them)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, MeetingsChrome.inset)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
+    }
+
+    /// One state at a time. Recognizing wears the dots-on-the-line glyph —
+    /// the family's one drawing of that state; downloads and warming keep the
+    /// system ring (task progress, not a state).
+    @ViewBuilder
+    private var chip: some View {
+        if session.modelWarming {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text(L("Warming up the model…")).font(.system(size: 11.5, weight: .medium))
+            }
+            .padding(.horizontal, 10).frame(height: 22)
+            .background(Capsule().fill(Color.primary.opacity(0.05)))
+        } else if session.inflightCount > 0 {
+            HStack(spacing: 6) {
+                TimelineView(.periodic(from: .now, by: 0.35)) { context in
+                    GlyphMark(state: .recognizing(phase:
+                        Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
+                        color: DS.accent, width: 15)
+                }
+                Text(L("Recognizing…")).font(.system(size: 11.5, weight: .semibold))
+            }
+            .foregroundStyle(DS.accent)
+            .padding(.horizontal, 10).frame(height: 22)
+            .background(Capsule().fill(DS.selectionTint))
+        } else if session.listeningFor != nil {
+            HStack(spacing: 6) {
+                Circle().fill(DS.good).frame(width: 6, height: 6)
+                Text(L("Listening…")).font(.system(size: 11.5, weight: .semibold))
+            }
+            .foregroundStyle(DS.good)
+            .padding(.horizontal, 10).frame(height: 22)
+            .background(Capsule().fill(DS.good.opacity(0.1)))
+        }
+    }
+
+    private func meter(label: String, level: Double, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(tint)
+                    .frame(width: max(4, 110 * min(1, level * 1.6)))
+                    .animation(.linear(duration: 0.12), value: level)
+            }
+            .frame(width: 110, height: 4)
+        }
     }
 }
 
@@ -2822,7 +3993,7 @@ private struct LevelWave: View {
     var body: some View {
         WaveShape(heights: Self.profile.map { CGFloat(4 + 12 * level * $0) },
                   barWidth: 3, spacing: 2.5)
-            .fill(Brand.cyan)
+            .fill(DS.you)
             .frame(width: 5 * 3 + 4 * 2.5, height: Self.slot)
     }
 }
@@ -2832,7 +4003,7 @@ private struct LevelWave: View {
 /// The pulse is STEPPED by a schedule, not faded by an implicit animation.
 /// This one 8pt dot used a `.repeatForever(autoreverses:)` fade on its
 /// opacity, and measured on its own in this window that cost 14.4% of a core —
-/// the same ~19%-class bill WaveMark's animation turned out to carry, for the
+/// the same ~19%-class bill the old animated mark turned out to carry, for the
 /// same reason: a repeatForever animation never settles, so SwiftUI asks the
 /// window for a new frame sixty times a second for as long as it runs. And
 /// this one runs for the WHOLE length of every call (it is in the transcript's
@@ -2888,44 +4059,168 @@ struct MeetingPillView: View {
     /// bar — rather than a separate idea to be discovered.
     let onHide: () -> Void
 
-    static let size = CGSize(width: 280, height: 64)
+    /// The hosting panel's fixed frame — big enough for the widest variant
+    /// (the one-time education card); the drawn material is smaller and the
+    /// window shadow hugs it, so the spare space is invisible.
+    static let size = CGSize(width: 344, height: 168)
+
+    @State private var gripHover = false
+    /// One-time education: the first fold-away mid-recording expands the pill
+    /// into a card saying that closing did not stop anything (field test
+    /// 2026-08-19: the owner read the collapse as "everything stopped").
+    @State private var educating = false
+    // No hover expansion. It was tried (design 9b's two-meter card) and cut
+    // by the owner (2026-08-27): the mouse travelling TOWARD the capsule's
+    // own buttons swapped the capsule for the card, so the buttons could
+    // never be clicked — a hover trap. The capsule is self-sufficient: stop,
+    // transcript and hide are on it, and the glyph carries the live level.
 
     var body: some View {
-        // Two rows, and the second one spans the whole width on purpose.
-        // With the state text sharing a column beside the buttons it had 97pt
-        // to live in, and "Warming up the model…" needs 127 in English, 135 in
-        // German and 137 in French — every language truncated, measured rather
-        // than eyeballed. Given its own line it has 250, which fits the longest
-        // string in all thirteen with room left.
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 10) {
-                LevelWave(level: session.audioLevel)
-                // One tick a second, and only while the pill is on screen —
-                // the TimelineView stops itself when the view goes away. The
-                // house pattern for anything periodic here (see PulsingDot);
-                // a repeating animation would bill sixty frames a second for
-                // the whole length of the call.
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    Text(elapsed).font(.body.monospacedDigit())
+        Group {
+            if educating {
+                educationCard
+            } else {
+                capsule
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
+        .onAppear {
+            guard !Settings.shared.meetingPillNoticeSeen, session.isActive else { return }
+            Settings.shared.meetingPillNoticeSeen = true
+            educating = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { educating = false }
+        }
+    }
+
+    /// The 42 pt collapsed capsule: proof it is running (the meeting glyph,
+    /// its bars carrying the live level), elapsed time, and the three
+    /// controls. Stop is a neutral control with a red glyph — red is status,
+    /// never a button fill (12c).
+    /// The 2×3 drag-grip dot cluster at the capsule's leading edge.
+    private var gripDots: some View {
+        VStack(spacing: 2.5) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 2.5) {
+                    Circle().frame(width: 2.5, height: 2.5)
+                    Circle().frame(width: 2.5, height: 2.5)
                 }
-                Spacer(minLength: 0)
+            }
+        }
+        .foregroundStyle(Color.primary)
+    }
+
+    private var capsule: some View {
+        HStack(spacing: 11) {
+            gripDots
+                .opacity(gripHover ? 0.7 : 0.4)
+                .onHover { gripHover = $0 }
+                .pointerStyle(.grabIdle)
+                .animation(.easeOut(duration: DS.fade), value: gripHover)
+            if session.finishing {
+                ProgressView().controlSize(.small)
+                Text(L("Finishing the transcript…"))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .lineLimit(1)
+            } else {
+                meetingGlyph(width: 22)
+                clock
+                if session.lowDisk {
+                    Text(L("Disk almost full — will stop to keep the transcript"))
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(DS.warn)
+                        .lineLimit(2)
+                        .frame(maxWidth: 130, alignment: .leading)
+                } else if let notice = session.deviceNotice {
+                    // The input device changed mid-recording — said in
+                    // passing, without stopping (design: interrupted).
+                    Text(notice)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: 130, alignment: .leading)
+                }
+                Divider().frame(height: 20)
+                ChromeButton(icon: "line.3.horizontal", help: L("Show transcript"),
+                             action: onExpand)
                 ChromeButton(icon: "stop.fill", help: L("Stop recording"),
-                             tint: .red, action: onStop)
-                ChromeButton(icon: "chevron.up", help: L("Show transcript"), action: onExpand)
+                             tint: DS.record, action: onStop)
                 ChromeButton(icon: "xmark", help: L("Hide"), action: onHide)
             }
-            Text(state)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
         }
-        .padding(.horizontal, 12)
-        .frame(width: Self.size.width, height: Self.size.height, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .frame(height: 42)
+        .fixedSize()
+        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous)
+            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+    }
+
+    /// Hover: the two streams metered separately — what tells "You" from
+    /// "Call audio" in the transcript, made visible where the recording is.
+    /// Shown once, the first time the window is closed mid-recording.
+    private var educationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                meetingGlyph(width: 18)
+                Text(L("Still recording"))
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer(minLength: 8)
+                clock
+            }
+            Text(L("Closing the window does not stop the recording. Stop it here, or from the menu bar at any time."))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 7) {
+                pillButton(L("Got it")) { educating = false }
+                pillButton(L("Stop Recording"), tint: DS.record, action: onStop)
+            }
+        }
+        .padding(EdgeInsets(top: 12, leading: 13, bottom: 12, trailing: 13))
+        .frame(width: 330)
+        .background(.ultraThinMaterial,
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+    }
+
+    /// The meeting glyph with its bars driven by the combined level — "the
+    /// state glyph carries the live level" (turn 11); the record dot is the
+    /// one red thing and it never pulses.
+    private func meetingGlyph(width: CGFloat) -> some View {
+        ZStack(alignment: .topTrailing) {
+            GlyphMark(state: .recording(level: session.audioLevel),
+                      color: .primary, width: width)
+            Circle().fill(DS.record)
+                .frame(width: width * 0.22, height: width * 0.22)
+                .offset(x: -width * 0.06, y: width * 0.16)
+        }
+    }
+
+    private var clock: some View {
+        // One tick a second, only while on screen — the TimelineView stops
+        // itself with the view (the house pattern for anything periodic).
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            Text(elapsed)
+                .font(.system(size: 13, weight: .semibold).monospacedDigit())
+        }
+    }
+
+
+    private func pillButton(_ title: String, tint: Color? = nil,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12.5, weight: tint == nil ? .regular : .semibold))
+                .foregroundStyle(tint ?? Color.primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 26)
+        }
+        .buttonStyle(.plain)
+        .background(DS.hoverFill,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .hoverHighlight(radius: 8)
     }
 
     private var elapsed: String {
@@ -2933,14 +4228,6 @@ struct MeetingPillView: View {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
-    /// The same three phrases the full window's status strip uses, so the two
-    /// sizes of the same window never disagree about what is happening.
-    private var state: String {
-        if session.modelWarming { return L("Warming up the model…") }
-        if session.inflightCount > 0 { return L("Recognizing…") }
-        if session.listeningFor != nil { return L("Listening…") }
-        return L("Recording")
-    }
 }
 
 /// The tags on one meeting: what it is filed under, and the one control that
@@ -2978,20 +4265,25 @@ private struct TagRow: View {
                         onRemove: { onChange(tags.filter { $0 != tag }) })
             }
             Button { adding = true } label: {
-                ChromeGlyph(icon: tags.isEmpty ? "tag" : "plus", hovering: addHovering)
+                HStack(spacing: 5) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text(L("Add tag"))
+                        .font(.system(size: 11.5))
+                }
+                .foregroundStyle(DS.accentText)
+                .padding(.horizontal, 10)
+                .frame(height: 22)
+                .background(Capsule().strokeBorder(Color.primary.opacity(0.11)))
+                .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .hoverHighlight(radius: 11)
+            .pointerStyle(.link)
             .help(L("Add a tag"))
-            .onHover { addHovering = $0 }
             .popover(isPresented: $adding, arrowEdge: .bottom) { addPopover }
-            if tags.isEmpty {
-                Text(L("No tags")).font(.caption).foregroundStyle(.tertiary)
-            }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, MeetingsChrome.inset)
-        .padding(.vertical, 5)
     }
 
     /// Type, and see what you already use. The suggestions are the point: the
@@ -3014,8 +4306,12 @@ private struct TagRow: View {
                             Text("\(item.count)").font(.caption).foregroundStyle(.secondary)
                         }
                         .contentShape(Rectangle())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
                     }
                     .buttonStyle(.plain)
+                    .hoverHighlight()
+                    .padding(.horizontal, -6)
                 }
             }
             // Creating a NEW term is a separate, deliberate act rather than
@@ -3025,9 +4321,13 @@ private struct TagRow: View {
                 Divider()
                 Button { commit(fresh) } label: {
                     Text(Lf("Create #%@", fresh)).font(.callout)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hoverHighlight()
+                .padding(.horizontal, -6)
             }
         }
         .padding(10)
@@ -3086,19 +4386,22 @@ private struct TagChip: View {
             if hovering, let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark").font(.caption2)
+                        .padding(2)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hoverHighlight(radius: 5)
+                .padding(-2)
                 .help(Lf("Remove #%@ from this meeting", tag))
             }
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
-        .background(Capsule().fill(Brand.indigoLabel.opacity(
+        .background(Capsule().fill(DS.accentText.opacity(
             active ? 1.0 : (hovering ? 0.20 : 0.12))))
-        .foregroundStyle(active ? Color.white : Brand.indigoLabel)
+        .foregroundStyle(active ? Color.white : DS.accentText)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.1), value: hovering)
+        .animation(.easeOut(duration: DS.fade), value: hovering)
     }
 }
 
@@ -3118,7 +4421,7 @@ private struct SectionLink: View {
         Button(action: onJump) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(section.time.prefix(5))
-                    .font(.caption.monospacedDigit())
+                    .font(DS.timestamp)
                     .foregroundStyle(.secondary)
                 Text(section.line)
                     // A step below the summary AND below the transcript, so
@@ -3132,13 +4435,248 @@ private struct SectionLink: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.primary.opacity(hovering ? 0.06 : 0))
+                DS.shape
+                    .fill(hovering ? DS.hoverFill : .clear)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.1), value: hovering)
+        .animation(.easeOut(duration: DS.fade), value: hovering)
+    }
+}
+
+/// One list-column row: our own selection (12% tint + 3 px edge, 13a) and a
+/// hover wash — the List has no selection binding, so both live here.
+private struct SelectableRow<Content: View>: View {
+    let selected: Bool
+    let tap: () -> Void
+    @ViewBuilder var content: Content
+    @State private var hovering = false
+
+    var body: some View {
+        content
+            .contentShape(Rectangle())
+            .onTapGesture(perform: tap)
+            .onHover { hovering = $0 }
+            .listRowBackground(
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(selected ? AnyShapeStyle(DS.selectionTint)
+                              : hovering ? AnyShapeStyle(DS.hoverFill)
+                              : AnyShapeStyle(Color.clear))
+                    if selected {
+                        Rectangle().fill(DS.accent).frame(width: DS.selectionEdge)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .padding(.horizontal, 6)
+                .animation(.easeOut(duration: DS.fade), value: hovering)
+            )
+    }
+}
+
+/// The design's compact empty state (States.dc): the mark, a 15 pt title, a
+/// quiet blurb, small actions — sized for the 296 pt column, where the
+/// system's ContentUnavailableView is a full-window poster whose buttons ran
+/// past the edges (field report 2026-08-28).
+struct ListEmptyState<Actions: View>: View {
+    let title: String
+    let blurb: String
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(spacing: 12) {
+            GlyphMark(state: .idle, color: .primary.opacity(0.22), width: 46)
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .multilineTextAlignment(.center)
+            Text(blurb)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) { actions }
+                .buttonStyle(.dsSmall)
+                .padding(.top, 2)
+        }
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// The outline's shape (design MeetingOutline), built from whatever cuts the
+/// model has already produced. Pure and deterministic:
+///
+///   < 10 min      — no outline: the summary IS the navigation.
+///   10–40 min     — two levels: the coarsest cut as sections, the next one
+///                   as the moments inside them.
+///   > 40 min      — three levels when three cuts exist; the middle level is
+///                   what collapses to "N moments".
+///
+/// A finer line that repeats its parent word for word is dropped — the model
+/// often opens a section with the same sentence at every granularity.
+struct MeetingOutlineModel {
+    struct Node {
+        let section: TranscriptSection
+        var children: [Node] = []
+        /// A top-level section's span ("23 min"), filled for 3-level trees.
+        var span: String?
+    }
+
+    let nodes: [Node]
+    let levels: Int
+    let momentCount: Int
+
+    static func build(cuts: [MeetingPolicy.SectionDetail: [TranscriptSection]],
+                      minutes: Int) -> MeetingOutlineModel {
+        guard minutes >= 10 else { return .init(nodes: [], levels: 0, momentCount: 0) }
+        let order: [MeetingPolicy.SectionDetail] = [.coarse, .standard, .fine]
+        let present = order.compactMap { cuts[$0].flatMap { $0.isEmpty ? nil : $0 } }
+        guard let top = present.first else { return .init(nodes: [], levels: 0, momentCount: 0) }
+        let wantLevels = minutes > 40 ? 3 : 2
+        let used = Array(present.prefix(wantLevels))
+
+        func seconds(_ t: String) -> Int { MeetingArchive.seconds(fromClock: t) ?? 0 }
+        func group(_ finer: [TranscriptSection], under parents: [TranscriptSection],
+                   parent index: Int) -> [TranscriptSection] {
+            let from = seconds(parents[index].time)
+            let to = index + 1 < parents.count ? seconds(parents[index + 1].time) : Int.max
+            return finer.filter {
+                let t = seconds($0.time)
+                return t >= from && t < to && $0.line != parents[index].line
+            }
+        }
+
+        var nodes: [Node] = []
+        var moments = 0
+        for (i, sect) in top.enumerated() {
+            var node = Node(section: sect)
+            if used.count >= 2 {
+                let mids = group(used[1], under: top, parent: i)
+                if used.count == 3 {
+                    node.children = mids.enumerated().map { j, mid in
+                        var midNode = Node(section: mid)
+                        midNode.children = group(used[2], under: mids, parent: j)
+                            .map { Node(section: $0) }
+                        return midNode
+                    }
+                    moments += node.children.reduce(0) { $0 + max($1.children.count, 1) }
+                } else {
+                    node.children = mids.map { Node(section: $0) }
+                    moments += max(mids.count, 1)
+                }
+            } else {
+                moments += 1
+            }
+            if used.count == 3 {
+                let from = seconds(sect.time)
+                let to = i + 1 < top.count ? seconds(top[i + 1].time) : from
+                if to > from { node.span = Lf("%d min", max(1, (to - from) / 60)) }
+            }
+            nodes.append(node)
+        }
+        return .init(nodes: nodes, levels: used.count, momentCount: moments)
+    }
+}
+
+/// One voice of the meeting (design MeetingOutline): a pill with the
+/// channel dot, the name and the speaking share. A voice still wearing its
+/// automatic label carries a pencil and opens the rename popover — the same
+/// rename the turns offer, one click closer.
+private struct VoiceChip: View {
+    let name: String
+    let isYou: Bool
+    let minutes: Int
+    let onRename: (String, String) -> Void
+
+    @State private var renaming = false
+    @State private var draft = ""
+
+    /// An automatic label rather than a chosen name — in any UI language the
+    /// file may have been written in.
+    private var unnamed: Bool {
+        if isYou { return false }
+        if name == "Them" || name == "Call audio" { return true }
+        return name.range(of: #"· (voice|голос|голос) \d+$"#,
+                          options: .regularExpression) != nil
+            || name.range(of: #"voice \d+$"#, options: .regularExpression) != nil
+    }
+
+    var body: some View {
+        Button {
+            guard !isYou else { return }
+            draft = unnamed ? "" : name
+            renaming = true
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isYou ? DS.you : DS.them)
+                    .frame(width: 7, height: 7)
+                Text(name)
+                    .font(.system(size: 12, weight: unnamed ? .regular : .semibold))
+                    .foregroundStyle(unnamed ? AnyShapeStyle(.secondary)
+                                             : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                Text(Lf("%d min", minutes))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                if unnamed {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 24)
+            .background(Capsule().fill(.quaternary.opacity(0.5)))
+            .overlay(Capsule().strokeBorder(
+                Color.primary.opacity(unnamed ? 0.16 : 0.08), lineWidth: 0.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .hoverEmphasis(scale: isYou ? 1.0 : 1.03)
+        .pointerStyle(.link)
+        .disabled(isYou)
+        .help(isYou ? "" : L("Rename this speaker"))
+        .popover(isPresented: $renaming, arrowEdge: .bottom) {
+            SpeakerRenamePopover(draft: $draft) { newName in
+                renaming = false
+                guard let newName else { return }
+                onRename(name, newName)
+            }
+        }
+    }
+}
+
+/// A wrapping HStack (the design's flex-wrap): rows break where the width
+/// runs out. Layout-protocol, no GeometryReader relayout storms.
+struct FlowRow: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: width == .infinity ? x : width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX; y += rowHeight + spacing; rowHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

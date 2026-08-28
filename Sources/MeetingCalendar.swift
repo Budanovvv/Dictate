@@ -45,21 +45,43 @@ enum MeetingCalendar {
     /// transcript can carry its real name from the first line, the file is
     /// created under that name instead of being renamed at the end, and the
     /// window shows it while the call is still running.
-    static func scheduledTitle(at start: Date) -> (title: String, calendar: String)? {
-        guard isEnabled, hasAccess else { return nil }
+    static func scheduledTitle(at start: Date) -> (title: String, calendar: String, platform: String?)? {
+        // Access is the only hard gate. The naming SETTING gates the title
+        // alone: the platform (the sidebar's Sources group) is harmless
+        // metadata, and losing "Google Meet" because auto-naming is off was
+        // exactly the owner's "why is Meet never detected" (2026-08-28).
+        guard hasAccess else { return nil }
         let store = EKEventStore()
         // A window wide enough to hold every event the rule might accept, and
         // no wider — the rule does the judging, this only feeds it.
         let from = start.addingTimeInterval(-MeetingCalendarPolicy.lateGrace - 3600)
         let to = start.addingTimeInterval(MeetingCalendarPolicy.earlyGrace + 3600)
         let predicate = store.predicateForEvents(withStart: from, end: to, calendars: nil)
-        let events = store.events(matching: predicate).map(fact(from:))
+        let raw = store.events(matching: predicate)
+        let events = raw.map(fact(from:))
         guard let match = MeetingCalendarPolicy.match(events: events, startedAt: start) else {
             Log.d("calendar: no scheduled meeting matched (\(events.count) event(s) nearby)")
             return nil
         }
         Log.d("calendar: named from \"\(match.calendarName)\" — \(match.title)")
-        return (match.title, match.calendarName)
+        // The event's conference link also names the PLATFORM — the sidebar's
+        // Sources group. Best-effort: nil when the link names nothing known.
+        let platform = raw.first { ($0.title ?? "") == match.title }.flatMap(platform(of:))
+        return (match.title, match.calendarName, platform)
+    }
+
+    /// "Google Meet" / "Zoom" / "Microsoft Teams"… from the event's own link.
+    private static func platform(of event: EKEvent) -> String? {
+        let haystack = [event.url?.absoluteString, event.location, event.notes]
+            .compactMap { $0 }.joined(separator: " ").lowercased()
+        guard !haystack.isEmpty else { return nil }
+        let map: [(String, String)] = [
+            ("meet.google.com", "Google Meet"), ("zoom.us", "Zoom"),
+            ("teams.microsoft.com", "Microsoft Teams"), ("teams.live.com", "Microsoft Teams"),
+            ("webex.com", "Webex"), ("whereby.com", "Whereby"), ("discord.gg", "Discord"),
+            ("slack.com/call", "Slack"),
+        ]
+        return map.first { haystack.contains($0.0) }?.1
     }
 
     /// One EKEvent, reduced to what the rule is allowed to reason about.

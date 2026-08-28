@@ -28,18 +28,18 @@ struct ClaudeAPIOracle: MeetingOracle {
     /// here. Worth re-tuning against real questions once there are some.
     private let effort = "medium"
 
-    var isAvailable: Bool { AnthropicKey.current != nil }
+    var isAvailable: Bool { APIKey.current(.anthropic) != nil }
 
     var unavailableReason: String {
         L("Add your Anthropic API key in Settings to ask questions")
     }
 
-    func answer(_ question: String, from sources: [MeetingSource])
+    func answer(_ prompt: String, history: [AnswerExchange])
         -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let work = Task {
                 do {
-                    try await stream(question, sources, into: continuation)
+                    try await stream(prompt, history, into: continuation)
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.finish()
@@ -55,60 +55,169 @@ struct ClaudeAPIOracle: MeetingOracle {
         }
     }
 
-    private func stream(_ question: String, _ sources: [MeetingSource],
+    /// How many model→tools→model rounds one question may cost. The last
+    /// round goes out without tools, so the loop always ends in an answer
+    /// rather than in an appetite.
+    private let maxRounds = 6
+
+    /// One content block of the assistant turn, accumulated from the stream —
+    /// enough to replay the turn verbatim in the next request.
+    private struct Block {
+        var type = ""
+        var id = ""
+        var name = ""
+        var json = ""
+        var text = ""
+
+        var input: [String: Any] {
+            let raw = json.isEmpty ? "{}" : json
+            return (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any] ?? [:]
+        }
+    }
+
+    private func stream(_ prompt: String, _ history: [AnswerExchange],
                         into continuation: AsyncThrowingStream<String, Error>.Continuation) async throws {
-        guard let key = AnthropicKey.current else { throw Failure.noKey }
+        guard let key = APIKey.current(.anthropic) else { throw Failure.noKey }
 
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(key, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.timeoutInterval = 120
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": model,
-            "max_tokens": maxTokens,
-            "stream": true,
-            "system": MeetingQuestion.instructions,
-            "output_config": ["effort": effort],
-            "messages": [["role": "user",
-                          "content": MeetingQuestion.user(question: question, sources: sources)]],
-        ])
+        // The whole conversation, every call: the API is stateless, and the
+        // session the asking pane promises lives in this array.
+        var messages: [[String: Any]] = []
+        for turn in history {
+            messages.append(["role": "user", "content": turn.user])
+            messages.append(["role": "assistant", "content": turn.assistant])
+        }
+        messages.append(["role": "user", "content": prompt])
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else { throw Failure.failed("no response") }
-        guard http.statusCode == 200 else {
-            // The body carries the reason, and the reasons a person can act on
-            // are the common ones: a key that is wrong, an account with no
-            // credit, a rate limit. Read it rather than showing a number.
+        let tools: [[String: Any]] = MeetingAgentTool.allCases.map {
+            ["name": $0.rawValue, "description": $0.summary, "input_schema": $0.schema]
+        }
+
+        // The agent loop: the model answers, or asks for a tool and goes
+        // again with the result. Everything streamed along the way is already
+        // on the reader's screen — a tool round only ever adds to it.
+        for round in 0..<maxRounds {
+            try Task.checkCancellation()
+            var body: [String: Any] = [
+                "model": model,
+                "max_tokens": maxTokens,
+                "stream": true,
+                "system": MeetingQuestion.instructions,
+                "output_config": ["effort": effort],
+                "messages": messages,
+            ]
+            if round < maxRounds - 1 { body["tools"] = tools }
+
+            var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(key, forHTTPHeaderField: "x-api-key")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            request.timeoutInterval = 120
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+            let bytes = try await Self.send(request)
+
+            var blocks: [Int: Block] = [:]
+            var stopReason: String?
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                guard line.hasPrefix("data: ") else { continue }
+                guard let data = String(line.dropFirst(6)).data(using: .utf8),
+                      let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { continue }
+
+                switch event["type"] as? String {
+                case "content_block_start":
+                    guard let index = event["index"] as? Int,
+                          let start = event["content_block"] as? [String: Any] else { break }
+                    var block = Block()
+                    block.type = start["type"] as? String ?? ""
+                    block.id = start["id"] as? String ?? ""
+                    block.name = start["name"] as? String ?? ""
+                    blocks[index] = block
+                case "content_block_delta":
+                    guard let index = event["index"] as? Int,
+                          let delta = event["delta"] as? [String: Any] else { break }
+                    // Only the text reaches the reader. Thinking blocks arrive
+                    // on this stream too and are the model's working, not its
+                    // answer; tool arguments are plumbing.
+                    if delta["type"] as? String == "text_delta",
+                       let text = delta["text"] as? String {
+                        blocks[index]?.text += text
+                        continuation.yield(text)
+                    }
+                    if let piece = delta["partial_json"] as? String {
+                        blocks[index]?.json += piece
+                    }
+                case "message_delta":
+                    if let delta = event["delta"] as? [String: Any],
+                       let reason = delta["stop_reason"] as? String {
+                        stopReason = reason
+                    }
+                case "error":
+                    let error = event["error"] as? [String: Any]
+                    throw Failure.failed(error?["message"] as? String ?? "the model stopped")
+                default:
+                    break
+                }
+            }
+
+            let ordered = blocks.sorted { $0.key < $1.key }.map(\.value)
+            let toolUses = ordered.filter { $0.type == "tool_use" }
+            guard stopReason == "tool_use", !toolUses.isEmpty else { return }
+
+            // Replay the assistant turn verbatim, then answer each call.
+            messages.append(["role": "assistant", "content": ordered.compactMap { block -> [String: Any]? in
+                switch block.type {
+                case "text" where !block.text.isEmpty:
+                    return ["type": "text", "text": block.text]
+                case "tool_use":
+                    return ["type": "tool_use", "id": block.id,
+                            "name": block.name, "input": block.input]
+                default:
+                    return nil
+                }
+            }])
+            var results: [[String: Any]] = []
+            for use in toolUses {
+                Log.d("ask: tool \(use.name)")
+                let output = await MeetingAgentTool.run(name: use.name, arguments: use.input)
+                results.append(["type": "tool_result",
+                                "tool_use_id": use.id, "content": output])
+            }
+            messages.append(["role": "user", "content": results])
+        }
+    }
+
+    /// Sends one request, quietly retrying the refusals that are the server's
+    /// weather rather than the user's mistake: rate limits, overloads, 5xx —
+    /// and 404, which is normally permanent but was observed flapping for
+    /// minutes while a project's model access propagated across a vendor's
+    /// fleet (2026-08-27, the OpenAI oracle; kept symmetric here). A wrong
+    /// key or empty account still fails on the first try.
+    static func send(_ request: URLRequest) async throws -> URLSession.AsyncBytes {
+        for attempt in 0..<3 {
+            try Task.checkCancellation()
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            guard let http = response as? HTTPURLResponse else { throw Failure.failed("no response") }
+            if http.statusCode == 200 { return bytes }
+            // The body carries the reason, and the reasons a person can act
+            // on are the common ones: a key that is wrong, an account with no
+            // credit, a rate limit. Read it, not the number.
             var body = ""
             for try await line in bytes.lines { body += line }
-            throw Failure.http(http.statusCode, body)
+            let transient = http.statusCode == 429 || http.statusCode == 404
+                || http.statusCode >= 500
+            guard transient, attempt < 2 else { throw Failure.http(http.statusCode, body) }
+            // A rate limit names its own wait: honor Retry-After when the
+            // server sends one (capped — an answer pane is not a batch job),
+            // fall back to the flat pause otherwise.
+            let wait = http.value(forHTTPHeaderField: "Retry-After")
+                .flatMap(Double.init).map { min(max($0, 1), 30) } ?? 2
+            Log.d("ask: http \(http.statusCode), retrying in \(Int(wait))s")
+            try await Task.sleep(for: .seconds(wait))
         }
-
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-            guard payload != "[DONE]",
-                  let data = payload.data(using: .utf8),
-                  let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { continue }
-
-            // Only the text. Thinking blocks arrive on this stream too and are
-            // empty by default on this model — and even summarised they are the
-            // model's working, not its answer.
-            if event["type"] as? String == "content_block_delta",
-               let delta = event["delta"] as? [String: Any],
-               delta["type"] as? String == "text_delta",
-               let text = delta["text"] as? String {
-                continuation.yield(text)
-            }
-            if event["type"] as? String == "error",
-               let error = event["error"] as? [String: Any] {
-                throw Failure.failed(error["message"] as? String ?? "the model stopped")
-            }
-        }
+        throw Failure.failed("no response")
     }
 
     enum Failure: LocalizedError {

@@ -287,6 +287,15 @@ enum MeetingPolicy {
         return .keep
     }
 
+    /// Whether a transcription said anything at all. Whisper occasionally
+    /// exhales bare punctuation — "-", ".", "…" — as a whole result; the
+    /// audio was real speech-like sound, so the phantom gate above rightly
+    /// keeps it, and the transcript gets an entry that says nothing (two in
+    /// the meeting of 2026-08-27). No letter, no digit → not an entry.
+    static func saidAnything(_ text: String) -> Bool {
+        text.contains { $0.isLetter || $0.isNumber }
+    }
+
     // MARK: - Cutting a finished meeting into sections
 
     /// Everything the section rule is allowed to look at about one transcript
@@ -492,5 +501,38 @@ enum MeetingPolicy {
             count += 1
         }
         return count
+    }
+
+    // MARK: - Call platform from a browser window title
+
+    /// Names the platform a browser call is running on from the browser's own
+    /// window title — the only place a web call announces itself (owner's
+    /// report 2026-08-29: every Meet call read as "other", because Meet is a
+    /// tab, not an app, and the mic is held by "Google Chrome").
+    ///
+    /// Deliberately narrow: each rule matches something only a live call tab
+    /// carries. The trap is the word "meet" — "Meeting notes — Notion" must
+    /// never become Google Meet, so Meet is recognised by its room-code shape
+    /// ("Meet – abc-defg-hij") or the full product name, never the bare word.
+    static func callPlatform(inWindowTitle title: String) -> String? {
+        let lower = title.lowercased()
+        if lower.contains("google meet") { return "Google Meet" }
+        if lower.range(of: #"meet(\s+|\s*[-–—]\s*)[a-z]{3}-[a-z]{4}-[a-z]{3}(?![a-z-])"#,
+                       options: .regularExpression) != nil { return "Google Meet" }
+        if lower.contains("zoom meeting") || lower.contains("zoom.us") { return "Zoom" }
+        if lower.contains("microsoft teams") { return "Microsoft Teams" }
+        if lower.contains("webex") { return "Webex" }
+        if lower.contains("whereby") { return "Whereby" }
+        if lower.contains("jitsi") { return "Jitsi" }
+        return nil
+    }
+
+    /// Is this the display name of a browser — an app whose window titles are
+    /// worth reading for a call? (A native call app is matched by its own
+    /// name long before this.)
+    static func isBrowser(appNamed name: String) -> Bool {
+        let lower = name.lowercased()
+        return ["chrome", "safari", "arc", "edge", "firefox", "brave",
+                "opera", "vivaldi", "dia"].contains { lower.contains($0) }
     }
 }

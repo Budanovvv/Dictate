@@ -1,4 +1,10 @@
-# Dictate
+<p align="center">
+  <img src="assets/logo.svg" width="96" alt="Dictate — three voice bars on a typed line ending in a text cursor">
+</p>
+
+<h1 align="center">Dictate</h1>
+
+<p align="center"><b>Hold a key, speak, let go. Everything happens on this Mac.</b></p>
 
 **Hold a key. Speak. Release — your words appear right where your cursor is, in any app.**
 
@@ -19,7 +25,6 @@ Dictate is push-to-talk dictation for macOS. Everything runs on your Mac: Whispe
 - **Whisper large-v3-turbo, on-device** — 112 languages, great with accents, fast enough to show live text as you speak.
 - **Speak your language, send English** — hold a second key and your speech is typed as English (or another language you pick). Translated on your Mac, like everything else.
 - **Live text** — watch your words appear in the pill while you're still speaking.
-- **Voice snippets** — a replacement rule can insert a whole block: say “my signature” and get your full sign-off.
 - **Meeting transcripts** — record a browser call and get a Markdown transcript that names who spoke, written live to `~/Documents/Dictate Meetings`. Your microphone and the call's audio are captured separately, so the two sides are told apart. Local, like everything else.
 - **Private by architecture** — the microphone listens only during a dictation you started; recognition never touches the network. The one-time model download (~630 MB) is the only time Dictate needs the internet.
 - **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.

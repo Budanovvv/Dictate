@@ -31,6 +31,12 @@ enum KeyNames {
         122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113,
     ]
 
+    /// F-keys are safe (they type nothing) but can double as media controls;
+    /// the UI adds a note when one is chosen (design: keysWarning).
+    static func isFunctionKey(_ code: Int) -> Bool {
+        functionKeyCodes.contains(code)
+    }
+
     static func isSafeHotkey(_ code: Int) -> Bool {
         safeModifierKeyCodes.contains(code) || functionKeyCodes.contains(code)
     }

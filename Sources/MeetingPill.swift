@@ -21,6 +21,11 @@ final class MeetingPill {
     private let onStop: () -> Void
     private let onExpand: () -> Void
     private let onHide: () -> Void
+    /// True while position() moves the panel itself, so the did-move observer
+    /// records only the USER's drags — a programmatic placement must not
+    /// overwrite a remembered spot.
+    private var positioningProgrammatically = false
+    private static let originKey = "meetingPillOrigin"
 
     init(session: MeetingSession,
          onStop: @escaping () -> Void,
@@ -34,6 +39,20 @@ final class MeetingPill {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
+    /// Set when the person clicked Hide: the pill stays away for the rest of
+    /// this recording unless brought back — from the menu bar, which keeps the
+    /// time and the stop control for as long as the recording runs (design:
+    /// hidden state). Any explicit show (a new recording, minimizing the
+    /// window, Bring It Back) clears it.
+    private(set) var isUserHidden = false
+
+    func hideByUser() {
+        isUserHidden = true
+        hide()
+    }
+
+    func showAgain() { show() }
+
     /// `from` is the frame the transcript window occupied a moment ago. The
     /// pill takes its place — top-left to top-left — so the eye that was
     /// reading the window finds it without hunting: the window did not vanish,
@@ -41,6 +60,7 @@ final class MeetingPill {
     /// turned out to be far enough from the window that the collapse read as
     /// "everything closed" instead (field test 2026-08-19).
     func show(from frame: NSRect? = nil) {
+        isUserHidden = false
         let panel = ensurePanel()
         if !panel.isVisible {
             position(panel, from: frame)
@@ -90,6 +110,16 @@ final class MeetingPill {
         panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
+        // A drag is a choice worth keeping ACROSS launches, not just for the
+        // life of the process — the next meeting's pill appears where the last
+        // one was left.
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            guard let self, !self.positioningProgrammatically,
+                  let origin = self.panel?.frame.origin else { return }
+            UserDefaults.standard.set([origin.x, origin.y], forKey: Self.originKey)
+        }
         self.panel = panel
         return panel
     }
@@ -97,7 +127,25 @@ final class MeetingPill {
     /// Where the window stood, or — with no window to inherit from — the
     /// bottom centre the dictation pill uses.
     private func position(_ panel: NSPanel, from frame: NSRect?) {
+        positioningProgrammatically = true
+        defer { positioningProgrammatically = false }
         let size = panel.frame.size
+        // A spot the user once dragged the pill to outranks everything —
+        // clamped into a CURRENT screen, because the display it was left on
+        // may be gone (unplugged monitor) and a pill off every screen is a
+        // recording indicator nobody can see.
+        if let stored = UserDefaults.standard.array(forKey: Self.originKey) as? [Double],
+           stored.count == 2 {
+            let point = NSPoint(x: stored[0], y: stored[1])
+            let screen = NSScreen.screens.first { $0.visibleFrame.contains(point) }
+                ?? NSScreen.main
+            if let visible = screen?.visibleFrame {
+                let x = min(max(point.x, visible.minX), visible.maxX - size.width)
+                let y = min(max(point.y, visible.minY), visible.maxY - size.height)
+                panel.setFrameOrigin(NSPoint(x: x, y: y))
+                return
+            }
+        }
         let screen = frame.flatMap { f in NSScreen.screens.first { $0.frame.intersects(f) } }
             ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
             ?? NSScreen.main

@@ -33,6 +33,18 @@ enum AudioInputDevices {
         }
     }
 
+    /// Name of the CURRENT default input device ("AirPods Pro") — for the
+    /// mid-recording device-change notice (design: interrupted).
+    static func defaultInputName() -> String? {
+        var addr = address(kAudioHardwarePropertyDefaultInputDevice)
+        var id = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                         &addr, 0, nil, &size, &id) == noErr, id != 0
+        else { return nil }
+        return string(id, kAudioObjectPropertyName)
+    }
+
     /// Device to pin for recording per the mic setting; nil → engine default.
     /// "" (the default) — built-in mic: no Bluetooth negotiation delays, no
     /// HFP quality drop, headphones stay in music mode. Falls back to the

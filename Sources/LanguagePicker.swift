@@ -25,14 +25,14 @@ struct PopupTrigger: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let icon {
-                    Image(systemName: icon).foregroundStyle(Color.accentColor)
+                    Image(systemName: icon).foregroundStyle(DS.accent)
                 }
                 Text(label).fontWeight(.medium)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.dsRegular)
     }
 }
 
@@ -54,7 +54,7 @@ struct PopupRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if let icon {
-                    Image(systemName: icon).foregroundStyle(Color.accentColor).frame(width: 18)
+                    Image(systemName: icon).foregroundStyle(DS.accent).frame(width: 18)
                 } else if reservesIcon {
                     Spacer().frame(width: 18)
                 }
@@ -66,15 +66,16 @@ struct PopupRow: View {
                 }
                 Spacer()
                 if selected {
-                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                    Image(systemName: "checkmark").foregroundStyle(DS.accent)
                 }
             }
             .contentShape(Rectangle())
             .padding(.vertical, 5).padding(.horizontal, 8)
         }
         .buttonStyle(.plain)
-        .background(selected ? Color.accentColor.opacity(0.12) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .background(selected ? DS.selectionFill : .clear)
+        .hoverHighlight()
+        .clipShape(DS.shape)
     }
 }
 
@@ -166,6 +167,38 @@ struct InterfaceLanguagePicker: View {
     }
 }
 
+/// AI-agent chooser for the meetings section: Off, or one of the two vendors.
+/// Same control as every other dropdown — it spent a day as a bare `Picker`
+/// and rendered as exactly the "plain text plus hairline" species the comment
+/// at the top of this file exists to prevent.
+struct AskProviderPicker: View {
+    @Binding var selection: AIProvider?
+
+    @State private var open = false
+
+    var body: some View {
+        PopupTrigger(label: selection?.productName ?? L("Off")) { open.toggle() }
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 0) {
+                    PopupRow(title: L("Off"), selected: selection == nil) {
+                        selection = nil
+                        open = false
+                    }
+                    ForEach(AIProvider.allCases, id: \.self) { provider in
+                        PopupRow(title: provider.productName,
+                                 subtitle: provider.vendorName,
+                                 selected: selection == provider) {
+                            selection = provider
+                            open = false
+                        }
+                    }
+                }
+                .padding(6)
+                .frame(width: 200)
+            }
+    }
+}
+
 private struct LanguagePopover: View {
     @Binding var selection: String
     var dismiss: () -> Void
@@ -198,8 +231,12 @@ private struct LanguagePopover: View {
                     .textFieldStyle(.plain)
                     .focused($searchFocused)
                 if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill").padding(2)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .hoverHighlight(radius: 6)
+                    .padding(-2)
                 }
             }
             .padding(10)

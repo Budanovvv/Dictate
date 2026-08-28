@@ -375,4 +375,67 @@ final class ThemWindowCapTests: XCTestCase {
                                         hardCap: MeetingPolicy.themWindowCap),
             .cutTranscribe)
     }
+
+    // MARK: - Punctuation-only results
+
+    func testBarePunctuationIsNotAnEntry() {
+        // The exact strings that reached a live transcript (2026-08-27):
+        // whole results of "-" and ".", plus the shapes Whisper likes.
+        for junk in ["-", ".", "…", "?!", "— —", "..."] {
+            XCTAssertFalse(MeetingPolicy.saidAnything(junk), junk)
+        }
+    }
+
+    func testCurtRealRepliesSurvive() {
+        // The asymmetry phantomVerdict lives by holds here too: a real curt
+        // reply must never be dropped, whatever language or script it is in.
+        for real in ["Да.", "ok", "No!", "42", "第3", "Đúng."] {
+            XCTAssertTrue(MeetingPolicy.saidAnything(real), real)
+        }
+    }
+}
+
+// The browser-title platform rule (owner's report 2026-08-29: every Meet
+// call read as "other" — Meet is a tab, and the mic is held by "Chrome").
+final class CallPlatformTitleTests: XCTestCase {
+
+    func testMeetRoomCodeTitleIsMeet() {
+        // Chrome titles a live call tab with the room code.
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Meet – abc-defg-hij"), "Google Meet")
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Meet - abc-defg-hij - Google Chrome"), "Google Meet")
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Weekly sync - Google Meet"), "Google Meet")
+    }
+
+    func testTheWordMeetingIsNotMeet() {
+        // The trap the rule is shaped around: "meet" inside ordinary words
+        // or documents must never become a platform.
+        XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Meeting notes — Notion"))
+        XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "How to meet deadlines - Blog"))
+        XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Meet the team — Careers"))
+    }
+
+    func testLongerTokenIsNotARoomCode() {
+        XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Meet – abc-defg-hijklm"))
+    }
+
+    func testOtherPlatforms() {
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Zoom Meeting - Zoom"), "Zoom")
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Design review | Microsoft Teams"), "Microsoft Teams")
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Cisco Webex Meetings"), "Webex")
+        XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Inbox — Gmail"))
+    }
+
+    func testBrowserNames() {
+        XCTAssertTrue(MeetingPolicy.isBrowser(appNamed: "Google Chrome"))
+        XCTAssertTrue(MeetingPolicy.isBrowser(appNamed: "Safari"))
+        XCTAssertTrue(MeetingPolicy.isBrowser(appNamed: "Arc"))
+        XCTAssertFalse(MeetingPolicy.isBrowser(appNamed: "zoom.us"))
+        XCTAssertFalse(MeetingPolicy.isBrowser(appNamed: "Notion"))
+    }
 }

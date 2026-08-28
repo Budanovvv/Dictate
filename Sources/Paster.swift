@@ -22,6 +22,49 @@ enum Paster {
     /// restoring the snapshot would silently destroy their copy.
     private static var ourChangeCount: Int?
 
+    /// The user-facing insertion switch (Settings › Keys, design: "Insert
+    /// text by"): pasting is instant but borrows the clipboard for a moment;
+    /// typing rides the same unicode-event route live typing uses and works
+    /// in apps that block paste (some terminals, remote desktops).
+    @discardableResult
+    static func insert(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
+        Settings.shared.insertByTyping
+            ? type(text, expectedTargetPID: expectedTargetPID)
+            : paste(text, expectedTargetPID: expectedTargetPID)
+    }
+
+    /// Insert by synthetic typing. Same safety gates as paste — target app
+    /// unchanged, a real text cursor — and the same clipboard fallback when
+    /// they fail. Line breaks still take the paste path: a synthesized Return
+    /// sends messages in chats, so TypeInjector refuses to type them.
+    @discardableResult
+    static func type(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
+        guard !text.isEmpty else { return .pasted }
+        let pb = NSPasteboard.general
+        if let expectedTargetPID,
+           let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != expectedTargetPID {
+            Log.d("type: frontmost app changed -> kept in clipboard (now \(front.bundleIdentifier ?? "?"))")
+            return keepInClipboard(text, pb)
+        }
+        let (editable, role) = focusProbe()
+        guard editable else {
+            Log.d("type: no text focus (role=\(role ?? "nil")) -> kept in clipboard")
+            return keepInClipboard(text, pb)
+        }
+        if text.contains("\n") {
+            Log.d("type: line breaks -> paste path")
+            return paste(text, expectedTargetPID: expectedTargetPID)
+        }
+        // Trailing space for the same reason paste adds one: back-to-back
+        // dictations must not glue into one word.
+        let insertion = text.last?.isWhitespace == true ? text : text + " "
+        Log.d("type: injecting \(insertion.count) chars")
+        // Off the main thread: TypeInjector blocks ~2 ms per 20 characters.
+        DispatchQueue.global(qos: .userInitiated).async { TypeInjector.type(insertion) }
+        return .pasted
+    }
+
     @discardableResult
     static func paste(_ text: String, expectedTargetPID: pid_t? = nil) -> Outcome {
         guard !text.isEmpty else { return .pasted }

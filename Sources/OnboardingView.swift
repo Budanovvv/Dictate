@@ -12,7 +12,15 @@ struct OnboardingView: View {
     /// a permission stopped working (seen live: an app update left a stale
     /// Accessibility entry). Don't march them through welcome/model/keys
     /// again; open straight on the permissions step.
-    @State private var step = Settings.shared.onboardingDone ? 3 : 0
+    @State private var step: Int = {
+        // Screenshot harness (design pass): open at a named step.
+        if let wanted = UserDefaults.standard.string(forKey: "debugShotStep"),
+           let n = Int(wanted) {
+            UserDefaults.standard.removeObject(forKey: "debugShotStep")
+            return min(max(n, 0), 4)
+        }
+        return Settings.shared.onboardingDone ? 3 : 0
+    }()
     @State private var allGranted = Permissions.allGranted
 
     enum ModelState: Equatable { case notReady, downloading(Double), ready }
@@ -24,6 +32,11 @@ struct OnboardingView: View {
         OnboardingView.onboardingTiers.allSatisfy { WhisperEngine.shared.isModelDownloaded(tier: $0) }
             ? .ready : .notReady
     @State private var downloadFailed = false
+    /// "8.4 MB/s · about 30 sec left" while downloading (nil before the first
+    /// stable reading).
+    @State private var downloadRate: String?
+    /// The download was refused before it began: not enough disk.
+    @State private var diskShortfall: (needed: Int, free: Int)?
     @State private var downloadTotalMB = OnboardingView.onboardingTiers.map(\.sizeMB).reduce(0, +)
     /// At least one try-out task completed — only then Return triggers Finish,
     /// so the aha-moment can't be skipped by a reflexive Enter (the button
@@ -43,6 +56,20 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Design 12j: the title bar carries the progress — "Step N of 5",
+            // small and right-aligned, where the eye checks "how much is left"
+            // without a row of dots stealing a line of content. The window's
+            // native title is hidden (fullSizeContentView); the traffic lights
+            // overlay this strip on the left.
+            HStack {
+                Spacer()
+                Text(Lf("Step %d of %d", step + 1, totalSteps))
+                    .font(DS.helpText)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 46)
+            .overlay(alignment: .bottom) { Divider() }
             // Launched straight from the DMG / quarantined Downloads: TCC
             // grants would land on the translocated throwaway copy and the
             // permissions step could never go green — say so on every step,
@@ -51,28 +78,26 @@ struct OnboardingView: View {
                 Label(L("Dictate is running from the downloaded image — drag it into Applications, eject the image, and launch it from there. Permissions granted to this temporary copy won't stick."),
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(DS.warn)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 52)
                     .padding(.top, 16)
             }
-            StepDots(current: step, total: totalSteps)
-                .padding(.top, 18)
             content
                 .id(step)   // new step = new view → triggers the transition
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .leading).combined(with: .opacity)))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 28)
-                .padding(.top, 14)
+                .padding(.horizontal, 52)
+                .padding(.top, step == 0 ? 44 : 34)
             Divider()
             footer
                 .padding(.horizontal, 20)
-                .padding(.vertical, 14)
+                .padding(.vertical, 13)
         }
-        .frame(width: 560, height: 540)
-        .tint(Brand.indigo)
+        .frame(width: 760, height: 546)
+        .tint(DS.accent)
         .animation(.easeInOut(duration: 0.28), value: step)
         // Only the permissions step's Next button needs the poll (the step
         // view itself has its own timer for the badges).
@@ -102,7 +127,8 @@ struct OnboardingView: View {
     private var content: some View {
         switch step {
         case 0: WelcomeStep()
-        case 1: ModelStep(state: $modelState, failed: downloadFailed, totalMB: downloadTotalMB)
+        case 1: ModelStep(state: $modelState, failed: downloadFailed, totalMB: downloadTotalMB,
+                          rate: downloadRate, diskShortfall: diskShortfall)
         case 2: HotkeyStep(language: $obLanguage, translateTarget: $obTranslateTarget)
         case 3: PermissionsStep()
         default: TryItStep(dictation: dictation, taskDone: $tryTaskDone)
@@ -117,6 +143,9 @@ struct OnboardingView: View {
             Spacer()
             footerPrimary
         }
+        // The design's buttons on every footer control (owner sweep): the
+        // white card as the base, the accent primary set per-case below.
+        .buttonStyle(.dsRegular)
     }
 
     private var isDownloading: Bool {
@@ -130,25 +159,38 @@ struct OnboardingView: View {
         case 1:
             switch modelState {
             case .ready:
-                Button(L("Next")) { step += 1 }.keyboardShortcut(.defaultAction)
+                Button(L("Next")) { step += 1 }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.dsPrimary)
             case .downloading:
                 ProgressView().controlSize(.small)
             case .notReady:
                 Button(L("Download & continue")) { startDownload() }
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.dsPrimary)
             }
         case 3:
             Button(L("Next")) { step += 1 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.dsPrimary)
                 .disabled(!allGranted)
         case totalSteps - 1:
             if tryTaskDone {
-                Button(L("Finish")) { finish() }.keyboardShortcut(.defaultAction)
+                Button(L("Finish")) { finish() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.dsPrimary)
             } else {
                 Button(L("Finish")) { finish() }
+                    .buttonStyle(.dsPrimary)
             }
+        case 0:
+            Button(L("Set Up Dictate")) { step += 1 }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.dsPrimary)
         default:
-            Button(L("Next")) { step += 1 }.keyboardShortcut(.defaultAction)
+            Button(L("Next")) { step += 1 }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.dsPrimary)
         }
     }
 
@@ -160,15 +202,52 @@ struct OnboardingView: View {
         let tiers = Self.onboardingTiers.filter { !WhisperEngine.shared.isModelDownloaded(tier: $0) }
         let totalMB = Double(tiers.map(\.sizeMB).reduce(0, +))
         downloadTotalMB = Int(totalMB)
+        // Checked BEFORE the download starts: refusing up front beats failing
+        // at 97% of a gigabyte. 1.5× covers the temporary + unpacked copies.
+        let freeMB = Self.freeDiskMB()
+        let neededMB = Int(totalMB * 1.5) + 200
+        if freeMB < neededMB {
+            downloadFailed = true
+            diskShortfall = (needed: neededMB, free: freeMB)
+            return
+        }
+        diskShortfall = nil
         modelState = .downloading(0)
         downloadFailed = false
+        downloadRate = nil
         Task {
             do {
                 var doneMB = 0.0
+                // Smoothed transfer rate for the caption under the bar — a
+                // 630 MB download with no speed and no ETA reads as stuck on
+                // slow connections.
+                var lastT = ProcessInfo.processInfo.systemUptime
+                var lastMB = 0.0
+                var ema = 0.0
                 for tier in tiers {
                     try await WhisperEngine.shared.download(tier: tier) { p in
                         let overall = (doneMB + p * Double(tier.sizeMB)) / totalMB
-                        DispatchQueue.main.async { modelState = .downloading(overall) }
+                        let mbNow = overall * totalMB
+                        let now = ProcessInfo.processInfo.systemUptime
+                        var rate: String?
+                        if now - lastT >= 1.0 {
+                            let inst = (mbNow - lastMB) / (now - lastT)
+                            ema = ema == 0 ? inst : ema * 0.7 + inst * 0.3
+                            lastT = now
+                            lastMB = mbNow
+                        }
+                        if ema > 0.05 {
+                            let secondsLeft = Int((totalMB - mbNow) / ema)
+                            let eta = secondsLeft >= 90
+                                ? Lf("%d min", (secondsLeft + 30) / 60)
+                                : Lf("%d sec", max(secondsLeft, 1))
+                            rate = Lf("%@ MB/s · about %@ left",
+                                      String(format: "%.1f", ema), eta)
+                        }
+                        DispatchQueue.main.async {
+                            modelState = .downloading(overall)
+                            if let rate { downloadRate = rate }
+                        }
                     }
                     doneMB += Double(tier.sizeMB)
                 }
@@ -184,23 +263,15 @@ struct OnboardingView: View {
             }
         }
     }
-}
 
-// MARK: - Progress indicator
-
-private struct StepDots: View {
-    let current: Int
-    let total: Int
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<total, id: \.self) { i in
-                Capsule()
-                    .fill(i == current ? AnyShapeStyle(Brand.gradientDiagonal)
-                                       : AnyShapeStyle(Color.secondary.opacity(0.25)))
-                    .frame(width: i == current ? 22 : 7, height: 7)
-                    .animation(.easeInOut(duration: 0.2), value: current)
-            }
-        }
+    /// Free space where the models land (Application Support's volume).
+    static func freeDiskMB() -> Int {
+        let url = FileManager.default.urls(for: .applicationSupportDirectory,
+                                           in: .userDomainMask)[0]
+        let free = (try? url.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? .max
+        return Int(free / 1_048_576)
     }
 }
 
@@ -208,34 +279,47 @@ private struct StepDots: View {
 
 private struct WelcomeStep: View {
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack { Spacer(); InterfaceLanguagePicker(showsGlobe: true) }
-            WaveMark(height: 62)
-                .padding(.top, 6)
-            Text("Dictate")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(Brand.gradientDiagonal)
-            Text(L("Voice dictation in any app"))
-                .font(.title3).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 10) {
-                Label(L("Hold the chosen key — recording starts"), systemImage: "hand.point.down.fill")
-                Label(L("Speak while holding it"), systemImage: "waveform")
-                Label(L("Release — the text is typed where your cursor is"), systemImage: "text.cursor")
-                // The second half of the product, named on the very first
-                // screen: without it the mental model locks onto "one key,
-                // plain dictation" and the translate card on the keys step
-                // reads as a setting, not a feature (seen in a live user test).
-                // Cyan = the translate color throughout the app.
-                Label {
-                    Text(L("And there's a second key: speak your own language — it types English."))
-                } icon: {
-                    Image(systemName: "globe").foregroundStyle(Brand.cyan)
+            // Left-aligned column (design t5): the mark on its accent tile,
+            // the name, one sentence of what happens, three bullets of what
+            // matters. No gradient inside the glyph (identity rules) — the
+            // tile is the one solid accent surface.
+            VStack(alignment: .leading, spacing: 14) {
+                GlyphMark(state: .idle, color: .white, width: 40)
+                    .frame(width: 60, height: 60)
+                    .background(RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(DS.accent)
+                        .shadow(color: DS.accent.opacity(0.28), radius: 9, y: 3))
+                Text("Dictate")
+                    .font(.system(size: 30, weight: .bold))
+                    .kerning(-0.7)
+                Text(L("Hold a key, speak, let go. What you said is typed where your cursor is, in any app on this Mac."))
+                    .font(.system(size: 15))
+                    .lineSpacing(15 * 0.35)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 9) {
+                    bullet(L("Speech recognition runs entirely on this Mac. Nothing is uploaded."))
+                    bullet(L("A second key translates what you say into another language as it types."))
+                    bullet(L("No account, no subscription, open source."))
                 }
                 .padding(.top, 2)
             }
-            .padding(.top, 8)
-            Text(L("Everything runs on your Mac — no cloud, no account, no subscription. Turn Wi-Fi off: it still works."))
-                .font(.callout).foregroundStyle(.secondary).padding(.top, 4)
+            .frame(maxWidth: 520, alignment: .leading)
+            .padding(.top, -12)   // the language pill row shares the top edge
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func bullet(_ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Text("·").foregroundStyle(DS.accent)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -246,6 +330,10 @@ private struct ModelStep: View {
     @Binding var state: OnboardingView.ModelState
     var failed = false
     var totalMB = ModelTier.fast.sizeMB
+    /// Live transfer rate + ETA while downloading (nil until stable).
+    var rate: String?
+    /// Set when the download was refused up front for lack of disk space.
+    var diskShortfall: (needed: Int, free: Int)?
 
     private var sizeHint: String {
         totalMB >= 1000 ? String(format: "~%.1f GB", Double(totalMB) / 1000) : "~\(totalMB) MB"
@@ -253,7 +341,7 @@ private struct ModelStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("On-device recognition")).font(.title.bold())
+            Text(L("On-device recognition")).font(.system(size: 20, weight: .semibold)).kerning(-0.4)
             Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
@@ -263,7 +351,11 @@ private struct ModelStep: View {
                         Text(L("Downloading model…")).font(.headline)
                         ProgressView(value: p).frame(maxWidth: 360)
                         Text(Lf("Downloaded %d of %d MB", Int(p * Double(totalMB)), totalMB))
-                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            .font(DS.timestamp).foregroundStyle(.secondary)
+                        if let rate {
+                            Text(rate)
+                                .font(DS.timestamp).foregroundStyle(.tertiary)
+                        }
                         Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
@@ -277,14 +369,22 @@ private struct ModelStep: View {
                 .padding(.top, 6)
             } else if state == .ready {
                 Label(L("Model ready"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green).padding(.top, 4)
+                    .foregroundStyle(DS.good).padding(.top, 4)
             } else {
                 Text(Lf("About %@ — downloaded once. This is the only time Dictate needs the internet.", sizeHint))
                     .font(.headline)
-                if failed {
+                if let short = diskShortfall {
+                    // Refused before it began — failing at the end of a
+                    // gigabyte would be the worse version of this message.
+                    Label(Lf("Not enough disk space: the download needs about %d MB and %d MB is free. Free up space and try again.",
+                             short.needed, short.free),
+                          systemImage: "externaldrive.badge.exclamationmark")
+                        .foregroundStyle(DS.warn)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if failed {
                     Label(L("Download failed. Check your connection and retry."),
                           systemImage: "wifi.exclamationmark")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(DS.warn)
                 }
             }
             Spacer()
@@ -295,165 +395,157 @@ private struct ModelStep: View {
 // MARK: - Step 3: hotkey + translate key
 
 private struct HotkeyStep: View {
-    private enum Target { case dictation, translate }
-
     /// Owned by OnboardingView — the translation-data fetch hangs off the root
     /// and has to see these change (this view is recreated on every step).
     @Binding var language: String
     @Binding var translateTarget: String
 
-    @StateObject private var capture = KeyCapture()
-    @State private var mainCode = Settings.shared.hotkeyKeyCode
+    @StateObject private var captureMain = KeyCapture()
+    @StateObject private var captureTranslate = KeyCapture()
     @State private var mainName = Settings.shared.hotkeyName
-    @State private var translateCode = Settings.shared.translateKeyCode
     @State private var translateName = Settings.shared.translateKeyName
     @State private var translateSet = Settings.shared.translateKeyCode != nil
     @State private var unsafeKey = !KeyNames.isSafeHotkey(Settings.shared.hotkeyKeyCode)
-    @State private var armed = Target.dictation
-    /// One-shot cyan ring on the Translate card when it first appears — the
-    /// card materializes while the user's eyes are on the language picker,
-    /// so its arrival needs a beat of motion to be seen at all.
-    @State private var translateCardPulsed = false
+    @State private var fKey = KeyNames.isFunctionKey(Settings.shared.hotkeyKeyCode)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L("Two keys, two results")).font(.title.bold())
-            Text(L("Hold a key and speak. The key you hold decides what gets typed."))
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-
-            // Two columns, each language choice sitting exactly above the key
-            // card it belongs to — the indigo picker over the indigo Dictation
-            // card, the cyan target picker over the cyan Translate card. Two
-            // ragged left-aligned rows read as unrelated settings; the columns
-            // make the pairing visible. Both pickers are the same bordered
-            // button + popover control (a system Menu can't be styled: macOS
-            // paints its own gray bezel and ignores custom labels).
-            // The translate column lives here, not buried in Settings: a
-            // non-English speaker who wants, say, German has no reason to
-            // discover it later. Hidden for English speakers — the translate
-            // key itself doesn't exist for them.
-            HStack(spacing: 10) {
-                VStack(spacing: 5) {
-                    Text(L("You'll dictate in:"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    LanguagePicker(selection: $language)
-                        .onChange(of: language) { code in
-                            Settings.shared.language = code
-                            assignDefaultTranslateKeyIfNeeded()
-                            if code == "en" { armed = .dictation }
-                        }
-                }
-                .frame(maxWidth: .infinity)
-                if language != "en" {
-                    VStack(spacing: 5) {
-                        Text(L("Translate to") + ":")
-                            .font(.caption).foregroundStyle(.secondary)
-                        TranslateTargetPicker(selection: $translateTarget)
-                            .onChange(of: translateTarget) { Settings.shared.translateTargetCode = $0 }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .transition(.scale(scale: 0.9).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(duration: 0.35), value: language == "en")
-
-            // Pick which key you're assigning; each chip shows its current binding.
-            HStack(spacing: 10) {
-                TargetChip(title: L("Dictation"),
-                           caption: L("Types exactly what you say"),
-                           keyName: KeyNames.displayName(mainName),
-                           tint: Brand.indigo,
-                           armed: armed == .dictation) { armed = .dictation }
-                if language != "en" {
-                    TargetChip(title: translateChipTitle,
-                               caption: translateChipCaption,
-                               keyName: translateSet ? KeyNames.displayName(translateName) : L("Not set"),
-                               tint: Brand.cyan,
-                               armed: armed == .translate) { armed = .translate }
-                        .transition(.scale(scale: 0.9).combined(with: .opacity))
-                        .overlay(RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Brand.cyan.opacity(translateCardPulsed ? 0 : 0.8), lineWidth: 2.5)
-                            .scaleEffect(translateCardPulsed ? 1.07 : 1)
-                            .allowsHitTesting(false))
-                        .onAppear {
-                            withAnimation(.easeOut(duration: 1.1).delay(0.35)) {
-                                translateCardPulsed = true
-                            }
-                        }
-                }
-            }
-            .animation(.spring(duration: 0.35), value: language == "en")
-
-            // Safe-key schematic — click a key to bind it to the armed target.
-            HotkeyKeyboard(
-                dictationCode: mainCode,
-                translateCode: language == "en" ? nil : translateCode,
-                dictationTint: Brand.indigo,
-                translateTint: Brand.cyan
-            ) { code, name in assign(code, name) }
-
-            HStack(spacing: 8) {
-                Text(armed == .dictation
-                     ? L("Setting the Dictation key — click one above, or press a key.")
-                     : L("Setting the Translate key — click one above, or press a key."))
-                    .font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(L("Choose your keys and languages"))
+                    .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
+                Text(L("Hold the key while you speak. Anything can be changed later in Settings."))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                Button(capture.capturing ? L("Press a key… (Esc)") : L("Press a key…")) {
-                    capture.begin()
-                }
-                .controlSize(.small).disabled(capture.capturing)
             }
+
+            // The design's form rows (t5/keys): a right-aligned label column,
+            // the control beside it, a quiet hint under the control.
+            VStack(alignment: .leading, spacing: 0) {
+                formRow(label: L("Dictation key")) {
+                    HStack(spacing: 9) {
+                        captureWell(name: KeyNames.displayName(mainName),
+                                    capture: captureMain)
+                        Text(L("Click, then press a key"))
+                            .font(DS.helpText)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Divider()
+                formRow(label: L("Translate key")) {
+                    captureWell(name: translateSet
+                                ? KeyNames.displayName(translateName) : L("Not set"),
+                                capture: captureTranslate)
+                }
+                Divider()
+                formRow(label: L("I speak")) {
+                    HStack(spacing: 9) {
+                        LanguagePicker(selection: $language)
+                            .onChange(of: language) { Settings.shared.language = $0 }
+                        Text(L("112 languages · from your system settings"))
+                            .font(DS.helpText)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                if language != "en" {
+                    Divider()
+                    formRow(label: L("Translate into")) {
+                        TranslateTargetPicker(selection: $translateTarget)
+                            .onChange(of: translateTarget) {
+                                Settings.shared.translateTargetCode = $0
+                            }
+                    }
+                }
+            }
+
+            // The one lesson worth a box (design): why modifiers, and that
+            // Esc always bails out.
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 1)
+                Text(L("Modifier keys work best: they never insert a character when you hold them. Esc always cancels a dictation in progress."))
+                    .font(.system(size: 12))
+                    .lineSpacing(3)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 11)
+            .padding(.horizontal, 13)
+            .frame(maxWidth: 600, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(.quaternary.opacity(0.5)))
 
             if unsafeKey {
                 Label(L("This key types characters — they'll end up in your text while you hold it. A modifier (Option, Cmd, Shift, Ctrl) or an F-key is safer."),
                       systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange).font(.callout)
+                    .foregroundStyle(DS.warn).font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if fKey {
+                Label(L("F-keys can also trigger a system control (brightness, media) — macOS will do both. To use one as a plain key, turn on “Use F1, F2, etc. as standard function keys” in Keyboard settings."),
+                      systemImage: "info.circle")
+                    .foregroundStyle(.secondary).font(.caption)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
         .onAppear { assignDefaultTranslateKeyIfNeeded() }
-        .onDisappear { capture.cancel() }   // don't leave a live key monitor behind
-        .onReceive(capture.$capturedKeyCode) { code in
-            guard let code, let name = capture.capturedName else { return }
-            assign(code, name)
-        }
-    }
-
-    /// English gets its own wording — "typed in English" reads better than the
-    /// generic "translated to X" the other targets need.
-    private var translateChipTitle: String {
-        translateTarget == "en"
-            ? L("Translate → English")
-            : Lf("Translate → %@", LanguageList.endonym(for: translateTarget))
-    }
-
-    private var translateChipCaption: String {
-        translateTarget == "en"
-            ? L("Same speech — typed in English")
-            : Lf("Same speech — translated to %@", LanguageList.endonym(for: translateTarget))
-    }
-
-    /// Assign a key (from a schematic click or a physical press) to whichever
-    /// target is armed. Guards against binding the same physical key to both.
-    private func assign(_ code: Int, _ name: String) {
-        switch armed {
-        case .dictation:
-            guard code != translateCode else { return }
+        .onDisappear { captureMain.cancel(); captureTranslate.cancel() }
+        .onReceive(captureMain.$capturedKeyCode) { code in
+            guard let code, let name = captureMain.capturedName,
+                  code != Settings.shared.translateKeyCode else { return }
             Settings.shared.hotkeyKeyCode = code
             Settings.shared.hotkeyName = name
-            mainCode = code
             mainName = name
             unsafeKey = !KeyNames.isSafeHotkey(code)
-        case .translate:
-            guard code != mainCode else { return }
+            fKey = KeyNames.isFunctionKey(code)
+        }
+        .onReceive(captureTranslate.$capturedKeyCode) { code in
+            guard let code, let name = captureTranslate.capturedName,
+                  code != Settings.shared.hotkeyKeyCode else { return }
             Settings.shared.translateKeyCode = code
             Settings.shared.translateKeyName = name
-            translateCode = code
             translateName = name
             translateSet = true
         }
+    }
+
+    private func formRow<V: View>(label: String,
+                                  @ViewBuilder control: () -> V) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(width: 120, alignment: .trailing)
+            control()
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 9)
+    }
+
+    /// The key-capture well (design: capture): the current binding as a
+    /// keycap-flavoured chip; click, then press any key or modifier.
+    private func captureWell(name: String, capture: KeyCapture) -> some View {
+        Button {
+            capture.begin()
+        } label: {
+            Text(capture.capturing ? L("Type a key…") : name)
+                .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                .lineLimit(1)
+                .padding(.horizontal, 11)
+                .frame(height: 26)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(capture.capturing ? AnyShapeStyle(DS.accent.opacity(0.15))
+                                            : AnyShapeStyle(Color(nsColor: .controlBackgroundColor))))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(capture.capturing ? DS.accent : Color.primary.opacity(0.16),
+                                  lineWidth: capture.capturing ? 1 : 0.5))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight(radius: 7)
+        .pointerStyle(.link)
     }
 
     /// The translate key comes pre-assigned (right ⌘) for non-English speakers:
@@ -465,47 +557,11 @@ private struct HotkeyStep: View {
               Settings.shared.hotkeyKeyCode != 54 else { return }
         Settings.shared.translateKeyCode = 54
         Settings.shared.translateKeyName = "Right Command (⌘)"
-        translateCode = 54
         translateName = "Right Command (⌘)"
         translateSet = true
     }
 }
 
-/// A chip for one dictation role: its title and the key currently bound to it,
-/// with an armed ring marking it as the target a schematic click or a press will
-/// assign. Tapping arms it.
-private struct TargetChip: View {
-    let title: String
-    let caption: String
-    let keyName: String
-    let tint: Color
-    let armed: Bool
-    let tap: () -> Void
-
-    var body: some View {
-        Button(action: tap) {
-            VStack(spacing: 4) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(keyName)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(tint)
-                    .minimumScaleFactor(0.6).lineLimit(1)
-                Text(caption)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10).padding(.horizontal, 8)
-            .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(armed ? 0.14 : 0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(tint.opacity(armed ? 0.9 : 0.0), lineWidth: 2))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(armed ? [.isButton, .isSelected] : .isButton)
-    }
-}
 
 // MARK: - Step 4: permissions
 
@@ -520,17 +576,17 @@ private struct PermissionsStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("macOS permissions")).font(.title.bold())
+            Text(L("macOS permissions")).font(.system(size: 20, weight: .semibold)).kerning(-0.4)
             Text(L("Two permissions, granted once — each does exactly one job. Dictate doesn't read your screen, doesn't log your typing, and doesn't send anything anywhere: recognition is fully on this Mac. When both turn green, you're ready."))
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
-            PermissionRow(icon: "mic.fill", tint: Brand.indigo,
+            PermissionRow(icon: "mic.fill", tint: DS.accent,
                           title: L("Microphone"),
                           explain: L("listens only during a dictation you started — never in the background on its own"),
                           status: mic) {
                 Permissions.requestMicrophoneIfNeeded { _ in refresh() }
             }
-            PermissionRow(icon: "accessibility", tint: .purple,
+            PermissionRow(icon: "accessibility", tint: DS.accent,
                           title: L("Accessibility"),
                           explain: L("for exactly two things: to hear your dictation key and to type the text for you. Nothing else."),
                           status: ax) {
@@ -546,7 +602,7 @@ private struct PermissionsStep: View {
                 if Settings.shared.onboardingDone, ax != .granted {
                     Label(L("Already ON in System Settings but not green here? Turn the Dictate switch off and back on — after an app update macOS sometimes keeps a stale entry."),
                           systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(DS.warn)
                 }
                 Button(L("No window appeared? Open settings manually")) {
                     Permissions.openSettingsPane("Privacy_Accessibility")
@@ -603,9 +659,10 @@ private struct PermissionRow: View {
             Spacer()
             if status == .granted {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.title2).foregroundStyle(.green)
+                    .font(.title2).foregroundStyle(DS.good)
             } else {
                 Button(L("Allow"), action: action)
+                    .buttonStyle(.dsSmall)
             }
         }
         .padding(10)
@@ -657,7 +714,7 @@ private struct TryItStep: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(L("Try it out")).font(.title.bold())
+            Text(L("Try it out")).font(.system(size: 20, weight: .semibold)).kerning(-0.4)
             // Honest state while the one-time Neural Engine compile is still
             // running: the tasks stay visible but dimmed, and the banner says
             // what the wait is — without it the first keypress just shows a
@@ -695,7 +752,7 @@ private struct TryItStep: View {
             if let stats {
                 Label(Lf("Words: %d · %.1f s", stats.words, stats.seconds),
                       systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(DS.good)
                     .font(.callout.monospacedDigit())
             } else {
                 Text(L("Changed your mind? Esc cancels the recording."))
@@ -765,7 +822,7 @@ private struct TryTask: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary))
+                .foregroundStyle(done ? AnyShapeStyle(DS.good) : AnyShapeStyle(.secondary))
             Text(text)
                 .foregroundStyle(done ? .secondary : .primary)
                 .fixedSize(horizontal: false, vertical: true)

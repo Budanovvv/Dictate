@@ -374,3 +374,86 @@ final class LabelInheritanceTests: XCTestCase {
             secondsApart: 6))
     }
 }
+
+// The duet minor merge — the 1:1 call whose second remote label is a dwarf
+// of the first. Every number here is a measured session from the owner's
+// logs, not an invented example.
+final class DuetVerdictTests: XCTestCase {
+
+    private func voice(_ ordinal: Int, entries: Int, seconds: Double,
+                       renamed: Bool = false) -> MeetingSpeakerPolicy.Voice {
+        MeetingSpeakerPolicy.Voice(ordinal: ordinal, entries: entries,
+                                   seconds: seconds, renamed: renamed)
+    }
+
+    func testTheObservedCaseMerges() {
+        // 2026-08-28 09:48, 15.6 min 1:1: voice 1 = 70 entries / 711 s,
+        // voice 2 = 5 entries / 24 s, distance 0.837 — inside the 1.2× bar.
+        let verdict = MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 70, seconds: 711),
+                     voice(2, entries: 5, seconds: 24)],
+            ceiling: 0.70) { _, _ in 0.837 }
+        XCTAssertEqual(verdict?.outcome, .merge(into: 1, distance: 0.837))
+    }
+
+    func testComparableSharesAreTwoPeople() {
+        // 2026-08-28 09:12: 274 s vs 113 s (41%) — possibly two real people,
+        // whatever the distance says.
+        XCTAssertNil(MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 13, seconds: 113),
+                     voice(2, entries: 28, seconds: 274)],
+            ceiling: 0.70) { _, _ in 0.60 })
+    }
+
+    func testDistantMinorStaysItself() {
+        // 2026-08-24 shape at the measured 0.957 — outside even the 1.2× bar,
+        // with the shares forced duet-shaped so ONLY the distance decides.
+        let verdict = MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 40, seconds: 400),
+                     voice(2, entries: 5, seconds: 29)],
+            ceiling: 0.70) { _, _ in 0.957 }
+        XCTAssertEqual(verdict?.outcome, .keepTooFar(nearest: 1, distance: 0.957))
+    }
+
+    func testAbsoluteCapProtectsLongCalls() {
+        // An hour-long dominant makes 10% of it six minutes — a real person.
+        // The 60 s absolute cap refuses regardless of share.
+        XCTAssertNil(MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 300, seconds: 3600),
+                     voice(2, entries: 12, seconds: 120)],
+            ceiling: 0.70) { _, _ in 0.75 })
+    }
+
+    func testThreeVoicesAreAGroupCall() {
+        XCTAssertNil(MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 70, seconds: 711),
+                     voice(2, entries: 5, seconds: 24),
+                     voice(3, entries: 8, seconds: 80)],
+            ceiling: 0.70) { _, _ in 0.60 })
+    }
+
+    func testRenamedVoiceIsNeverJudged() {
+        // A name is the strongest statement that this is a real person.
+        XCTAssertNil(MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 70, seconds: 711),
+                     voice(2, entries: 5, seconds: 24, renamed: true)],
+            ceiling: 0.70) { _, _ in 0.60 })
+    }
+
+    func testMicroMinorIsTheOtherRulesCase() {
+        // ≤2 entries and ≤10 s belongs to the micro rule; the duet rule
+        // stands down so no voice is ever judged twice.
+        XCTAssertNil(MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 70, seconds: 711),
+                     voice(2, entries: 2, seconds: 8)],
+            ceiling: 0.70) { _, _ in 0.60 })
+    }
+
+    func testUnmeasurableDistanceNeverGuesses() {
+        let verdict = MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 70, seconds: 711),
+                     voice(2, entries: 5, seconds: 24)],
+            ceiling: 0.70) { _, _ in nil }
+        XCTAssertEqual(verdict?.outcome, .keepUnmeasured)
+    }
+}

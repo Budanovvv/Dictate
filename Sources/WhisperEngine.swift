@@ -210,17 +210,19 @@ actor WhisperEngine {
     }
 
     /// Transcribes audio (16 kHz float) with the given tier's model.
-    /// language "" → auto-detect. prompt — terms dictionary. Transcription
-    /// only: translation is Apple Translation's job now, downstream.
+    /// language "" → auto-detect. Transcription only: translation is Apple
+    /// Translation's job now, downstream. No user prompt any more — the
+    /// vocabulary hint was retired 2026-08-27 (foreign text in it silently
+    /// emptied recognitions, see GRABLI).
     /// onProgress: overall fraction of audio processed (0…1) + words so far.
     /// Returns the text and the language Whisper detected (drives the
     /// language-scoped filler-word cleanup even in auto-detect mode).
-    func transcribe(floats: [Float], tier: ModelTier, language: String, prompt: String,
+    func transcribe(floats: [Float], tier: ModelTier, language: String,
                     isCancelled: (@Sendable () -> Bool)? = nil,
                     onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
         -> (text: String, detectedLanguage: String) {
         let r = try await transcribeScored(floats: floats, tier: tier, language: language,
-                                           prompt: prompt, isCancelled: isCancelled,
+                                           isCancelled: isCancelled,
                                            onProgress: onProgress)
         return (r.text, r.detectedLanguage)
     }
@@ -228,7 +230,7 @@ actor WhisperEngine {
     /// Same decode, plus the model's own confidence numbers. Separate entry
     /// point rather than a wider return tuple so the dictation path — which
     /// has no use for them — stays untouched.
-    func transcribeScored(floats: [Float], tier: ModelTier, language: String, prompt: String,
+    func transcribeScored(floats: [Float], tier: ModelTier, language: String,
                           isCancelled: (@Sendable () -> Bool)? = nil,
                           onProgress: (@Sendable (Double, Int) -> Void)? = nil) async throws
         -> (text: String, detectedLanguage: String, quality: DecodeQuality) {
@@ -236,14 +238,6 @@ actor WhisperEngine {
             throw NSError(domain: "Dictate", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Whisper model not loaded"])
         }
-
-        var promptTokens: [Int]? = nil
-        if !prompt.isEmpty, let tokenizer = pipe.tokenizer {
-            let tokens = tokenizer.encode(text: " " + prompt.trimmingCharacters(in: .whitespaces))
-                .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
-            if !tokens.isEmpty { promptTokens = tokens }
-        }
-        Log.d("prompt: \(prompt.count) chars -> \(promptTokens?.count ?? 0) tokens applied")
 
         let options = DecodingOptions(
             task: .transcribe,
@@ -254,7 +248,6 @@ actor WhisperEngine {
             detectLanguage: language.isEmpty,
             skipSpecialTokens: true,
             withoutTimestamps: true,
-            promptTokens: promptTokens,
             chunkingStrategy: .vad  // split long recordings at pauses — more reliable
         )
         var callback: TranscriptionCallback = nil

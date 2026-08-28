@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import SwiftUI
 
 /// The menu bar icon and its menu.
 final class StatusItemController: NSObject, NSMenuDelegate {
@@ -15,6 +16,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// window wherever it would open on its own (the live call, or the newest
     /// meeting in the library).
     private let showMeetings: (URL?) -> Void
+    /// The floating timer was hidden by hand while a recording runs — the
+    /// menu is then the only way to bring it back (design: hidden state).
+    private let pillHidden: () -> Bool
+    private let showPill: () -> Void
     private var lastError: String?
 
     init(dictation: DictationController,
@@ -22,14 +27,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
          meetingActive: @escaping () -> Bool,
          meetingStarted: @escaping () -> Date?,
          toggleMeeting: @escaping () -> Void,
-         showMeetings: @escaping (URL?) -> Void) {
-        self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+         showMeetings: @escaping (URL?) -> Void,
+         pillHidden: @escaping () -> Bool,
+         showPill: @escaping () -> Void) {
+        // Variable, not square: while a meeting records, the elapsed time sits
+        // right in the strip next to the mark — a long recording must never be
+        // forgotten, and a tooltip only answers when someone thinks to hover.
+        self.item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.dictation = dictation
         self.openSettings = openSettings
         self.meetingActive = meetingActive
         self.meetingStarted = meetingStarted
         self.toggleMeeting = toggleMeeting
         self.showMeetings = showMeetings
+        self.pillHidden = pillHidden
+        self.showPill = showPill
         super.init()
 
         item.button?.toolTip = L("Dictate — voice dictation")
@@ -50,98 +62,86 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func showError(_ message: String) {
         lastError = message
-        if let button = item.button {
-            button.image = coloredSymbol("exclamationmark.triangle.fill", color: .systemYellow)
-        }
+        // The attention state of the mark family: exclamation cursor, mark
+        // dimmed — template, like every state. The message itself sits at the
+        // top of the menu; the icon only says "look here".
+        item.button?.image = FamilyGlyph.menuBarImage(.attention)
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }
             self.updateIcon(for: self.dictation.state)
         }
     }
 
-    // The icon is always the brand wave (monochrome template per HIG) — the
-    // state shows as motion, not as a different colored symbol: recording
-    // makes the bars dance to the voice, transcribing ripples them.
+    // The icon is the mark family (identity, turn 11): monochrome template in
+    // every state, so macOS recolours it for dark menu bars and the open-menu
+    // highlight. The cursor is the state carrier — bars move while recording,
+    // dots walk while recognizing, a record dot (plus elapsed time) while a
+    // meeting runs, an exclamation when something needs attention. The record
+    // dot never pulses (13a: one animated element per surface).
     private var rippleTimer: Timer?
-    private var ripplePhase: Double = 0
+    private var ripplePhase: Int = 0
     private var smoothedLevel: Double = 0
 
     private func updateIcon(for state: DictationController.State) {
         guard let button = item.button else { return }
         stopRipple()
         stopMeetingPulse()
+        // The elapsed-time title belongs to the meeting state alone; every
+        // other state is icon-only and must not inherit a stale clock.
+        button.title = ""
         switch state {
         case .idle:
-            // A live meeting shows as a RED WAVE the whole time — an armed
-            // recording must never be invisible, and it doubles as the "don't
-            // forget to stop" reminder. It was a static red dot, and a dot is
-            // only proof that the app INTENDS to record; bars that move with
-            // the room are proof that it is hearing something, which is the
-            // question actually being asked when the transcript is hidden.
-            // Dictation states (below) still take over while a dictation runs.
             if meetingActive() {
-                startMeetingPulse()
+                startMeetingPulse()   // static glyph; the timer only drives the clock text
+            } else if Permissions.accessibility != .granted {
+                // The one problem the icon can announce: the mark dims and the
+                // cursor becomes an exclamation. The reason is the first row
+                // of the menu — never a notification.
+                button.image = FamilyGlyph.menuBarImage(.attention)
+                button.toolTip = L("Accessibility is off — dictation can hear you but cannot type")
             } else {
-                button.image = Self.waveIcon
+                button.image = FamilyGlyph.menuBarImage(.idle)
                 button.toolTip = nil
             }
         case .recording:
             smoothedLevel = 0
-            button.image = Self.waveImage(scale: { _ in 0.3 })
+            button.image = FamilyGlyph.menuBarImage(.recording(level: 0))
         case .transcribing:
             startRipple()
         }
     }
 
-    /// Voice level 0…1 while recording — the menu bar bars follow it.
+    /// Voice level 0…1 while recording — the mark's own bars follow it.
     func setLevel(_ level: Double) {
         guard dictation.state == .recording else { return }
         smoothedLevel = smoothedLevel * 0.6 + level * 0.4
-        let l = smoothedLevel
-        item.button?.image = Self.waveImage(scale: { _ in 0.3 + 0.7 * l })
+        item.button?.image = FamilyGlyph.menuBarImage(.recording(level: smoothedLevel))
     }
 
-    /// The running meeting's mark: a red wave breathing on a fixed cycle.
-    ///
-    /// Mechanical on purpose, and it started out the other way. Driving the
-    /// bars from the meeting's audio level was the obvious idea — the dictation
-    /// mark does exactly that — but it answers a question nobody is asking. A
-    /// glance at the menu bar during a call asks "is this thing still
-    /// recording", not "how loud is the room right now"; and level-driven bars
-    /// go flat during every pause, which is the one moment the answer must not
-    /// look like "no". A steady breath says "running" and cannot say anything
-    /// misleading.
-    ///
-    /// Cost is why the period is what it is: a dictation lasts seconds, a
-    /// meeting runs for forty minutes, and this project has twice paid a
-    /// double-digit percentage of a core for motion that never settled
-    /// (GRABLI). Five redraws a second of an 18pt image is a different order of
-    /// thing from a SwiftUI animation asking the window for sixty frames — but
-    /// it is not free either, which is why it steps five times a second and not
-    /// twelve like the ripple it sits next to.
+    /// The running meeting's mark: the family glyph with the record dot in
+    /// the cursor's place, plus the elapsed time in the strip. The dot never
+    /// pulses (13a) — a forgotten recording is announced by the TIME growing,
+    /// which is the honest signal; the only timer here redraws the clock text
+    /// once a second.
     private var pulseTimer: Timer?
-    private var pulsePhase: Double = 0
-    private static let pulseStep: TimeInterval = 0.2
-    private static let pulsePeriod: Double = 2.0
 
     private func startMeetingPulse() {
         stopMeetingPulse()
-        pulsePhase = 0
         drawPulse()
-        pulseTimer = Timer.scheduledTimer(withTimeInterval: Self.pulseStep, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.pulsePhase += Self.pulseStep / Self.pulsePeriod * 2 * .pi
-            self.drawPulse()
+        pulseTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.drawPulse()
         }
     }
 
     private func drawPulse() {
-        // 0.35…0.95 — never flat (flat would read as "not recording") and never
-        // at full height (that is the idle mark's size, and the two must not
-        // look the same at a glance).
-        let breath = 0.65 + 0.30 * sin(pulsePhase)
-        item.button?.image = Self.waveImage(scale: { _ in breath }, color: .systemRed)
+        item.button?.image = FamilyGlyph.menuBarImage(.meeting)
         item.button?.toolTip = meetingTip()
+        if let start = meetingStarted() {
+            item.button?.attributedTitle = NSAttributedString(
+                string: " " + Self.elapsed(since: start),
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
+            item.button?.imagePosition = .imageLeading
+        }
     }
 
     private func stopMeetingPulse() {
@@ -159,13 +159,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func startRipple() {
         ripplePhase = 0
-        rippleTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+        item.button?.image = FamilyGlyph.menuBarImage(.recognizing(phase: 0))
+        // Dots-on-the-line, the one place the dots motif is drawn (identity):
+        // the lit dot walks left to right, ~3 redraws a second.
+        rippleTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.ripplePhase += 0.5
-            let phase = self.ripplePhase
-            self.item.button?.image = Self.waveImage(scale: { i in
-                0.55 + 0.45 * sin(phase + Double(i) * 0.9)
-            })
+            self.ripplePhase += 1
+            self.item.button?.image = FamilyGlyph.menuBarImage(.recognizing(phase: self.ripplePhase))
         }
     }
 
@@ -174,45 +174,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         rippleTimer = nil
     }
 
-    private func coloredSymbol(_ name: String, color: NSColor) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-            .applying(.init(paletteColors: [color]))
-        let img = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        img?.isTemplate = false
-        return img
-    }
-
-    /// Template image (HIG: menu bar icons are monochrome; the system recolors it for light/dark).
-    private static let waveIcon = waveImage(scale: { _ in 1 })
-
-    /// Brand wave with per-bar height multipliers (0…1) for the animated states.
-    ///
-    /// `color` breaks the template rule on purpose, and only for one state: a
-    /// live meeting. HIG wants menu bar icons monochrome so the system can
-    /// recolor them, and every state here obeys that — except the one that says
-    /// a recording is running, where red is the convention every recorder on
-    /// this platform (and the system's own privacy dot) already uses. It
-    /// replaced a red `record.circle.fill`, so the colour is not new; what is
-    /// new is that the mark now moves with the voices it is recording.
-    private static func waveImage(scale: (Int) -> Double, color: NSColor? = nil) -> NSImage {
-        let s: CGFloat = 18
-        let image = NSImage(size: NSSize(width: s, height: s))
-        image.lockFocus()
-        (color ?? .black).setFill()
-        let profile: [CGFloat] = [0.36, 0.64, 1.0, 0.64, 0.36]
-        let barW: CGFloat = 2.4
-        let gap: CGFloat = 3.5
-        let startX = (s - (CGFloat(profile.count - 1) * gap + barW)) / 2
-        for (i, hf) in profile.enumerated() {
-            let h = max(2.4, s * 0.80 * hf * CGFloat(scale(i)))
-            let r = NSRect(x: startX + CGFloat(i) * gap, y: (s - h) / 2, width: barW, height: h)
-            NSBezierPath(roundedRect: r, xRadius: barW / 2, yRadius: barW / 2).fill()
-        }
-        image.unlockFocus()
-        image.isTemplate = color == nil
-        return image
-    }
 
     // Rebuilt on every open so the items reflect current state.
     //
@@ -236,42 +197,80 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.removeAllItems()
 
         // Warnings first and unlabelled: they explain why the app looks broken,
-        // and nothing else in the menu matters until they are read.
+        // and nothing else in the menu matters until they are read. Two-line
+        // banners (design 4b/4c): a bold sentence naming the state, a quiet
+        // one saying what to do about it.
         var warned = false
         // Secure Keyboard Entry (password fields, Terminal option) blocks key capture system-wide.
         if IsSecureEventInputEnabled() {
-            menu.addItem(Self.label("⚠️ " + L("Secure input is on (password field?) — the hotkey won't work for now")))
+            menu.addItem(Self.banner(
+                icon: "lock.fill",
+                title: L("Secure input is active — the hotkey cannot work"),
+                sub: L("Something has a password field focused. macOS does not say which app. Click into an ordinary text field and dictation works again.")))
             warned = true
         }
         if let lastError {
-            menu.addItem(Self.label("⚠️ \(lastError)"))
+            menu.addItem(Self.banner(icon: "exclamationmark.triangle",
+                                     title: lastError, sub: nil))
+            warned = true
+        }
+        // A revoked permission is the one problem the user can actually fix
+        // from here, so the warning comes with its door. Checked live on every
+        // open — lastError may long predate or outlive the actual state.
+        if Permissions.accessibility != .granted {
+            menu.addItem(Self.banner(
+                icon: "exclamationmark.triangle",
+                title: L("Accessibility access is turned off"),
+                sub: L("Dictation can hear you but cannot type. Re-enable it to continue.")))
+            let fix = NSMenuItem(title: "", action: #selector(openAccessibilityPane),
+                                 keyEquivalent: "")
+            // The door row in the accent colour (design rowAccent) — the one
+            // actionable line under the explanation.
+            fix.attributedTitle = NSAttributedString(
+                string: L("Open Privacy & Security…"),
+                attributes: [.foregroundColor: NSColor.controlAccentColor,
+                             .font: NSFont.menuFont(ofSize: 0)])
+            fix.target = self
+            menu.addItem(fix)
+            warned = true
+        }
+        // Recording outranks recognizing in the glyph (one slot), so while
+        // both are true the previous dictation looks dropped — this line says
+        // it is not.
+        let recognizing = dictation.recognizingCount
+        if dictation.state == .recording, recognizing > 0 {
+            menu.addItem(Self.label(recognizing == 1
+                ? L("1 dictation still being recognized")
+                : Lf("%d dictations still being recognized", recognizing)))
             warned = true
         }
         if warned { menu.addItem(.separator()) }
 
-        menu.addItem(.sectionHeader(title: L("Meetings")))
-
-        // Meeting transcript: local two-channel recording of a browser call
-        // (mic = You, system audio = Them). "Record Meeting", because the
-        // transcript is the by-product — recording is what is being asked for.
-        //
-        // The one symbol in this menu, and the one item that gets any emphasis
-        // at all. It is the menu's primary action and nothing but its position
-        // said so; a red record glyph says both "this is the thing" and WHAT
-        // the thing does, which a bold title could not. Apple's own menus never
-        // bold an item — they carry meaning in symbols — and the emphasis only
-        // works while it is alone: a menu where every row has an icon
-        // highlights nothing.
+        // Meeting rows sit at the top with no header and no icons (design
+        // 4a/4d): position is the emphasis, and the design's menu carries
+        // meaning in words alone. The stop row shows the elapsed time — a
+        // long recording must never be forgotten, and this menu is one of
+        // the places someone comes to remember it.
         let recording = meetingActive()
         let record = NSMenuItem(
-            title: recording ? L("Stop Recording") : L("Record Meeting"),
+            title: "",
             action: #selector(meetingClicked), keyEquivalent: ""
         )
-        // Not a template image: a template is recoloured to the menu's own text
-        // colour, which is exactly the meaning being removed here. A palette
-        // configuration keeps it red in both appearances and under the
-        // highlight bar.
-        record.image = Self.redSymbol(recording ? "stop.circle.fill" : "record.circle")
+        if recording, let started = meetingStarted() {
+            let s = max(0, Int(Date().timeIntervalSince(started)))
+            let time = String(format: "%d:%02d", s / 60, s % 60)
+            let title = NSMutableAttributedString(
+                string: L("Stop Recording Meeting"),
+                attributes: [.font: NSFont.menuFont(ofSize: 0)])
+            title.append(NSAttributedString(
+                string: "  " + time,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(
+                                ofSize: NSFont.systemFontSize(for: .small), weight: .regular),
+                             .foregroundColor: NSColor.secondaryLabelColor]))
+            record.attributedTitle = title
+        } else {
+            record.title = L("Start Recording Meeting")
+        }
         record.target = self
         menu.addItem(record)
 
@@ -286,37 +285,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                                   action: #selector(showLiveMeeting), keyEquivalent: "")
             show.target = self
             menu.addItem(show)
+            // Bring It Back (design: hidden state) — only while the person
+            // has hidden the floating timer by hand; the rest of the time the
+            // row would name something already on screen.
+            if pillHidden() {
+                let back = NSMenuItem(title: L("Show Floating Timer"),
+                                      action: #selector(showPillClicked), keyEquivalent: "")
+                back.target = self
+                menu.addItem(back)
+            }
         }
 
         addMeetingsItem(to: menu)
 
         menu.addItem(.separator())
-        menu.addItem(.sectionHeader(title: L("Dictation")))
+        menu.addItem(.sectionHeader(title: L("Keys")))
 
-        // What each key does, spelled out. These were once two rows at the very
-        // TOP of the menu, holding its most valuable position while being
-        // unclickable; they were then collapsed into one glyph line
-        // ("⌥ dictate · ⌘ English"), which fit but stopped explaining itself —
-        // it never said what the second key does or in which direction. Under a
-        // heading, halfway down the menu, a second line is cheap and a sentence
-        // is worth having.
-        for line in dictationKeyLines() { menu.addItem(Self.label(line)) }
+        // What each key does, spelled out (design 4a): the key drawn as a
+        // keycap chip, the explanation beside it. These were once two rows at
+        // the very TOP of the menu, holding its most valuable position while
+        // being unclickable; under a heading, halfway down the menu, a second
+        // line is cheap and a sentence is worth having.
+        for (key, what) in dictationKeyRows() {
+            menu.addItem(Self.viewItem(KeycapRow(key: key, what: what)))
+        }
 
         // Safety net: recent results are recoverable even when a paste went
-        // nowhere or the clipboard got overwritten. Click → copy.
+        // nowhere or the clipboard got overwritten. Inline rows under their
+        // own header, "click to copy" spelled out at its right (design 4a) —
+        // a submenu was tried and was a door nobody found.
         if !dictation.history.isEmpty {
-            let recent = NSMenuItem(title: L("Recent Dictations"), action: nil, keyEquivalent: "")
-            let sub = NSMenu()
-            for text in dictation.history {
+            menu.addItem(.separator())
+            menu.addItem(Self.viewItem(RecentHeaderRow()))
+            for text in dictation.history.prefix(3) {
                 let entry = NSMenuItem(title: Self.shortened(text),
                                        action: #selector(copyHistoryItem(_:)), keyEquivalent: "")
                 entry.target = self
                 entry.representedObject = text
                 entry.toolTip = text
-                sub.addItem(entry)
+                menu.addItem(entry)
             }
-            recent.submenu = sub
-            menu.addItem(recent)
         }
 
         menu.addItem(.separator())
@@ -324,6 +332,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // The service group stays unlabelled — a heading over "Settings…" would
         // only name what the items already say. "Check for Updates…" is gone
         // from here: it now sits beside the version number in Settings.
+        // Language packs live in System Settings (macOS owns them; GRABLI:
+        // they cannot be deleted programmatically). This is the menu-bar twin
+        // of the overlay's "translation data isn't downloaded" hint — the
+        // overlay cannot be reached by keyboard, the menu always can.
+        let packs = NSMenuItem(title: L("Language Packs…"),
+                               action: #selector(openLanguagePacks), keyEquivalent: "")
+        packs.target = self
+        menu.addItem(packs)
+
         let settings = NSMenuItem(title: L("Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -331,8 +348,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let about = NSMenuItem(title: L("About Dictate"), action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
-
-        menu.addItem(.separator())
 
         let quit = NSMenuItem(title: L("Quit Dictate"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -367,9 +382,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// iCloud may have evicted, which is a stall this app has already paid for
     /// once. The menu does actions; the window does browsing.
     private func addMeetingsItem(to menu: NSMenu) {
-        let item = NSMenuItem(title: L("Meetings…"),
+        let item = NSMenuItem(title: L("Meetings & Ask…"),
                               action: #selector(showAllMeetings), keyEquivalent: "")
-        item.image = Self.plainSymbol("list.bullet.rectangle")
         item.target = self
         menu.addItem(item)
     }
@@ -394,49 +408,60 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// the picker, where a person hunts for their own language and has to
     /// recognise it in its own script; inside a sentence written in another
     /// language it reads as a glitch.
-    private func dictationKeyLines() -> [String] {
+    /// (keycap, what it does) pairs for the Keys section (design 4a): the key
+    /// as a chip, the sentence beside it.
+    private func dictationKeyRows() -> [(String, String)] {
         let spoken = Settings.shared.language
-        let dictateKey = KeyNames.displayName(Settings.shared.hotkeyName)
+        let dictateKey = Self.keycap(from: KeyNames.displayName(Settings.shared.hotkeyName))
         // "" is Automatic (any language) — Whisper decides per dictation, so
         // there is no language to name and saying one would be a guess.
-        var lines = [spoken.isEmpty
-            ? Lf("%@ — dictate in any language", dictateKey)
-            : Lf("%@ — dictate in %@", dictateKey, LanguageList.name(for: spoken))]
+        var rows = [(dictateKey, spoken.isEmpty
+            ? L("dictate in any language")
+            : Lf("dictate in %@", LanguageList.name(for: spoken)))]
 
-        guard let _ = Settings.shared.translateKeyCode else { return lines }
+        guard let _ = Settings.shared.translateKeyCode else { return rows }
         let target = Settings.shared.translateTargetCode
         // Speaking the target language already: the runtime skips the
         // translation hop entirely in that case (there is no en→en), so the
         // second key does exactly what the first does and a line claiming a
         // translation would be a lie.
-        guard spoken != target else { return lines }
-        let translateKey = KeyNames.displayName(Settings.shared.translateKeyName)
-        lines.append(spoken.isEmpty
-            ? Lf("%@ — translate into %@", translateKey, LanguageList.name(for: target))
-            : Lf("%@ — translate %@ → %@", translateKey,
-                 LanguageList.name(for: spoken), LanguageList.name(for: target)))
-        return lines
+        guard spoken != target else { return rows }
+        let translateKey = Self.keycap(from: KeyNames.displayName(Settings.shared.translateKeyName))
+        rows.append((translateKey, spoken.isEmpty
+            ? Lf("translate into %@", LanguageList.name(for: target))
+            : Lf("translate %@ → %@",
+                 LanguageList.name(for: spoken), LanguageList.name(for: target))))
+        return rows
     }
 
-    /// A red SF Symbol at menu-item size.
-    private static func redSymbol(_ name: String) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.systemRed]))
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        image?.isTemplate = false
-        return image
+    /// "Right Option (⌥)" → "⌥": the chip carries the symbol, the sentence
+    /// carries the meaning. Keys without a symbol keep their name ("F5").
+    private static func keycap(from displayName: String) -> String {
+        if let open = displayName.lastIndex(of: "("),
+           let close = displayName.lastIndex(of: ")"), open < close {
+            let symbol = displayName[displayName.index(after: open)..<close]
+            if !symbol.isEmpty { return String(symbol) }
+        }
+        return displayName
     }
+
+    /// A static, full-custom menu row (banners, keycap rows, headers) — the
+    /// hosting view is sized to fit so the menu takes its width.
+    private static func viewItem<V: View>(_ view: V) -> NSMenuItem {
+        let item = NSMenuItem()
+        let host = NSHostingView(rootView: view)
+        host.frame.size = host.fittingSize
+        item.view = host
+        return item
+    }
+
+    /// A two-line warning banner (design 4b/4c): icon, bold state, quiet cure.
+    private static func banner(icon: String, title: String, sub: String?) -> NSMenuItem {
+        viewItem(MenuBannerRow(icon: icon, title: title, sub: sub))
+    }
+
 
     /// An SF Symbol in the menu's own ink — a template image, so it follows the
-    /// text colour in both appearances and under the highlight bar.
-    private static func plainSymbol(_ name: String) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        image?.isTemplate = true
-        return image
-    }
 
     /// A line of text in the menu rather than a command.
     private static func label(_ title: String) -> NSMenuItem {
@@ -532,6 +557,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         openSettings()
     }
 
+    @objc private func openAccessibilityPane() {
+        Permissions.openSettingsPane("Privacy_Accessibility")
+    }
+
+    @objc private func openLanguagePacks() {
+        NSWorkspace.shared.open(
+            URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!)
+    }
+
     @objc private func meetingClicked() {
         toggleMeeting()
     }
@@ -544,6 +578,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func showLiveMeeting() {
         showMeetings(nil)
     }
+
+    @objc private func showPillClicked() {
+        showPill()
+    }
+
+    // Screenshot harness (design pass): open/close the menu without a mouse.
+    func debugOpenMenu() { item.button?.performClick(nil) }
+    func debugCloseMenu() { item.menu?.cancelTracking() }
 
     @objc private func openMeeting(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
@@ -573,5 +615,84 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Custom menu rows (design 4a–4d)
+
+/// A two-line warning banner at the top of the menu: icon, bold state line,
+/// quiet explanation. Static — it explains; the actionable row follows it.
+private struct MenuBannerRow: View {
+    let icon: String
+    let title: String
+    let sub: String?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(DS.warn)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let sub {
+                    Text(sub)
+                        .font(DS.helpText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(width: 300, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+    }
+}
+
+/// One Keys row: the key as a keycap chip, what it does beside it.
+private struct KeycapRow: View {
+    let key: String
+    let what: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(key)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .frame(minWidth: 26, minHeight: 17)
+                .background(RoundedRectangle(cornerRadius: DS.radiusChip)
+                    .fill(.quaternary.opacity(0.6)))
+            Text(what)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .frame(width: 300, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 3)
+    }
+}
+
+/// The Recent dictations header: the label at the left, the affordance —
+/// "click to copy" — spelled out at the right, where a submenu used to hide it.
+private struct RecentHeaderRow: View {
+    var body: some View {
+        HStack {
+            Text(L("Recent dictations"))
+                .font(.system(size: 11, weight: .semibold))
+            Spacer(minLength: 8)
+            Text(L("click to copy"))
+                .font(.system(size: 11))
+        }
+        .foregroundStyle(.secondary)
+        .frame(width: 300)
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
     }
 }

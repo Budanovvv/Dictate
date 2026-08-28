@@ -285,20 +285,33 @@ actor MeetingDiarizer {
         for ordinal in ids.keys.sorted() where !present.contains(ordinal) {
             Log.d("diar: speaker \(ordinal) produced no entries in the file")
         }
-        let micro = voices.filter(MeetingSpeakerPolicy.isMicro)
-        guard !micro.isEmpty else {
-            Log.d("diar: micro-cluster check — \(voices.count) voice(s), none micro")
-            return []
+        let measure: (Int, Int) -> Double? = { a, b in
+            guard let ea = embedding(a), let eb = embedding(b) else { return nil }
+            let d = SpeakerUtilities.cosineDistance(ea, eb)
+            return d.isFinite ? Double(d) : nil
         }
-        Log.d(String(format: "diar: micro-cluster check — %d voice(s), %d micro (bar: ≤%d entries and ≤%.0fs), ceiling %.2f",
-                     voices.count, micro.count, MeetingSpeakerPolicy.maxEntries,
-                     MeetingSpeakerPolicy.maxSeconds, Self.mergeCeiling))
-        let verdicts = MeetingSpeakerPolicy.verdicts(
-            voices: voices, ceiling: Self.mergeCeiling) { a, b in
-                guard let ea = embedding(a), let eb = embedding(b) else { return nil }
-                let d = SpeakerUtilities.cosineDistance(ea, eb)
-                return d.isFinite ? Double(d) : nil
-            }
+        let micro = voices.filter(MeetingSpeakerPolicy.isMicro)
+        var verdicts: [MeetingSpeakerPolicy.Verdict] = []
+        if micro.isEmpty {
+            Log.d("diar: micro-cluster check — \(voices.count) voice(s), none micro")
+        } else {
+            Log.d(String(format: "diar: micro-cluster check — %d voice(s), %d micro (bar: ≤%d entries and ≤%.0fs), ceiling %.2f",
+                         voices.count, micro.count, MeetingSpeakerPolicy.maxEntries,
+                         MeetingSpeakerPolicy.maxSeconds, Self.mergeCeiling))
+            verdicts = MeetingSpeakerPolicy.verdicts(
+                voices: voices, ceiling: Self.mergeCeiling, distance: measure)
+        }
+        // The duet pass — a 1:1-shaped call whose second remote label is a
+        // dwarf of the first (see MeetingSpeakerPolicy.duetVerdict). Judged
+        // against the same original voice set; the two rules never overlap
+        // because the duet rule refuses micro voices.
+        if let duet = MeetingSpeakerPolicy.duetVerdict(
+            voices: voices, ceiling: Self.mergeCeiling, distance: measure) {
+            Log.d(String(format: "diar: duet check — minor speaker %d (%d entries, %.0fs), bar %.2f",
+                         duet.voice.ordinal, duet.voice.entries, duet.voice.seconds,
+                         Self.mergeCeiling * MeetingSpeakerPolicy.duetCeilingFactor))
+            verdicts.append(duet)
+        }
         let byOrdinal = Dictionary(voices.map { ($0.ordinal, $0) },
                                    uniquingKeysWith: { a, _ in a })
         var merges: [Merge] = []

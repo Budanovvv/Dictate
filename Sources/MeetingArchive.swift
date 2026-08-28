@@ -96,6 +96,11 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// words nor the speakers can answer (which product, which engagement).
     /// Read from the file, like everything else here.
     var tags: [String] = []
+    /// The platform the call ran on ("Zoom", "Google Meet"), written once at
+    /// creation as an invisible comment in the header. nil for everything
+    /// recorded before the field existed and for unidentified browser calls —
+    /// the library's "other" bucket.
+    var source: String? = nil
 
     /// What this meeting IS, independent of the objects carrying it.
     ///
@@ -213,6 +218,20 @@ enum MeetingArchive {
     /// line is what tells them apart — a format we write ourselves, so the
     /// test is exact instead of guessing whether an H1 "looks like" a date
     /// in whatever language it was written.
+    /// The platform comment written at creation — `<!-- source: Zoom -->`.
+    /// Header-only, like tags: the string "source:" inside spoken text must
+    /// never become a platform.
+    static func parseSource(markdown: String) -> String? {
+        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false).prefix(8) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("<!-- source:"), trimmed.hasSuffix("-->") else { continue }
+            let body = trimmed.dropFirst("<!-- source:".count).dropLast("-->".count)
+            let source = body.trimmingCharacters(in: .whitespaces)
+            return source.isEmpty ? nil : source
+        }
+        return nil
+    }
+
     static func parseTitle(markdown: String) -> String? {
         let lines = markdown.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -543,7 +562,8 @@ enum MeetingArchive {
                                        title: parseTitle(markdown: text),
                                        summary: parseSummary(markdown: text),
                                        sections: parseSections(markdown: text),
-                                       tags: MeetingTags.parse(markdown: text))
+                                       tags: MeetingTags.parse(markdown: text),
+                                       source: parseSource(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }

@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import CoreAudio
 
 /// One recorded meeting: two audio channels — You (the microphone, through
 /// the same battle-tested AudioRecorder the dictation uses, so a mic held by
@@ -41,6 +42,23 @@ final class MeetingSession: ObservableObject {
     /// "you are being heard" signal, same philosophy as the HUD's dancing
     /// bars meaning "sound is really being captured".
     @Published private(set) var audioLevel: Double = 0
+    /// The two streams metered separately — what tells "You" from "Call
+    /// audio" in the pill's expanded form (design 9b). `audioLevel` above
+    /// stays the combined meter for the surfaces that show one.
+    @Published private(set) var youLevel: Double = 0
+    @Published private(set) var themLevel: Double = 0
+    /// Between "Stop" and the transcript landing in the library: the last
+    /// windows are still recognizing. The pill shows it so the stop click
+    /// visibly did something instead of the pill just lingering.
+    @Published private(set) var finishing = false
+    /// The disk is running out under a live recording (checked every 30 s).
+    /// A warning the surfaces show; below the hard floor the session stops
+    /// itself and KEEPS the transcript rather than lose the file.
+    @Published private(set) var lowDisk = false
+    /// The default input changed mid-recording ("Switched to AirPods Pro") —
+    /// one quiet line on the pill for a few seconds, recording uninterrupted
+    /// (design: interrupted). nil = nothing to say.
+    @Published private(set) var deviceNotice: String?
     private var previewBusy = false
     private var previewTicks = 0
     var startedAt: Date { sessionStart }
@@ -76,6 +94,35 @@ final class MeetingSession: ObservableObject {
     private let mic = AudioRecorder()
     private let diarizer = MeetingDiarizer()
     private var tick: Timer?
+    /// 30 s disk-space check while recording (see lowDisk).
+    private var diskTimer: Timer?
+    /// Re-asks "where is this call running" while the answer is still nil —
+    /// the start-of-session check misses a call joined late and a Meet tab
+    /// that was not frontmost. Found late, the platform is prepended to the
+    /// file when the transcript finishes (parseSource reads the head only).
+    private var sourceProbeTimer: Timer?
+    private var sourceProbesLeft = 0
+    private var lateSource: String?
+    private var headerHadSource = false
+    /// Core Audio listener on the default input device while recording.
+    private var deviceListenerBlock: AudioObjectPropertyListenerBlock?
+    private var deviceNoticeClear: DispatchWorkItem?
+    /// The Mac is going to sleep: the recording stops cleanly and the
+    /// transcript is marked where it ended (design: interrupted). Idle sleep
+    /// is already prevented (powerActivity); this catches a closed lid or an
+    /// explicit Sleep, which no assertion can refuse.
+    private var sleepObserver: NSObjectProtocol?
+    private var endedBySleep = false
+    // Per-channel language pinning (owner report 2026-08-28: per-window
+    // auto-detect flip-flopped a bilingual caller pt→uk→ru). Votes until one
+    // language clearly leads (≥80% of ≥5 windows), then pins; every 8th
+    // window still runs in auto as a probe, and two probes disagreeing in a
+    // row drop the pin — a caller who really switches languages gets auto
+    // back within a minute.
+    private var langVotes: [Channel: [String: Int]] = [:]
+    private var langPinned: [Channel: String] = [:]
+    private var langProbe: [Channel: Int] = [:]
+    private var langProbeMisses: [Channel: Int] = [:]
     private var sessionStart = Date()
     private var fileHandle: FileHandle?
     private var stopping = false
@@ -180,8 +227,12 @@ final class MeetingSession: ObservableObject {
     }
 
     /// The label a numbered voice writes under, before any renaming.
+    /// "Call · voice N", not "Speaker N" (12h): a voice is an acoustic
+    /// cluster from the call side, and the old wording claimed a person the
+    /// diarizer never identified. Uniform for every count — renaming to a
+    /// real name removes it anyway.
     private static func speakerLabel(_ ordinal: Int) -> String {
-        Lf("Speaker %d", ordinal)
+        Lf("Call · voice %d", ordinal)
     }
 
     /// The label that voice actually appears under in the file right now.
@@ -309,6 +360,7 @@ final class MeetingSession: ObservableObject {
             mic.onLevel = { [weak self] level in
                 guard let self, self.isActive else { return }
                 self.audioLevel = max(level, self.audioLevel * 0.7)
+                self.youLevel = max(level, self.youLevel * 0.7)
             }
             mic.start()
         }
@@ -319,6 +371,69 @@ final class MeetingSession: ObservableObject {
             self?.evaluateWindows()
         }
         Log.d("meeting: session started -> \(fileURL?.lastPathComponent ?? "?")")
+        // A recording that fills the disk loses the FILE, not just the tail —
+        // watch the volume and stop early enough to keep everything written.
+        diskTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.checkDiskSpace()
+        }
+        langVotes = [:]
+        langPinned = [:]
+        langProbe = [:]
+        langProbeMisses = [:]
+        installDeviceListener()
+        // Sleep the assertion cannot refuse (lid closed, explicit Sleep):
+        // stop cleanly NOW, while the file can still be finalized — and mark
+        // the transcript where it ended so nothing after it is guessed.
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.isActive else { return }
+            Log.d("meeting: Mac going to sleep — stopping to keep the transcript")
+            self.endedBySleep = true
+            self.stop()
+        }
+    }
+
+    /// Watches the system default input while recording. A device change does
+    /// NOT interrupt the capture; the pill just says what happened, because a
+    /// couple of seconds around the switch can be thin on the mic side.
+    private func installDeviceListener() {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async { self?.noteDeviceChange() }
+        }
+        deviceListenerBlock = block
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, .main, block)
+    }
+
+    private func removeDeviceListener() {
+        guard let block = deviceListenerBlock else { return }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, .main, block)
+        deviceListenerBlock = nil
+        deviceNoticeClear?.cancel()
+        deviceNoticeClear = nil
+        deviceNotice = nil
+    }
+
+    private func noteDeviceChange() {
+        guard isActive else { return }
+        let name = AudioInputDevices.defaultInputName()
+        deviceNotice = name.map { Lf("Switched to %@", $0) }
+            ?? L("Input device changed")
+        Log.d("meeting: default input changed -> \(name ?? "?")")
+        deviceNoticeClear?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.deviceNotice = nil }
+        deviceNoticeClear = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
     }
 
     /// Stops capture; the file is finalized asynchronously once the last
@@ -326,6 +441,16 @@ final class MeetingSession: ObservableObject {
     func stop() {
         guard isActive, !stopping else { return }
         stopping = true
+        finishing = true
+        diskTimer?.invalidate()
+        diskTimer = nil
+        sourceProbeTimer?.invalidate()
+        sourceProbeTimer = nil
+        removeDeviceListener()
+        if let sleepObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver)
+            self.sleepObserver = nil
+        }
         tick?.invalidate()
         tick = nil
         // Final cut of both channels — whatever was mid-utterance still lands.
@@ -347,12 +472,105 @@ final class MeetingSession: ObservableObject {
         livePreview = nil
         modelWarming = false
         audioLevel = 0
+        youLevel = 0
+        themLevel = 0
         if let activity = powerActivity {
             ProcessInfo.processInfo.endActivity(activity)
             powerActivity = nil
         }
         Log.d("meeting: session stopping, \(inflight.count) window(s) still recognizing")
         finalizeIfDrained()
+    }
+
+    /// Which known call app holds the microphone right now — "Zoom",
+    /// "FaceTime"… Browsers hold it for every web call alike, so they name no
+    /// platform (nil → the library's "other" bucket). Best-effort by design.
+    private static func detectCallApp() -> String? {
+        let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
+        let map: [(String, String)] = [
+            ("zoom", "Zoom"), ("teams", "Microsoft Teams"), ("facetime", "FaceTime"),
+            ("webex", "Webex"), ("discord", "Discord"), ("slack", "Slack"),
+        ]
+        for name in names {
+            let lower = name.lowercased()
+            if let hit = map.first(where: { lower.contains($0.0) }) { return hit.1 }
+        }
+        // A browser holding the mic is a web call — Meet above all, which
+        // never appears as an app. The browser's window titles name the
+        // platform (MeetingPolicy.callPlatform), read through the same
+        // Accessibility permission dictation already types with. Only the
+        // active tab titles a window, so a miss here is retried by the
+        // session's source probe.
+        for name in names where MeetingPolicy.isBrowser(appNamed: name) {
+            if let hit = browserCallPlatform(appNamed: name) { return hit }
+        }
+        return nil
+    }
+
+    /// Reads the AX window titles of the named app and asks the policy
+    /// whether any of them is a live call. Best-effort at every step: no
+    /// running app, no AX consent, no windows — all mean nil, never an error.
+    private static func browserCallPlatform(appNamed name: String) -> String? {
+        guard let app = NSWorkspace.shared.runningApplications
+            .first(where: { $0.localizedName == name }) else { return nil }
+        let ax = AXUIElementCreateApplication(app.processIdentifier)
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw) == .success,
+              let windows = raw as? [AXUIElement] else { return nil }
+        for window in windows {
+            var t: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &t) == .success,
+                  let title = t as? String else { continue }
+            if let hit = MeetingPolicy.callPlatform(inWindowTitle: title) { return hit }
+        }
+        return nil
+    }
+
+    /// The late source probe: once a minute for ten minutes, until something
+    /// answers. Cheap — a handful of AX title reads — and it stops itself the
+    /// moment it learns anything.
+    private func startSourceProbe() {
+        sourceProbesLeft = 10
+        sourceProbeTimer?.invalidate()
+        sourceProbeTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isActive, self.sourceProbesLeft > 0 else {
+                    self?.sourceProbeTimer?.invalidate()
+                    self?.sourceProbeTimer = nil
+                    return
+                }
+                self.sourceProbesLeft -= 1
+                if let hit = Self.detectCallApp() {
+                    Log.d("meeting: call source found late — \(hit)")
+                    self.lateSource = hit
+                    self.sourceProbeTimer?.invalidate()
+                    self.sourceProbeTimer = nil
+                } else if self.sourceProbesLeft == 0 {
+                    self.sourceProbeTimer?.invalidate()
+                    self.sourceProbeTimer = nil
+                }
+            }
+        }
+    }
+
+    /// Warning under 500 MB free, self-stop under 150 — stopping keeps the
+    /// transcript; running on until the write fails would not.
+    private func checkDiskSpace() {
+        guard isActive, let url = fileURL else { return }
+        let free = (try? url.deletingLastPathComponent()
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? .max
+        let freeMB = Int(free / 1_048_576)
+        if freeMB < 150 {
+            Log.d("meeting: disk critically low (\(freeMB) MB) — stopping to keep the transcript")
+            lowDisk = true
+            stop()
+        } else if freeMB < 500 {
+            if !lowDisk { Log.d("meeting: disk low (\(freeMB) MB free)") }
+            lowDisk = true
+        } else if lowDisk {
+            lowDisk = false
+        }
     }
 
     // MARK: - Channels
@@ -366,6 +584,7 @@ final class MeetingSession: ObservableObject {
         // important a signal as "hearing you".
         let level = min(1.0, peak * 3)
         if level > audioLevel { audioLevel = level }
+        themLevel = max(level, themLevel * 0.7)
     }
 
     private func evaluateWindows() {
@@ -532,7 +751,7 @@ final class MeetingSession: ObservableObject {
             let window = Array(floats.suffix(15 * AudioRecorder.sampleRate))
             let started = Date()
             guard let (text, _) = try? await WhisperEngine.shared.transcribe(
-                floats: window, tier: .fast, language: "", prompt: "",
+                floats: window, tier: .fast, language: "",
                 isCancelled: { [weak self] in self?.isActive != true }) else { return }
             Log.d(String(format: "meeting: preview %.2fs over %.1fs audio (%@)",
                          Date().timeIntervalSince(started),
@@ -665,7 +884,7 @@ final class MeetingSession: ObservableObject {
                         let piece = Array(floats[from..<to])
                         let stats = await SpeechGate.shared.speechStats(piece)
                         guard let text = await self.recognize(
-                            piece, stats: stats, language: language,
+                            piece, stats: stats, language: language, channel: channel,
                             tag: "turn spk\(turn.ordinal)") else { continue }
                         // The turn's own start is the honest timestamp, but it
                         // may never precede the window's flush pin.
@@ -674,7 +893,8 @@ final class MeetingSession: ObservableObject {
                                                    seconds: Double(piece.count) / rate))
                     }
                 } else if let text = await self.recognize(
-                    floats, stats: windowStats, language: language, tag: "window") {
+                    floats, stats: windowStats, language: language, channel: channel,
+                    tag: "window") {
                     produced.append(Recognized(start: start, ordinal: turns.first?.ordinal,
                                                text: text,
                                                seconds: Double(floats.count) / rate))
@@ -710,7 +930,8 @@ final class MeetingSession: ObservableObject {
     /// goes to the log with its numbers, so the next real meeting is the
     /// calibration set for the thresholds.
     private func recognize(_ floats: [Float], stats: (chunks: Int, voiced: Int)?,
-                           language: String, tag: String) async -> String? {
+                           language: String, channel: Channel,
+                           tag: String) async -> String? {
         if let stats, !MeetingPolicy.windowWorthTranscribing(voicedChunks: stats.voiced) {
             Log.d("meeting: \(tag) skipped (voiced \(stats.voiced)/\(stats.chunks) — not enough speech)")
             return nil
@@ -719,13 +940,50 @@ final class MeetingSession: ObservableObject {
         // hallucinations, speed); the VAD gate above saw the FULL piece, and
         // the diarizer saw the full window (its offsets stay honest).
         let speechFloats = AudioRecorder.trimSilence(floats)
-        // No user prompt and no replacements: a meeting transcript is a
-        // verbatim record, not a dictation being typed.
+        // No replacements here: a meeting transcript is a verbatim record,
+        // not a dictation being typed.
+        // The pin, when one exists — with a periodic auto probe so a real
+        // language switch is noticed rather than steamrolled.
+        let effectiveLanguage: String = await MainActor.run {
+            guard language.isEmpty, let pin = langPinned[channel] else { return language }
+            langProbe[channel, default: 0] += 1
+            return langProbe[channel]! % 8 == 0 ? "" : pin
+        }
         guard let result = try? await WhisperEngine.shared.transcribeScored(
-            floats: speechFloats, tier: .fast, language: language, prompt: "",
+            floats: speechFloats, tier: .fast, language: effectiveLanguage,
             isCancelled: { self.cancelled.isCancelled }) else { return nil }
+        await MainActor.run {
+            let det = result.detectedLanguage
+            guard !det.isEmpty else { return }
+            if langPinned[channel] == nil {
+                langVotes[channel, default: [:]][det, default: 0] += 1
+                let votes = langVotes[channel] ?? [:]
+                let total = votes.values.reduce(0, +)
+                if total >= 5, let top = votes.max(by: { $0.value < $1.value }),
+                   top.value * 5 >= total * 4 {
+                    langPinned[channel] = top.key
+                    Log.d("meeting: language pinned \(channel)=\(top.key) (\(top.value)/\(total))")
+                }
+            } else if effectiveLanguage.isEmpty {
+                if det != langPinned[channel] {
+                    langProbeMisses[channel, default: 0] += 1
+                    if langProbeMisses[channel]! >= 2 {
+                        Log.d("meeting: language pin dropped for \(channel) (probe said \(det))")
+                        langPinned[channel] = nil
+                        langVotes[channel] = [:]
+                        langProbeMisses[channel] = 0
+                    }
+                } else {
+                    langProbeMisses[channel] = 0
+                }
+            }
+        }
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        guard MeetingPolicy.saidAnything(text) else {
+            Log.d("meeting: \(tag) punctuation-only result dropped — \(text)")
+            return nil
+        }
         let seconds = Double(speechFloats.count) / Double(AudioRecorder.sampleRate)
         let words = text.split(whereSeparator: \.isWhitespace).count
         let evidence = MeetingPolicy.SpeechEvidence(
@@ -817,6 +1075,15 @@ final class MeetingSession: ObservableObject {
         guard stopping, inflight.isEmpty, let url = fileURL else { return }
         flushReadyEntries()   // frontiers are gone; everything pending goes out
         stopping = false
+        finishing = false
+        lowDisk = false
+        // The sleep marker goes in AFTER the last recognized words: the
+        // transcript is complete up to the moment of sleep and says so where
+        // it ended — nothing after it was captured, so nothing is guessed.
+        if endedBySleep {
+            endedBySleep = false
+            fileHandle?.write(Data(("\n_" + L("Recording ended here — this Mac went to sleep.") + "_\n").utf8))
+        }
         try? fileHandle?.close()
         fileHandle = nil
         let stamp = sessionStart
@@ -827,6 +1094,14 @@ final class MeetingSession: ObservableObject {
             // transcript. This is also the last moment the diarizer's voice
             // database exists, which is where the distances come from.
             await self.mergeMicroSpeakers(in: url)
+            // A platform the probe found after the header was written goes in
+            // now, at the top — parseSource reads only the file's head, and
+            // the handle is closed, so this is the one safe moment.
+            if !self.headerHadSource, let late = self.lateSource,
+               let text = try? String(contentsOf: url, encoding: .utf8) {
+                try? ("<!-- source: \(late) -->\n" + text)
+                    .data(using: .utf8)?.write(to: url)
+            }
             await self.logSessionDiagnostics()
             Log.d("meeting: transcript finished -> \(url.lastPathComponent)")
             // The transcript is safe on disk before the model is asked for a
@@ -838,20 +1113,48 @@ final class MeetingSession: ObservableObject {
             // Name and summary in ONE model call: the excerpt and the session
             // (and, for a Russian meeting, the translation hop) are paid for
             // once and answer both questions.
-            guard let brief = await MeetingTitler.brief(for: entries) else { return }
-            // A name the owner wrote themselves outranks a name a model read out
-            // of the words. When the calendar supplied one, the model's title is
-            // dropped on the floor and only its summary is kept.
-            let title = self.scheduledTitle ?? brief.title
-            MeetingArchive.setTitle(title, dateLine: Self.dateLine(stamp),
-                                    summary: brief.summary, in: url)
-            // The file follows its title so the folder reads in Finder too;
-            // the transcript's content stays the source of truth, so a failed
-            // rename costs nothing but a plainer name.
-            let renamed = MeetingArchive.renameFile(at: url, stamp: Self.fileStamp(stamp),
-                                                    title: title)
-            if self.fileURL == url { self.fileURL = renamed }
-            self.onFinished?(renamed)
+            if let brief = await MeetingTitler.brief(for: entries) {
+                // A name the owner wrote themselves outranks a name a model read
+                // out of the words. When the calendar supplied one, the model's
+                // title is dropped on the floor and only its summary is kept.
+                let title = self.scheduledTitle ?? brief.title
+                MeetingArchive.setTitle(title, dateLine: Self.dateLine(stamp),
+                                        summary: brief.summary, in: url)
+                // The file follows its title so the folder reads in Finder too;
+                // the transcript's content stays the source of truth, so a failed
+                // rename costs nothing but a plainer name.
+                let renamed = MeetingArchive.renameFile(at: url, stamp: Self.fileStamp(stamp),
+                                                        title: title)
+                if self.fileURL == url { self.fileURL = renamed }
+                self.onFinished?(renamed)
+            }
+            // The call is over, its finishing touches are on disk, and the
+            // model is still warm: the moment for the archive's missing
+            // summaries and contents blocks — this meeting's first of all.
+            // This used to wait for the next opening of the library, which in
+            // practice meant a Mac that had just become free did nothing while
+            // the owner waited for exactly this work (2026-08-27). The race
+            // the library still avoids on session end (backfilling a meeting
+            // that is mid-titling) cannot happen here: the titling above has
+            // already run.
+            self.kickBackfills()
+        }
+    }
+
+    /// Loads the archive off the main thread (an iCloud-evicted transcript
+    /// blocks on a network read — the 16-second main-thread hang of
+    /// 2026-08-17) and starts both backfills, which re-ask permission before
+    /// every model call in case a new meeting begins.
+    @MainActor
+    private func kickBackfills() {
+        let youLabel = L("You")
+        DispatchQueue.global(qos: .utility).async {
+            let meetings = MeetingArchive.list(youLabel: youLabel)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.isActive else { return }
+                MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
+                MeetingSections.shared.backfill(meetings) { [weak self] in self?.isActive != true }
+            }
         }
     }
 
@@ -956,9 +1259,21 @@ final class MeetingSession: ObservableObject {
         // and in the file name — no end-of-session rename, which is its own
         // source of bugs (a window left pointing at the old path, 2026-08-19).
         let scheduled = MeetingCalendar.scheduledTitle(at: sessionStart)
-        scheduledTitle = scheduled?.title
+        // The TITLE respects the naming setting; the platform below does not
+        // (harmless metadata for the Sources group).
+        scheduledTitle = MeetingCalendar.isEnabled ? scheduled?.title : nil
         let url = dir.appendingPathComponent(
             MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: scheduledTitle))
+        // Which platform the call ran on — the sidebar's Sources group. The
+        // calendar's conference link names it best; failing that, whichever
+        // known call app holds the microphone right now. Written ONLY at
+        // creation, as a markdown-invisible comment: existing transcripts are
+        // never rewritten for this (they read back as "other").
+        let source = scheduled?.platform ?? Self.detectCallApp()
+        headerHadSource = source != nil
+        lateSource = nil
+        if source == nil { startSourceProbe() }
+        let sourceLine = source.map { "<!-- source: \($0) -->\n" } ?? ""
         let header: String
         if let scheduledTitle {
             // The calendar a meeting came from is a classification its owner
@@ -968,9 +1283,9 @@ final class MeetingSession: ObservableObject {
             // the ones they stop applying in week three.
             let tag = scheduled.flatMap { MeetingTags.fromCalendarName($0.calendar) }
             let tagLine = tag.map { "\(MeetingTags.tagLine([$0]))\n" } ?? ""
-            header = "# \(scheduledTitle)\n_\(Self.dateLine(sessionStart))_\n\(tagLine)\n"
+            header = "# \(scheduledTitle)\n_\(Self.dateLine(sessionStart))_\n\(sourceLine)\(tagLine)\n"
         } else {
-            header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\n"
+            header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\(sourceLine)\n"
         }
         try header.data(using: .utf8)!.write(to: url)
         fileHandle = try FileHandle(forWritingTo: url)

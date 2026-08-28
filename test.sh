@@ -49,6 +49,15 @@ check() {  # check "name" command...
 
 MODE="${1:-full}"
 
+# build.sh --install removes the cache copy after installing (two runnable
+# Dictates on disk = the double-paste grabli + a Launchpad duplicate). A full
+# run rebuilds the cache copy itself; --quick has no build step, so right
+# after an install it checks the installed app instead.
+if [ "$MODE" = "--quick" ] && [ ! -d "$APP" ]; then
+    APP="/Applications/Dictate.app"
+    BIN="$APP/Contents/MacOS/Dictate"
+fi
+
 # Graceful quit: an instant pkill can land mid model-download/verify and
 # corrupt the model state (see internal/GRABLI.md).
 quit_dictate() {
@@ -115,10 +124,12 @@ check "Info.plist: microphone usage description" \
 check "Info.plist: 12 localizations declared" \
     bash -c "[ \$(defaults read '$APP/Contents/Info.plist' CFBundleLocalizations | grep -c ,) -ge 11 ]"
 
-# No OpenAI traces in the binary, except model identifiers (openai_whisper-…
-# variant, openai/whisper-… WhisperKit constants).
-check "no legacy OpenAI strings in the binary" \
-    bash -c "! strings '$BIN' | grep -i openai | grep -v 'openai_whisper' | grep -vq 'openai/whisper'"
+# OpenAI is a sanctioned integration now (the ask-your-archive oracle), so a
+# blanket "no openai in the binary" check is gone. What must still never come
+# back is llama.cpp's jinja chat template — the marker the old check existed
+# to catch.
+check "no llama.cpp leftovers in the binary" \
+    bash -c "! strings '$BIN' | grep -q 'OpenAI Chat Completions'"
 # The tokenizer must not go into ~/Documents (tokenizerFolder regression)
 check "tokenizer path is not in Documents" \
     bash -c "! strings '$BIN' | grep -q 'Documents/huggingface'"

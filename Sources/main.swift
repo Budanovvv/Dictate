@@ -34,8 +34,19 @@ if let other = already.first {
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-// No Dock icon; AppDelegate switches to .regular while a window is open.
-app.setActivationPolicy(.accessory)
+// The Dock policy must be RIGHT from the first moment, not fixed up later:
+// launching as .accessory and promoting to .regular in didFinishLaunching
+// registers as Foreground but never materializes a Dock tile (reproduced
+// 2026-08-28 — "Foreground" in lsappinfo, no icon in the Dock). Show in
+// Dock is the default; the setting keeps the old menu-bar-only behaviour.
+app.setActivationPolicy(Settings.shared.showInDock ? .regular : .accessory)
+// The chosen appearance, from the very first frame — every window, the
+// dictation overlay, the recording pill and the menu inherit NSApp's.
+switch Settings.shared.appearance {
+case "light": app.appearance = NSAppearance(named: .aqua)
+case "dark": app.appearance = NSAppearance(named: .darkAqua)
+default: break
+}
 
 // Without a main menu, Cmd+C/V/X/A don't work in an accessory app's own text fields.
 let mainMenu = NSMenu()

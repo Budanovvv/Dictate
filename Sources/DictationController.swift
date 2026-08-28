@@ -23,8 +23,9 @@ final class DictationController {
     enum Notice {
         /// Recording cancelled via Esc.
         case cancelled
-        /// No text cursor — the result went to the clipboard instead of being pasted.
-        case copiedInstead
+        /// No text cursor — the result went to the clipboard instead of being
+        /// pasted. Carries the text so the pill can show what is recoverable.
+        case copiedInstead(String)
         /// The key was held but the mic delivered no audio because another app
         /// holds it in voice-processing mode (Google Meet, Zoom, FaceTime…).
         /// The payload is that app's name when known, for a specific message.
@@ -79,7 +80,6 @@ final class DictationController {
         let micForeign: Bool
         let micBusyApp: String?
         let language: String
-        let prompt: String
         let appleTarget: String?
         let token: CancelToken
     }
@@ -95,6 +95,12 @@ final class DictationController {
     /// pill, delivered when that capture ends.
     private var pendingNotices: [Notice] = []
     private static let maxQueuedJobs = 3
+
+    /// Dictations currently being recognized (in the processor + waiting in
+    /// the queue). The status menu reads this to explain what the icon alone
+    /// cannot: a new recording outranks recognizing in the glyph, so the menu
+    /// carries the "still working on the previous one" line.
+    var recognizingCount: Int { (processing ? 1 : 0) + jobQueue.count }
 
     /// The single place `state` is assigned. Capture outranks the pipeline in
     /// what the user sees; equal values don't re-fire onStateChange.
@@ -122,8 +128,10 @@ final class DictationController {
     var onLevel: ((Double) -> Void)?
     /// Transcription progress: fraction of audio processed (0…1) + words so far.
     var onTranscribeProgress: ((Double, Int) -> Void)?
-    /// Result ready: success, word count, transcription seconds.
-    var onResult: ((Bool, Int, Double) -> Void)?
+    /// Result ready: success, word count, transcription seconds, the inserted
+    /// text, and the name of the app it landed in (nil when unknown) — the
+    /// pill's "Inserted into Mail" confirmation.
+    var onResult: ((Bool, Int, Double, String, String?) -> Void)?
     /// Transcribed text (for the onboarding "try it" box).
     var onResultText: ((String) -> Void)?
     /// Model download progress 0…1 + total size in MB of the model in flight.
@@ -133,6 +141,11 @@ final class DictationController {
     /// Rolling live transcription of the current recording (fast model over
     /// the growing buffer) — the HUD shows it while the user speaks.
     var onLivePreview: ((String) -> Void)?
+    /// Live typing engaged for the current dictation — the HUD switches to
+    /// its typing narration. Carries the target app's name (nil = unknown).
+    var onLiveTypingStarted: ((String?) -> Void)?
+    /// Forward-only count of words live typing has already put in the document.
+    var onLiveTyped: ((Int) -> Void)?
     /// Recent results, newest first (in memory only — never written to disk).
     private(set) var history: [String] = []
     private(set) var lastStats: (words: Int, seconds: Double)?
@@ -177,6 +190,8 @@ final class DictationController {
     /// Committed text that was never typed because we froze — pasted together
     /// with the final remainder, so nothing spoken is lost.
     private var liveUntyped = ""
+    /// Words already typed into the document this dictation (HUD counter).
+    private var liveTypedWords = 0
     /// Last moment the mic was above the speech threshold — live typing's own
     /// VAD, for the silence force-commit.
     private var liveLastLoudAt = Date()
@@ -262,9 +277,20 @@ final class DictationController {
             if self.monitor.start() {
                 Log.d("tap: recreated")
                 self.tapFailureReported = false
-            } else if !self.tapFailureReported {
-                self.tapFailureReported = true
-                self.onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
+            } else {
+                // Permission revoked MID-RECORDING: the release event will
+                // never arrive, so the capture would run forever collecting
+                // speech it cannot deliver. Stop it now, visibly — the notice
+                // and the menu-bar warning explain, instead of a paste that
+                // fails minutes later (design critique 8d).
+                if self.capturing {
+                    Log.d("tap: permission revoked during capture -> cancelling")
+                    self.cancel()
+                }
+                if !self.tapFailureReported {
+                    self.tapFailureReported = true
+                    self.onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
+                }
             }
         }
     }
@@ -478,7 +504,6 @@ final class DictationController {
         // than none.
         guard pcm.count >= AudioRecorder.sampleRate * 2, recorder.peakLevel > 0.02 else { return }
         let language = Settings.shared.language
-        let prompt = Settings.shared.prompt
         let token = CancelToken()
         previewCancel = token
         previewBusy = true
@@ -491,7 +516,7 @@ final class DictationController {
             let window = Array(floats.suffix(30 * AudioRecorder.sampleRate))
             let started = Date()
             guard let (text, _) = try? await WhisperEngine.shared.transcribe(
-                floats: window, tier: .fast, language: language, prompt: prompt,
+                floats: window, tier: .fast, language: language,
                 isCancelled: { token.isCancelled }) else { return }
             Log.d(String(format: "live: pass %.2fs over %.1fs audio",
                          Date().timeIntervalSince(started),
@@ -585,6 +610,8 @@ final class DictationController {
         liveTargetPID = pid
         liveLastLoudAt = Date()
         liveEngine = CommitEngine(holdBackPhrases: Self.holdBackPhrases())
+        liveTypedWords = 0
+        onLiveTypingStarted?(NSRunningApplication(processIdentifier: pid)?.localizedName)
         Log.d("live: armed (pid \(pid))")
     }
 
@@ -598,17 +625,10 @@ final class DictationController {
 
     /// Everything Replacements can rewrite, so that the engine never lets one
     /// of these phrases out in two pieces: the built-in voice commands of all
-    /// languages (they are all active at once) plus the user's own literal
-    /// rules. A "re:" rule is a regex with no word form — it can never match
-    /// the engine's word-by-word hold-back, and is left out.
+    /// languages (they are all active at once). User rules are gone — the
+    /// replacements editor was retired with the rest of the text knobs.
     private static func holdBackPhrases() -> [String] {
-        var phrases = Replacements.commandsByLanguage.values.flatMap { $0.map(\.phrase) }
-        phrases += Settings.shared.replacements.compactMap { rule -> String? in
-            guard let phrase = rule.first?.trimmingCharacters(in: .whitespaces),
-                  !phrase.isEmpty, !phrase.hasPrefix("re:") else { return nil }
-            return phrase
-        }
-        return phrases
+        Replacements.commandsByLanguage.values.flatMap { $0.map(\.phrase) }
     }
 
     /// Runs the normal post-processing over one committed chunk. The engine's
@@ -626,8 +646,8 @@ final class DictationController {
         let separator = String(chunk.prefix(while: \.isWhitespace))
         let body = String(chunk.dropFirst(separator.count))
         let processed = Replacements.process(
-            body, rules: Settings.shared.replacements,
-            fillerLanguage: Settings.shared.removeFillers && !language.isEmpty ? language : nil)
+            body, rules: [],
+            fillerLanguage: language.isEmpty ? nil : language)
         // A chunk that was nothing but a filler leaves no separator behind.
         return processed.isEmpty ? "" : separator + processed
     }
@@ -655,6 +675,8 @@ final class DictationController {
             return
         }
         Self.typeQueue.async { TypeInjector.type(text) }
+        liveTypedWords += text.split(whereSeparator: \.isWhitespace).count
+        onLiveTyped?(liveTypedWords)
     }
 
     /// The full pass arrived: deliver whatever live typing has not put in the
@@ -798,7 +820,6 @@ final class DictationController {
                       micForeign: micForeign,
                       micBusyApp: micBusyApp,
                       language: Settings.shared.language,
-                      prompt: Settings.shared.prompt,
                       appleTarget: activeTranslate ? Settings.shared.translateTargetCode : nil,
                       token: CancelToken())
         if job.translate { Log.d("translate → \(job.appleTarget ?? "?") via apple") }
@@ -893,7 +914,6 @@ final class DictationController {
 
     private func transcribeLocal(job: Job, floats: [Float]) async {
         let language = job.language
-        let prompt = job.prompt
         let token = job.token
         let tier: ModelTier = .fast
         do {
@@ -929,7 +949,7 @@ final class DictationController {
             }
             let started = Date()
             let (text, detected) = try await WhisperEngine.shared.transcribe(
-                floats: floats, tier: tier, language: language, prompt: prompt,
+                floats: floats, tier: tier, language: language,
                 isCancelled: { token.isCancelled },
                 onProgress: { [weak self] fraction, words in
                     DispatchQueue.main.async { self?.onTranscribeProgress?(fraction, words) }
@@ -938,11 +958,11 @@ final class DictationController {
             // Fillers are cleaned strictly in THIS dictation's language: the
             // chosen one, or whatever Whisper detected in auto mode. The text
             // is always still in the spoken language here — translation runs
-            // after the cleanup, for every target.
-            let fillerLanguage: String? = Settings.shared.removeFillers
-                ? (language.isEmpty ? detected : language)
-                : nil
-            var processed = Replacements.process(text, rules: Settings.shared.replacements,
+            // after the cleanup, for every target. Always on since the toggle
+            // retired: the filler lists are deliberately conservative (only
+            // unambiguous hesitation sounds).
+            let fillerLanguage = language.isEmpty ? detected : language
+            var processed = Replacements.process(text, rules: [],
                                                  fillerLanguage: fillerLanguage)
             // Set when the text stayed in the spoken language because macOS has
             // no data for the pair — finish() turns it into a pill, otherwise
@@ -1014,7 +1034,7 @@ final class DictationController {
             // current capture's.
             copied = liveEngine != nil
                 ? deliverLive(rawFinal: rawText, targetPID: job.targetPID) == .keptInClipboard
-                : Paster.paste(text, expectedTargetPID: job.targetPID) == .keptInClipboard
+                : Paster.insert(text, expectedTargetPID: job.targetPID) == .keptInClipboard
         }
         resetLiveTyping()
         Log.d("result words=\(words) seconds=\(String(format: "%.1f", seconds)) copied=\(copied) empty=\(text.isEmpty)")
@@ -1025,13 +1045,18 @@ final class DictationController {
         // entirely — the words appearing in the document ARE the feedback,
         // and the recording pill must not be replaced mid-speech.
         if copied {
-            emit(.copiedInstead)
+            emit(.copiedInstead(text))
         } else if translateDataMissing, !text.isEmpty {
             emit(.translateDataMissing)
         } else if capturing {
             if text.isEmpty { emit(.nothingHeard) }
         } else {
-            onResult?(!text.isEmpty, words, seconds)
+            // Best-effort name of the app the text landed in. Read here, after
+            // the paste, off the hot path — the XPC call has stalled before
+            // (GRABLI), but this branch runs only when nothing is capturing.
+            let appName = text.isEmpty ? nil
+                : NSWorkspace.shared.frontmostApplication?.localizedName
+            onResult?(!text.isEmpty, words, seconds, text, appName)
         }
         onResultText?(text)
     }

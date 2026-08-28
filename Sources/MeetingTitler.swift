@@ -381,9 +381,16 @@ enum MeetingTitler {
         do {
             let started = Date()
             let answer = try await engine.brief(about: text, instructions: instructions)
-            guard let title = sanitize(answer.title) else {
+            guard var title = sanitize(answer.title) else {
                 Log.d("title: model returned nothing usable")
                 return nil
+            }
+            // The title follows the meeting's language too (owner 2026-08-28).
+            if let language, language != "en",
+               dominantLanguage(of: title) == "en", #available(macOS 26, *),
+               let localized = await translated(title, to: language),
+               let clean = sanitize(localized) {
+                title = clean
             }
             let summary = await finished(summary: answer.summary,
                                          under: existing ?? title,
@@ -402,22 +409,45 @@ enum MeetingTitler {
     /// The ONE place a generated summary passes through on its way to the
     /// file — deliberately a seam.
     ///
-    /// Summaries are English for every meeting, in every language — the
-    /// owner's call (2026-08-13). Translating one back into the meeting's
-    /// language would go here, and nowhere else: `viaEnglish` and `language`
-    /// are the two facts such a hop would need, and they are already in hand.
-    /// The seam exists so that decision stays cheap to revisit; it is not
-    /// currently used.
+    /// The summary reads in the MEETING'S language (the owner reversed the
+    /// English-always call on 2026-08-28: a Russian call with an English
+    /// summary read as a bug). When the model worked through the English
+    /// hop — or simply answered in English for a non-English meeting — the
+    /// summary takes the return hop through the same on-device packs.
     private static func finished(summary raw: String, under title: String,
                                  spokenIn language: String?,
                                  viaEnglish: Bool) async -> String? {
-        _ = (language, viaEnglish)
-        guard let summary = sanitizeSummary(raw) else { return nil }
+        guard var summary = sanitizeSummary(raw) else { return nil }
+        if let language, language != "en",
+           dominantLanguage(of: summary) == "en", #available(macOS 26, *),
+           let translated = await translated(summary, to: language) {
+            summary = translated
+        }
         guard !restates(title: title, summary: summary) else {
             Log.d("summary: only said the title again — leaving the line empty")
             return nil
         }
         return summary
+    }
+
+    /// en → the meeting's language, the reverse of translatedToEnglish.
+    @available(macOS 26, *)
+    private static func translated(_ text: String, to language: String) async -> String? {
+        #if canImport(Translation)
+        do {
+            let session = TranslationSession(
+                installedSource: Locale.Language(identifier: "en"),
+                target: Locale.Language(identifier: language))
+            let out = try await session.translate(text).targetText
+            Log.d("summary: translated en→\(language)")
+            return out
+        } catch {
+            Log.d("summary: return hop failed (\(error.localizedDescription)) — keeping English")
+            return nil
+        }
+        #else
+        return nil
+        #endif
     }
 
     /// Translates the excerpt with the on-device Translation framework. Needs

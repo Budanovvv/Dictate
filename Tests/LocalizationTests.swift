@@ -39,14 +39,20 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
-    /// No legacy OpenAI mentions in the strings — the app is fully local.
-    func testNoLegacyOpenAIStrings() {
+    /// OpenAI appears in the strings only where the ask-your-archive feature
+    /// sanctions it. Dictation itself is still fully local — pinning the
+    /// mentions to the credential strings keeps legacy cloud wording from
+    /// creeping back under this feature's cover.
+    func testOpenAIMentionsAreTheSanctionedOnes() {
+        let sanctioned: Set<String> = [
+            "OpenAI API key",
+            "Add your OpenAI API key in Settings to ask questions",
+        ]
         for (name, table) in Self.allTables {
-            for (key, value) in table {
-                XCTAssertFalse(key.lowercased().contains("openai"),
-                               "\(name): key with OpenAI: \(key)")
-                XCTAssertFalse(value.lowercased().contains("openai"),
-                               "\(name): translation with OpenAI: \(value)")
+            for (key, value) in table
+            where key.lowercased().contains("openai") || value.lowercased().contains("openai") {
+                XCTAssertTrue(sanctioned.contains(key),
+                              "\(name): unexpected OpenAI mention in \(key)")
             }
         }
     }

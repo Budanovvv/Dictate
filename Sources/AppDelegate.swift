@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 // there is one layout now, so it opens at the size that layout
                 // needs. AppKit remembers what the user resizes it to, so this
                 // is a first-open default, not a size imposed on anyone.
-                contentRect: NSRect(x: 0, y: 0, width: 820, height: 620),
+                contentRect: NSRect(x: 0, y: 0, width: 1180, height: 748),
                 // .miniaturizable so the middle traffic light EXISTS: folding
                 // a window away is what that button is for on this platform,
                 // and a bespoke chevron elsewhere in the window is a second
@@ -100,12 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // 300 of library + 340 of transcript is where the cards stop
             // being readable, and a card that cannot be read is a list that
             // cannot be scanned.
-            panel.minSize = NSSize(width: 640, height: 420)
+            panel.minSize = NSSize(width: 960, height: 600)
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.contentView = NSHostingView(rootView: MeetingsView(
+            let meetingsHosting = NSHostingView(rootView: MeetingsView(
                 session: meeting,
                 navigator: meetingNavigator,
-                onStop: { [weak self] in self?.meeting.stop() })
+                onStop: { [weak self] in self?.meeting.stop() },
+                onRecord: { [weak self] in self?.toggleMeetingTranscript() })
                 // Without this the window is unified only in appearance: the
                 // backgrounds run to the top edge but SwiftUI keeps a title-bar
                 // safe area, so the header row is pushed 28pt down and the two
@@ -113,6 +114,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 // ours under it. The header row IS the title bar here, so it
                 // has to be laid out in the title bar's own space.
                 .ignoresSafeArea(.container, edges: .top))
+            meetingsHosting.sizingOptions = []
+            panel.contentView = meetingsHosting
             panel.center()
             // Closing is the gesture people already reach for, so it has to
             // mean the safest thing it could mean. While a session is live the
@@ -143,6 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 yellow.target = self
                 yellow.action = #selector(meetingMiniaturizeClicked)
             }
+            // With "Show in Dock" off the Dock icon must vanish when the last
+            // of our windows closes — this panel counts as one of them.
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(someWindowClosed),
+                name: NSWindow.willCloseNotification, object: panel
+            )
             meetingWindow = panel
         }
         // Showing the transcript IS leaving the minimized state, whichever
@@ -220,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             onStop: { [weak self] in self?.meeting.stop() },
             onExpand: { [weak self] in self?.expandMeeting() },
             onHide: { [weak self] in
-                self?.meetingPill?.hide()
+                self?.meetingPill?.hideByUser()
                 Log.d("meeting: pill hidden — menu bar only")
             })
         meetingPill = pill
@@ -253,13 +262,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             return
         }
         if !Settings.shared.meetingConsentSeen {
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = L("Record this meeting?")
-            alert.informativeText = L("Dictate transcribes the call locally on this Mac — nothing leaves it. Make sure the other participants are okay with being transcribed: many places require their consent.")
-            alert.addButton(withTitle: L("Start"))
-            alert.addButton(withTitle: L("Cancel"))
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            // The app's own consent card (design), NSAlert retired. Return
+            // starts, Esc declines; the ring rests on Don't Record.
+            guard ConsentDialog.run() else { return }
             // Only after they agreed: someone who cancels has not been told
             // anything they acted on, and deserves the notice again.
             Settings.shared.meetingConsentSeen = true
@@ -278,6 +283,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
         // WindowServer freeze) and write evidence to ~/Library/Logs/Dictate.
         MainThreadWatchdog.shared.start()
+
+        // Before anything acquires state worth keeping: a translocated run is
+        // offered a one-click move to /Applications (or quits) — every launch
+        // from the DMG only manufactures broken TCC state.
+        AppRelocator.offerMoveIfTranslocated()
+
+        // Permanent Dock presence (Settings › General). The meetings portal
+        // made this a real windowed app, so the icon is on by default; the
+        // toggle returns the old accessory behavior for utility purists.
+        applyDockPolicy()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(defaultsChanged),
+            name: UserDefaults.didChangeNotification, object: nil
+        )
 
         updater = SPUStandardUpdaterController(
             startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil
@@ -302,7 +321,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 return self.meeting.startedAt
             },
             toggleMeeting: { [weak self] in self?.toggleMeetingTranscript() },
-            showMeetings: { [weak self] url in self?.showMeetingWindow(select: url, focus: true) }
+            showMeetings: { [weak self] url in self?.showMeetingWindow(select: url, focus: true) },
+            pillHidden: { [weak self] in
+                guard let self else { return false }
+                return self.meeting.isActive && self.meetingPill?.isUserHidden == true
+            },
+            showPill: { [weak self] in self?.meetingPillController().showAgain() }
         )
         // The URL is USED, not ignored: onFinished fires twice — once when the
         // transcript is closed on disk, and again after the model has named it
@@ -339,7 +363,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 switch state {
                 case .recording:
                     self.resultShown = false
-                    self.hud.showRecording(translate: self.dictation.activeTranslate)
+                    self.hud.showRecording(translate: self.dictation.activeTranslate,
+                                           alsoMeeting: self.meeting.isActive,
+                                           queuedBehind: self.dictation.recognizingCount)
+                    // Dictating in the first seconds after launch, before the
+                    // model is loaded: the panel says it is preparing and to
+                    // keep holding (design DictationOverlay: warming), then
+                    // flips back the moment the engine is ready. Only for a
+                    // model already on disk — a missing one has its own
+                    // download flow.
+                    Task { @MainActor in
+                        guard await !WhisperEngine.shared.isReady(for: .fast),
+                              WhisperEngine.shared.isModelDownloaded(tier: .fast)
+                        else { return }
+                        self.hud.setWarming(true)
+                        while await !WhisperEngine.shared.isReady(for: .fast) {
+                            try? await Task.sleep(for: .milliseconds(300))
+                        }
+                        self.hud.setWarming(false)
+                    }
                 case .transcribing:
                     self.hud.showTranscribing(translate: self.dictation.activeTranslate)
                 case .idle:
@@ -348,13 +390,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 }
             }
         }
-        dictation.onResult = { [weak self] success, _, _ in
+        dictation.onResult = { [weak self] success, _, _, text, appName in
             DispatchQueue.main.async {
                 self?.resultShown = true
-                self?.hud.showResult(success: success)
-                if success { self?.maybeShowTranslateTip() }
+                if success {
+                    self?.hud.showInserted(app: appName, text: text)
+                    self?.maybeShowTranslateTip()
+                } else {
+                    self?.hud.showResult(success: false)
+                }
             }
         }
+        hud.onOpenSettings = { [weak self] in self?.showSettings() }
         // Already delivered on main by DictationController (dispatched at the
         // source) — no extra hop here, the level drives a 60 fps equalizer.
         dictation.onTranscribeProgress = { [weak self] fraction, words in
@@ -366,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 self.resultShown = true   // idle must not hide the notice pill
                 switch notice {
                 case .cancelled: self.hud.showCancelled()
-                case .copiedInstead: self.hud.showCopied()
+                case .copiedInstead(let text): self.hud.showCopied(text: text)
                 case .micBusy(let appName): self.hud.showMicBusy(appName: appName)
                 case .nothingHeard: self.hud.showResult(success: false)
                 case .tooQuiet: self.hud.showTooQuiet()
@@ -381,6 +428,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             self?.statusController.setLevel(level)
         }
         // Delivered on main (MainActor.run at the source).
+        dictation.onLiveTypingStarted = { [weak self] app in
+            DispatchQueue.main.async { self?.hud.setLiveTyping(app: app) }
+        }
+        dictation.onLiveTyped = { [weak self] words in
+            DispatchQueue.main.async { self?.hud.setTypedWords(words) }
+        }
         dictation.onLivePreview = { [weak self] text in
             self?.hud.setLivePreview(text)
         }
@@ -410,6 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             catchUpFastModelDownload()
         }
         removeRetiredPolishModel()
+        removeRetiredTextKnobs()
         // Third of the three layers that keep the text model's helper process
         // from outliving us (the other two are the quit below and SIGPIPE on
         // our log pipe when we crash): anything still running from a previous
@@ -435,6 +489,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                                     .fullScreenAuxiliary, .ignoresCycle]
         panel.orderBack(nil)
         translatorHostPanel = panel
+
+        // The meetings window's corner menu (design): its rows arrive here.
+        NotificationCenter.default.addObserver(
+            forName: .init("dictate.openSettings"), object: nil, queue: .main
+        ) { [weak self] _ in self?.showSettings() }
+        NotificationCenter.default.addObserver(
+            forName: .init("dictate.checkUpdates"), object: nil, queue: .main
+        ) { [weak self] _ in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.updater.checkForUpdates(nil)
+        }
+
+        applyDebugShot()
+    }
+
+    /// Hidden screenshot harness for the design pass: `defaults write
+    /// com.valentynbudanov.Dictate debugShot "<surface[:variant]>"` and a
+    /// relaunch opens a surface with no clicking, so every screen can be
+    /// photographed and compared to the mockups. The key is read once and
+    /// CLEARED — a normal launch is never affected.
+    private func applyDebugShot() {
+        let d = UserDefaults.standard
+        guard let shot = d.string(forKey: "debugShot") else { return }
+        d.removeObject(forKey: "debugShot")
+        Log.d("debugShot: \(shot)")
+        let parts = shot.split(separator: ":").map(String.init)
+        let variant = parts.count > 1 ? parts[1] : ""
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [self] in
+            switch parts.first ?? "" {
+            case "settings":
+                if !variant.isEmpty { d.set(variant, forKey: "debugShotTab") }
+                showSettings()
+            case "onboarding":
+                if !variant.isEmpty { d.set(variant, forKey: "debugShotStep") }
+                showOnboarding()
+            case "meetings":
+                if !variant.isEmpty { d.set(variant, forKey: "debugShotMeetings") }
+                showMeetingWindow(focus: true)
+            case "menu":
+                // performClick blocks in menu tracking; a runloop timer still
+                // fires, so the menu closes itself after the photograph.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                    self.statusController.debugCloseMenu()
+                }
+                statusController.debugOpenMenu()
+            case "hud":
+                debugHUD(variant.isEmpty ? "recording" : variant)
+            default:
+                break
+            }
+        }
+    }
+
+    private func debugHUD(_ state: String) {
+        switch state {
+        case "warming":
+            hud.showRecording(translate: false, alsoMeeting: false, queuedBehind: 0)
+            hud.setWarming(true)
+        case "recording":
+            hud.showRecording()
+            hud.setLivePreview("let's move the release to the fourteenth and tell the beta group")
+        case "translating":
+            hud.showRecording(translate: true)
+            hud.setLivePreview("the release moves to the fourteenth, and I will tell the beta group tonight")
+        case "also":
+            hud.showRecording(alsoMeeting: true)
+            hud.setLivePreview("let's move the release to the fourteenth")
+        case "queued":
+            hud.showTranscribing()
+            hud.setTranscribeProgress(0.6, words: 34)
+            hud.showRecording(queuedBehind: 1)
+            hud.setLivePreview("and add Priya to the invite")
+        case "livetyping":
+            hud.showRecording()
+            hud.setLiveTyping(app: "Notes")
+            hud.setTypedWords(31)
+            hud.setLivePreview("and tell the beta group")
+        case "recognizing":
+            hud.showTranscribing()
+            hud.setTranscribeProgress(0.64, words: 34)
+        case "inserted":
+            hud.showInserted(app: "Mail", text: "Let's move the release to the fourteenth and tell the beta group tonight, before the localization freeze.")
+        case "copied":
+            hud.showCopied(text: "Let's move the release to the fourteenth and tell the beta group tonight.")
+        case "cancelled": hud.showCancelled()
+        case "empty": hud.showResult(success: false)
+        case "micbusy": hud.showMicBusy(appName: "Zoom")
+        case "tooquiet": hud.showTooQuiet()
+        case "tooloud": hud.showTooLoud()
+        case "tip": hud.showTranslateTip(keyName: "Right ⌘")
+        case "packmissing": hud.showTranslateDataMissing()
+        case "downloading": hud.showDownloading(0.65, totalMB: 630)
+        default: break
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -445,6 +593,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // child-process design exists to prevent. Costs nothing when no helper
         // is running, which is the usual case.
         LlamaServer.shared.shutdown()
+    }
+
+    /// The vocabulary prompt and user replacement rules left the app with
+    /// their settings UI (owner's call, 2026-08-27). A stored prompt that
+    /// nothing displays any more would silently keep biasing every
+    /// recognition — the exact failure GRABLI documents — so the keys go too.
+    private func removeRetiredTextKnobs() {
+        for key in ["prompt", "replacements", "removeFillers"] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     /// The AI polish pass was removed after 2.3.1 (it distorted what people
@@ -469,6 +627,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// mid-download owns the HUD. Failures are swallowed: there's nothing the
     /// user can do here and the next launch simply tries again.
     private func catchUpFastModelDownload() {
+        // Same up-front disk check as onboarding — a silent background
+        // download must not be the thing that fills the disk.
+        let neededMB = Int(Double(ModelTier.fast.sizeMB) * 1.5) + 200
+        let freeMB = OnboardingView.freeDiskMB()
+        guard freeMB >= neededMB else {
+            Log.d("model: catch-up skipped — \(freeMB) MB free, needs \(neededMB)")
+            return
+        }
         Log.d("model: turbo missing after update — background download")
         Task { @MainActor in
             do {
@@ -570,17 +736,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         install()
     }
 
-    // Dock icon click (icon is visible only while a window is open)
+    // MARK: - Dock presence
+
+    /// Applies the "Show in Dock" setting. With it on the app is a regular
+    /// windowed citizen (Cmd+Tab, permanent icon); with it off the icon only
+    /// appears while one of our windows is open (the old accessory pattern —
+    /// someWindowClosed drops back to .accessory).
+    private func applyDockPolicy() {
+        if Settings.shared.showInDock {
+            if NSApp.activationPolicy() != .regular {
+                NSApp.setActivationPolicy(.regular)
+            }
+        } else {
+            let anyWindowOpen = [onboardingWindow, settingsWindow, meetingWindow]
+                .compactMap { $0 }
+                .contains { $0.isVisible }
+            if !anyWindowOpen, NSApp.activationPolicy() != .accessory {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    @objc private func defaultsChanged() {
+        // Cheap idempotent re-apply; UserDefaults.didChangeNotification fires
+        // on the posting thread, and policy changes belong on main.
+        DispatchQueue.main.async { [weak self] in self?.applyDockPolicy() }
+    }
+
+    // Dock icon click / reopen. The meetings portal is the app's main window
+    // now, so that is what a Dock click opens (Settings stays one menu away).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Never trust `flag`: the invisible 1×1 translator host panel counts
         // as a visible window, so it is always true and a Dock click / reopen
         // would silently do nothing. Check OUR windows instead.
-        let ourWindowOpen = [onboardingWindow, settingsWindow]
+        let ourWindowOpen = [onboardingWindow, settingsWindow, meetingWindow]
             .compactMap { $0 }
             .contains { $0.isVisible }
         if !ourWindowOpen {
             if Settings.shared.onboardingDone {
-                showSettings()
+                showMeetingWindow(focus: true)
             } else if onboardingWindow == nil {
                 showOnboarding()
             }
@@ -600,6 +794,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             self.dictation.restart()
         }, dictation: dictation)
         let window = makeWindow(title: L("Welcome to Dictate"), content: view)
+        // The view draws its own 46 px top strip with the "Step N of 5" label
+        // (design 12j); the native title bar goes transparent so only the
+        // traffic lights remain, overlaying that strip.
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert(.fullSizeContentView)
         onboardingWindow = window
         present(window)
     }
@@ -620,7 +820,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             })
         let window = makeWindow(title: L("Dictate Settings"), content: view)
         settingsWindow = window
-        present(window)
+        present(window, over: meetingWindow?.isVisible == true ? meetingWindow : nil)
     }
 
     private func makeWindow<V: View>(title: String, content: V) -> NSWindow {
@@ -643,7 +843,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         return window
     }
 
-    private func present(_ window: NSWindow) {
+    private func present(_ window: NSWindow, over anchor: NSWindow? = nil) {
+        // Opened from inside another window, Settings replaces it visually:
+        // same screen, centred on that window's frame (owner's call
+        // 2026-08-28) — not on whichever screen the mouse happens to be.
+        if let anchor, anchor.isVisible {
+            let a = anchor.frame
+            let size = window.frame.size
+            window.setFrameOrigin(NSPoint(x: a.midX - size.width / 2,
+                                          y: a.midY - size.height / 2))
+        }
         // .regular while a window is open so Cmd+Tab and focus behave normally;
         // back to .accessory once all our windows close.
         NSApp.setActivationPolicy(.regular)
@@ -658,6 +867,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             let size = window.frame.size
             window.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2,
                                           y: visible.midY - size.height / 2))
+        }
+        if let vis = (window.screen ?? NSScreen.main)?.visibleFrame,
+           window.frame.height > vis.height {
+            let size = NSSize(width: min(window.frame.width, vis.width),
+                              height: min(748, vis.height))
+            window.setFrame(NSRect(x: vis.midX - size.width / 2,
+                                   y: vis.midY - size.height / 2,
+                                   width: size.width, height: size.height),
+                            display: true)
         }
         // Activate on the next runloop turn: the .accessory→.regular switch must
         // settle first, otherwise Picker/Menu popups can't open (the app isn't
@@ -678,7 +896,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             if let closing, closing === self.onboardingWindow {
                 self.onboardingWindow = nil
             }
-            let stillOpen = [self.onboardingWindow, self.settingsWindow]
+            // With a permanent Dock icon the policy never drops; without one,
+            // the icon disappears when the last of our windows closes.
+            guard !Settings.shared.showInDock else { return }
+            let stillOpen = [self.onboardingWindow, self.settingsWindow, self.meetingWindow]
                 .compactMap { $0 }
                 .contains { $0 !== closing && $0.isVisible }
             if !stillOpen { NSApp.setActivationPolicy(.accessory) }

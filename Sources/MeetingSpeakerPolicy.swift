@@ -143,6 +143,53 @@ enum MeetingSpeakerPolicy {
             }
     }
 
+    // MARK: - Duet minor merge
+
+    /// The 1:1-call case the micro rule cannot reach (owner's meeting of
+    /// 2026-08-28, 15.6 min): one real remote person with 711 s of speech —
+    /// and a second label holding 5 entries / 24 s at distance 0.837. Too big
+    /// to be a micro-fragment, too small to be a person who was actually on
+    /// that call, and acoustically inside FluidAudio's own same-voice bar
+    /// (threshold × 1.2), which the library itself would have accepted as
+    /// "the same speaker" at assignment time.
+    ///
+    /// Conditions are conjunctive, and each one keeps a real call from the
+    /// logs out of harm's way:
+    /// * exactly two unrenamed voices spoke — with three or more, the small
+    ///   ones are usually people (guests who mostly listen);
+    /// * the minor holds ≤ 10% of the dominant's seconds — the 08-28 09:12
+    ///   call split 274 s / 113 s (41%), possibly two real people: untouched;
+    /// * the minor holds ≤ 60 s outright — an hour-long call must not
+    ///   swallow somebody's five real minutes on a percentage;
+    /// * distance ≤ ceiling × duetCeilingFactor — the 08-24 pair at 0.957
+    ///   stays split, and so would the confirmed two-real-people pair
+    ///   measured at 0.844 on 2026-08-17.
+    static let duetShare = 0.10
+    static let duetMaxSeconds: Double = 60
+    static let duetCeilingFactor = 1.2
+
+    /// The duet verdict, or nil when the session is not duet-shaped. Runs on
+    /// the same original voice set as `verdicts` and never judges a voice the
+    /// micro rule already covers.
+    static func duetVerdict(voices: [Voice], ceiling: Double,
+                            distance: (Int, Int) -> Double?) -> Verdict? {
+        let spoke = voices.filter { $0.entries > 0 }
+        guard spoke.count == 2, spoke.allSatisfy({ !$0.renamed }) else { return nil }
+        let sorted = spoke.sorted { $0.seconds > $1.seconds }
+        let dominant = sorted[0], minor = sorted[1]
+        guard !isMicro(minor),
+              minor.seconds <= duetMaxSeconds,
+              minor.seconds <= dominant.seconds * duetShare else { return nil }
+        guard let d = distance(minor.ordinal, dominant.ordinal), d.isFinite else {
+            return Verdict(voice: minor, outcome: .keepUnmeasured)
+        }
+        let bar = ceiling * duetCeilingFactor
+        return Verdict(voice: minor,
+                       outcome: d <= bar
+                           ? .merge(into: dominant.ordinal, distance: d)
+                           : .keepTooFar(nearest: dominant.ordinal, distance: d))
+    }
+
     // MARK: - Lexical label inheritance
 
     /// The words themselves overrule the embeddings: when one voice stops

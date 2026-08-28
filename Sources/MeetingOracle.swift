@@ -37,8 +37,24 @@ protocol MeetingOracle {
     /// wondering. Text appearing as it is composed is the only honest progress
     /// available here: a determinate bar over work whose length nobody knows is
     /// a lie the app would be telling, and this project has that scar already.
-    func answer(_ question: String, from sources: [MeetingSource])
+    ///
+    /// `prompt` is the already-composed user turn (passages and question, see
+    /// MeetingQuestion.user); `history` is every earlier round of this
+    /// conversation. Both vendors' APIs are stateless, so the memory of the
+    /// chat IS that array, resent whole on every call — that is the visible
+    /// price of a conversation that remembers, and the quality it buys is the
+    /// reason the asking pane is a session rather than a slot machine.
+    func answer(_ prompt: String, history: [AnswerExchange])
         -> AsyncThrowingStream<String, Error>
+}
+
+/// One earlier round, exactly as it went over the wire: the composed user
+/// turn (passages included) and the answer that came back. Passages stay in
+/// the history on purpose — a follow-up like "and who owed that?" is usually
+/// about the evidence, and an answer's summary of it is not the evidence.
+struct AnswerExchange {
+    let user: String
+    let assistant: String
 }
 
 /// One passage the answer may draw on — a meeting, or a moment inside it.
@@ -61,6 +77,11 @@ struct MeetingSource: Identifiable {
     /// the reader as well as to the model: evidence that can be read without a
     /// click is the thing this category never shipped.
     let text: String
+    /// The passage's channel, for the quote card's colour bar and label
+    /// (design: Supporting quotes) — from the passage's FIRST line. nil for
+    /// restored conversations, which predate the field.
+    var channelIsYou: Bool? = nil
+    var channelLabel: String? = nil
 
     var id: String { "\(url.path)#\(time ?? "")" }
 
@@ -80,11 +101,21 @@ struct MeetingSource: Identifiable {
 enum MeetingQuestion {
 
     static let instructions = """
-        You answer questions about someone's own recorded meetings. You are \
-        given the passages their search already found, and nothing else.
+        You answer questions about someone's own recorded meetings, in an \
+        ongoing conversation. A question may bring passages their local \
+        search found; a follow-up may bring none and lean on the passages \
+        already in this conversation.
 
-        Answer from those passages only. Where the wording matters, quote the \
-        speaker. Name the meeting you took each fact from, so it can be checked.
+        You also have tools over the same archive: list the meetings, search \
+        them (queries in English), and read one in full. The supplied \
+        passages are excerpts and a starting point — when they do not settle \
+        the question, read the meeting they came from instead of guessing, \
+        and search when the question reaches beyond them.
+
+        Answer only from those passages, this conversation and what the \
+        tools return. Where the wording matters, quote the speaker. Name the \
+        meeting you took each fact from, so it can be checked. Answer in the \
+        language the question was asked in.
 
         Be careful about who said what. These are real conversations and the \
         recognition is imperfect. If a passage says a constraint was on one \
@@ -100,13 +131,37 @@ enum MeetingQuestion {
         no bullet lists unless the answer is genuinely a list of items.
         """
 
+    /// The quiet second call after an answer lands: two follow-up questions
+    /// for the chips under it. Sent through the same oracle with the same
+    /// conversation, so the suggestions know what was actually said — and
+    /// worded to come back bare, because anything else on those lines ends up
+    /// inside a chip.
+    static let followUps = """
+        Suggest two short follow-up questions the person might naturally ask \
+        next in this conversation. Each must be answerable from the meetings \
+        and passages discussed above, and written in the language the person \
+        has been asking in. Return exactly two questions, one per line — no \
+        numbering, no dashes, nothing else.
+        """
+
     /// The user turn: the sources, then the question.
     ///
     /// The question goes LAST, after the passages. Long-context models attend
     /// best to what sits at the ends, and of the two the instruction is the one
     /// that must survive a wall of transcript above it.
-    static func user(question: String, sources: [MeetingSource]) -> String {
-        sources.map(\.block).joined(separator: "\n\n")
-            + "\n\nThe question: \(question)"
+    ///
+    /// A follow-up arrives with no sources of its own and is sent bare — its
+    /// evidence is the passages already in the conversation's history.
+    ///
+    /// `scope` is the one line that pins a conversation to a single meeting
+    /// (set when asking from a transcript's own header): it goes FIRST, so a
+    /// wall of excerpt cannot bury which meeting is being discussed.
+    static func user(question: String, sources: [MeetingSource],
+                     scope: String? = nil) -> String {
+        var parts: [String] = []
+        if let scope { parts.append(scope) }
+        if !sources.isEmpty { parts.append(sources.map(\.block).joined(separator: "\n\n")) }
+        guard !parts.isEmpty else { return question }
+        return parts.joined(separator: "\n\n") + "\n\nThe question: \(question)"
     }
 }

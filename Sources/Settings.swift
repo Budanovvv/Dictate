@@ -61,27 +61,14 @@ final class Settings {
         set { d.set(newValue, forKey: "micUID") }
     }
 
-    /// Transcription hint: names, terms, jargon.
-    var prompt: String {
-        get { d.string(forKey: "prompt") ?? "" }
-        set { d.set(newValue, forKey: "prompt") }
-    }
-
-    /// Remove filler words ("э-э", "um") from the result. On by default: the
-    /// filler lists are deliberately conservative (only unambiguous hesitation
-    /// sounds), so nobody has to find a switch to get clean text.
-    var removeFillers: Bool {
-        get { d.object(forKey: "removeFillers") as? Bool ?? true }
-        set { d.set(newValue, forKey: "removeFillers") }
-    }
-
-    /// User dictionary: [heard phrase, exact output] pairs applied to the
-    /// recognized text. Spoken punctuation/line-break commands are built in
-    /// (Replacements.commands), not stored here.
-    var replacements: [[String]] {
-        get { d.array(forKey: "replacements") as? [[String]] ?? [] }
-        set { d.set(newValue, forKey: "replacements") }
-    }
+    // Retired settings (owner's call, 2026-08-27), keys cleaned up at startup
+    // by AppDelegate.removeRetiredTextKnobs:
+    // - "prompt" (vocabulary hint): a proven footgun — foreign text in it
+    //   silently emptied recognitions, and it once swallowed a live dictation
+    //   typed into its own settings field;
+    // - "replacements" (user rules) and "removeFillers": the filler cleanup
+    //   and built-in voice commands still run as fixed behavior — they are how
+    //   dictation works, not something to configure.
 
     // MARK: Translate-tip bookkeeping (see AppDelegate.maybeShowTranslateTip)
 
@@ -108,18 +95,6 @@ final class Settings {
         set { d.set(newValue, forKey: "nameMeetingsFromCalendar") }
     }
 
-    /// Whether asking the archive questions is switched on.
-    ///
-    /// OFF by default, and it is the only setting in this app that turns
-    /// something OUTWARD. Everything else Dictate does happens on this Mac, and
-    /// a feature that breaks that promise cannot have its consent be a side
-    /// effect of a credential pasted once, months ago. The switch is the
-    /// consent, it is visible, and turning it off stops the offer appearing at
-    /// all — not merely greys it out.
-    ///
-    /// It is also where the choice will live when there is more than one way to
-    /// pay for this: today "my own key", later "my own key or a subscription".
-    /// A toggle becomes a picker without moving.
     /// How finely meetings are cut into sections — the reader's own call.
     ///
     /// Worth a control because the evidence says so: across the segmentation
@@ -131,14 +106,40 @@ final class Settings {
         set { d.set(newValue.rawValue, forKey: "sectionDetail") }
     }
 
-    var askArchive: Bool {
-        get { d.bool(forKey: "askArchive") }
-        set { d.set(newValue, forKey: "askArchive") }
+    /// Who answers questions about the archive — or nobody, which is the
+    /// default.
+    ///
+    /// nil means off, and it is the only setting in this app that turns
+    /// something OUTWARD. Everything else Dictate does happens on this Mac, and
+    /// a feature that breaks that promise cannot have its consent be a side
+    /// effect of a credential pasted once, months ago. The picker is the
+    /// consent, it is visible, and setting it to Off stops the offer appearing
+    /// at all — not merely greys it out.
+    ///
+    /// This was a plain on/off toggle before there was a second provider —
+    /// the old boolean is read once as a migration so nobody's choice is lost.
+    var askProvider: AIProvider? {
+        get {
+            if let raw = d.string(forKey: "askProvider") { return AIProvider(rawValue: raw) }
+            return d.bool(forKey: "askArchive") ? .anthropic : nil
+        }
+        set { d.set(newValue?.rawValue ?? "off", forKey: "askProvider") }
     }
+
+    /// Whether asking is on at all — what the meetings window checks before
+    /// offering the ask row; it does not care with whom.
+    var askArchive: Bool { askProvider != nil }
 
     var meetingConsentSeen: Bool {
         get { d.bool(forKey: "meetingConsentSeen") }
         set { d.set(newValue, forKey: "meetingConsentSeen") }
+    }
+
+    /// The pill's one-time "closing the window does not stop the recording"
+    /// line has been shown.
+    var meetingPillNoticeSeen: Bool {
+        get { d.bool(forKey: "meetingPillNoticeSeen") }
+        set { d.set(newValue, forKey: "meetingPillNoticeSeen") }
     }
 
     var translateUsedEver: Bool {
@@ -180,11 +181,50 @@ final class Settings {
         set { d.set(newValue, forKey: "liveTyping") }
     }
 
+    /// The app's appearance: "system" follows macOS, "light"/"dark" hold
+    /// Dictate to one look everywhere (design: Settings › General).
+    var appearance: String {
+        get { d.string(forKey: "appearance") ?? "system" }
+        set { d.set(newValue, forKey: "appearance") }
+    }
+
+    /// The transcript's text size — small / medium / large (design
+    /// MeetingOutline: the three-A tray in the head). A reading preference,
+    /// so it is global: eyes do not change between meetings.
+    var transcriptTextSize: String {
+        get { d.string(forKey: "transcriptTextSize") ?? "medium" }
+        set { d.set(newValue, forKey: "transcriptTextSize") }
+    }
+
+    /// "Hide outline" in the transcript head — a reading preference.
+    var outlineHidden: Bool {
+        get { d.bool(forKey: "outlineHidden") }
+        set { d.set(newValue, forKey: "outlineHidden") }
+    }
+
+    /// Final insertion route (Settings › Keys, design: "Insert text by").
+    /// false = paste at once (default); true = type it out through the same
+    /// unicode-event route live typing uses — for apps that block paste.
+    var insertByTyping: Bool {
+        get { d.bool(forKey: "insertByTyping") }
+        set { d.set(newValue, forKey: "insertByTyping") }
+    }
+
     /// Target language of the translate key. Every target — English included —
     /// is a plain transcription followed by Apple's on-device Translation.
     var translateTargetCode: String {
         get { d.string(forKey: "translateTargetCode") ?? "en" }
         set { d.set(newValue, forKey: "translateTargetCode") }
+    }
+
+    /// Permanent Dock icon (on by default since the meetings portal became a
+    /// real window; clicking it opens Meetings). Off returns the app to the
+    /// old menu-bar-only behavior, where the icon appears only while one of
+    /// our windows is open. The menu bar item is not configurable — it is the
+    /// app's state indicator and warning channel, not branding.
+    var showInDock: Bool {
+        get { d.object(forKey: "showInDock") as? Bool ?? true }
+        set { d.set(newValue, forKey: "showInDock") }
     }
 }
 

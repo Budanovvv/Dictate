@@ -20,7 +20,7 @@ final class TranscribeE2ETests: XCTestCase {
 
         try await WhisperEngine.shared.prepare(tier: .fast) { _ in }
         let text = try await WhisperEngine.shared.transcribe(
-            floats: floats, tier: .fast, language: "en", prompt: ""
+            floats: floats, tier: .fast, language: "en"
         ).text.lowercased()
 
         XCTAssertTrue(text.contains("quick brown fox"),

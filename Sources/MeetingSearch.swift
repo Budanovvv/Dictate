@@ -475,6 +475,24 @@ final class MeetingMeaning: ObservableObject {
         }
     }
 
+    /// Scoring for the asking agent's search tool: synchronous, no debounce
+    /// and no translation hop (the tool's contract says English). Deliberately
+    /// does NOT touch `matches` or `background` — those belong to the search
+    /// field, and an agent rummaging through the archive must not make the
+    /// owner's own search results jump.
+    func agentMatches(for query: String) -> [MeetingMatch] {
+        guard let embedding, let vector = embedding.vector(for: query.lowercased()) else { return [] }
+        return index.compactMap { url, vectors in
+            var best: (score: Double, moment: String?)?
+            for subject in vectors {
+                let score = MeetingSearch.cosine(vector, subject.vector)
+                if best == nil || score > best!.score { best = (score, subject.moment) }
+            }
+            return best.map { MeetingMatch(id: url, score: $0.score, moment: $0.moment) }
+        }
+        .sorted { $0.score > $1.score }
+    }
+
     private func score(_ english: String) -> [MeetingMatch] {
         guard let embedding, let query = embedding.vector(for: english.lowercased()) else {
             background = 0
