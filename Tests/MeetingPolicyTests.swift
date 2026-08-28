@@ -417,8 +417,13 @@ final class CallPlatformTitleTests: XCTestCase {
         XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Meet the team — Careers"))
     }
 
-    func testLongerTokenIsNotARoomCode() {
-        XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Meet – abc-defg-hijklm"))
+    func testMeetTitledByMeetingNameIsMeet() {
+        // A live call's tab carries the meeting NAME, not the room code
+        // (owner's call, 2026-08-29) — any "Meet – …" prefix is Meet.
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Meet - Product Daily - Camera and microphone required"), "Google Meet")
+        XCTAssertEqual(MeetingPolicy.callPlatform(
+            inWindowTitle: "Meet – Weekly sync"), "Google Meet")
     }
 
     func testOtherPlatforms() {

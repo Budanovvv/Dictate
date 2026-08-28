@@ -581,6 +581,12 @@ enum MeetingPolicy {
         if lower.contains("google meet") { return "Google Meet" }
         if lower.range(of: #"meet(\s+|\s*[-–—]\s*)[a-z]{3}-[a-z]{4}-[a-z]{3}(?![a-z-])"#,
                        options: .regularExpression) != nil { return "Google Meet" }
+        // Meet titles an active call's tab with the MEETING NAME, not the
+        // room code ("Meet - Product Daily - …", owner's live call
+        // 2026-08-29). The prefix-plus-separator shape keeps "Meeting
+        // notes" out: "Meeting" has no break after "meet".
+        if lower.range(of: #"^meet\s*[-–—]\s"#,
+                       options: .regularExpression) != nil { return "Google Meet" }
         if lower.contains("zoom meeting") || lower.contains("zoom.us") { return "Zoom" }
         if lower.contains("microsoft teams") { return "Microsoft Teams" }
         if lower.contains("webex") { return "Webex" }

@@ -31,6 +31,10 @@ final class CallDetector {
     private var quietTicks = 0
     /// Ticks a browser has held the mic without a title naming the call.
     private var unidentifiedTicks = 0
+    /// When the prompt last fired. However the episodes flap, the card never
+    /// asks more than once per five minutes — a declined call must not keep
+    /// asking (three prompts in one meeting, owner's log 2026-08-29).
+    private var lastFiredAt: Date?
 
     func start() {
         guard timer == nil else { return }
@@ -47,6 +51,16 @@ final class CallDetector {
         unidentifiedTicks = 0
     }
 
+    private func fire(_ platform: String?) {
+        if let lastFiredAt, Date().timeIntervalSince(lastFiredAt) < 300 {
+            Log.d("call: detected — \(platform ?? "unnamed"), prompt cooling down")
+            return
+        }
+        lastFiredAt = Date()
+        Log.d("call: detected — \(platform ?? "unnamed browser call")")
+        onCallDetected?(platform)
+    }
+
     private func tick() {
         // While we record, the platform is "in a call" by definition —
         // stay latched so the end of the recording is not a fresh call.
@@ -57,8 +71,7 @@ final class CallDetector {
             if let platform = MeetingSession.detectCallApp() {
                 inCall = true
                 unidentifiedTicks = 0
-                Log.d("call: detected — \(platform)")
-                onCallDetected?(platform)
+                fire(platform)
                 return
             }
             // A browser is on the mic but no window title names the call —
@@ -73,14 +86,17 @@ final class CallDetector {
             if unidentifiedTicks >= 3 {
                 inCall = true
                 unidentifiedTicks = 0
-                Log.d("call: detected — unnamed browser call")
-                onCallDetected?(nil)
+                fire(nil)
             }
         } else {
             unidentifiedTicks = 0
             if inCall {
                 quietTicks += 1
-                if quietTicks >= 2 {
+                // Five ticks (~20 s), not two: a live Meet releases the mic
+                // for ~10 s stretches around its lobby and permission
+                // screens, and an 8 s patience read each one as the call
+                // ending — three prompts in one meeting.
+                if quietTicks >= 5 {
                     inCall = false
                     quietTicks = 0
                     Log.d("call: over")
