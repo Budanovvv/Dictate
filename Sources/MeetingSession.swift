@@ -519,6 +519,30 @@ final class MeetingSession: ObservableObject {
         return nil
     }
 
+    /// One diagnostic line for the detector's log: who holds the mic, and
+    /// what the browsers' window titles actually say — the evidence when a
+    /// call was there and the title check could not name it.
+    static func debugCallHolders() -> String {
+        let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
+        var parts = ["holders: " + names.joined(separator: ", ")]
+        for name in names where MeetingPolicy.isBrowser(appNamed: name) {
+            guard let app = NSWorkspace.shared.runningApplications
+                .first(where: { $0.localizedName == name }) else { continue }
+            let ax = AXUIElementCreateApplication(app.processIdentifier)
+            var raw: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw) == .success,
+                  let windows = raw as? [AXUIElement] else { continue }
+            let titles = windows.compactMap { window -> String? in
+                var t: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &t) == .success,
+                      let title = t as? String, !title.isEmpty else { return nil }
+                return String(title.prefix(40))
+            }
+            parts.append("\(name) windows: " + titles.joined(separator: " | "))
+        }
+        return parts.joined(separator: "; ")
+    }
+
     /// Is anything call-shaped holding the microphone RIGHT NOW — a known
     /// call app, or a browser regardless of which tab is frontmost? This is
     /// the auto-stop invariant's loose aliveness test: the strict, title-

@@ -316,7 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// A call was recognised (CallDetector): the market's converged answer —
     /// detect, then ask. Always ask (owner's call, 2026-08-29): the offer is
     /// automatic, the recording never is.
-    private func callDetected(platform: String) {
+    private func callDetected(platform: String?) {
         guard !meeting.isActive else { return }
         Log.d("call: prompting")
         callPrompt.show(platform: platform) { [weak self] in

@@ -21,7 +21,7 @@ final class CallPrompt {
 
     /// Shows the prompt for a recognised call. `record` runs on the primary
     /// action, after consent bookkeeping.
-    func show(platform: String, record: @escaping () -> Void) {
+    func show(platform: String?, record: @escaping () -> Void) {
         hide()
         let firstEver = !Settings.shared.meetingConsentSeen
         let panel = NSPanel(
@@ -72,7 +72,7 @@ final class CallPrompt {
 }
 
 private struct CallPromptCard: View {
-    let platform: String
+    let platform: String?
     let firstEver: Bool
     let onRecord: () -> Void
     let onDecline: () -> Void
@@ -81,7 +81,7 @@ private struct CallPromptCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 9) {
                 Circle().fill(DS.record).frame(width: 8, height: 8)
-                Text(Lf("%@ call started", platform))
+                Text(platform.map { Lf("%@ call started", $0) } ?? L("Call started"))
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
             }

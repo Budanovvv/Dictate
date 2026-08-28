@@ -18,8 +18,10 @@ import AppKit
 /// strict, title-verified detection.
 @MainActor
 final class CallDetector {
-    /// A call was recognised; the string is the platform's display name.
-    var onCallDetected: ((String) -> Void)?
+    /// A call was recognised; the platform's display name, or nil when a
+    /// browser is on a call whose tab is not frontmost (the title names the
+    /// platform, and a background tab has no visible title).
+    var onCallDetected: ((String?) -> Void)?
     /// Answers whether a meeting session is already running — detection
     /// pauses itself around one.
     var isRecording: () -> Bool = { false }
@@ -27,6 +29,8 @@ final class CallDetector {
     private var timer: Timer?
     private var inCall = false
     private var quietTicks = 0
+    /// Ticks a browser has held the mic without a title naming the call.
+    private var unidentifiedTicks = 0
 
     func start() {
         guard timer == nil else { return }
@@ -40,25 +44,47 @@ final class CallDetector {
         timer = nil
         inCall = false
         quietTicks = 0
+        unidentifiedTicks = 0
     }
 
     private func tick() {
         // While we record, the platform is "in a call" by definition —
         // stay latched so the end of the recording is not a fresh call.
-        if isRecording() { inCall = true; quietTicks = 0; return }
+        if isRecording() { inCall = true; quietTicks = 0; unidentifiedTicks = 0; return }
         if MeetingSession.callHolderPresent() {
             quietTicks = 0
             guard !inCall else { return }
-            guard let platform = MeetingSession.detectCallApp() else { return }
-            inCall = true
-            Log.d("call: detected — \(platform)")
-            onCallDetected?(platform)
-        } else if inCall {
-            quietTicks += 1
-            if quietTicks >= 2 {
-                inCall = false
-                quietTicks = 0
-                Log.d("call: over")
+            if let platform = MeetingSession.detectCallApp() {
+                inCall = true
+                unidentifiedTicks = 0
+                Log.d("call: detected — \(platform)")
+                onCallDetected?(platform)
+                return
+            }
+            // A browser is on the mic but no window title names the call —
+            // the Meet tab is in the background (a window's AX title is its
+            // ACTIVE tab's, owner's live repro 2026-08-29). Twelve seconds
+            // of that is a call in all but name: prompt namelessly rather
+            // than stay silent through the meeting.
+            unidentifiedTicks += 1
+            if unidentifiedTicks == 1 {
+                Log.d("call: unidentified holder — \(MeetingSession.debugCallHolders())")
+            }
+            if unidentifiedTicks >= 3 {
+                inCall = true
+                unidentifiedTicks = 0
+                Log.d("call: detected — unnamed browser call")
+                onCallDetected?(nil)
+            }
+        } else {
+            unidentifiedTicks = 0
+            if inCall {
+                quietTicks += 1
+                if quietTicks >= 2 {
+                    inCall = false
+                    quietTicks = 0
+                    Log.d("call: over")
+                }
             }
         }
     }
