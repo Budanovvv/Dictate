@@ -80,6 +80,11 @@ struct MeetingsView: View {
     @State private var listHidden = UserDefaults.standard.bool(forKey: "meetingsListHidden")
     @State private var convHidden = UserDefaults.standard.bool(forKey: "meetingsConvHidden")
 
+    /// The last deleted meeting, held for the list's undo affordance and ⌘Z
+    /// — same contract as Ask conversations. The file itself is in the
+    /// Trash, so even a missed undo is recoverable in Finder.
+    @State private var deletedMeeting: MeetingArchive.DeletedMeeting?
+
     /// The adjustable column widths (a preference of the eyes, like text
     /// size): the design's 214/296 until dragged, then whatever was chosen.
     @State private var navWidth: CGFloat = {
@@ -459,7 +464,40 @@ struct MeetingsView: View {
             tagFilterRow
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
+            if let deleted = deletedMeeting {
+                // Undo replaces confirmation (the conversations pattern):
+                // the list stays stable and the way back is one keystroke.
+                HStack(spacing: 6) {
+                    Text(Lf("Deleted “%@”", deleted.title))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Button(L("Undo")) { undeleteMeeting() }
+                        .buttonStyle(.dsSmall)
+                        .keyboardShortcut("z", modifiers: .command)
+                }
+                .font(DS.helpText)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
             list
+        }
+    }
+
+    private func deleteMeeting(_ meeting: ArchivedMeeting) {
+        guard let token = MeetingArchive.delete(meeting) else { return }
+        deletedMeeting = token
+        if case .archived(let url) = selection, url == meeting.url { selection = nil }
+        if case .moment(let url, _) = selection, url == meeting.url { selection = nil }
+        reload()
+    }
+
+    private func undeleteMeeting() {
+        guard let deleted = deletedMeeting else { return }
+        if MeetingArchive.undelete(deleted) {
+            deletedMeeting = nil
+            reload()
+            selection = .archived(deleted.originalURL)
         }
     }
 
@@ -700,6 +738,17 @@ struct MeetingsView: View {
     }
 
     private func meetingRow(_ meeting: ArchivedMeeting) -> some View {
+        meetingRowBody(meeting)
+            .contextMenu {
+                Button(L("Rename meeting…")) {
+                    selection = .archived(meeting.url)
+                    renamingFromMenu = true
+                }
+                Button(L("Delete"), role: .destructive) { deleteMeeting(meeting) }
+            }
+    }
+
+    private func meetingRowBody(_ meeting: ArchivedMeeting) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             // A named meeting leads with its subject; an unnamed one is
             // known by when it happened.
@@ -1211,10 +1260,8 @@ struct MeetingsView: View {
                         NSWorkspace.shared.activateFileViewerSelecting([meeting.url])
                     }
                     Divider()
-                    Button(L("Move to Trash"), role: .destructive) {
-                        MeetingArchive.delete(meeting)
-                        selection = nil
-                        reload()
+                    Button(L("Delete"), role: .destructive) {
+                        deleteMeeting(meeting)
                     }
                 }
             } else {

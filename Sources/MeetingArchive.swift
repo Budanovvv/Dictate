@@ -751,8 +751,41 @@ enum MeetingArchive {
             .map { (tag: $0.key, count: $0.value) }
     }
 
-    static func delete(_ meeting: ArchivedMeeting) {
-        try? FileManager.default.trashItem(at: meeting.url, resultingItemURL: nil)
+    /// What it takes to bring a deleted meeting back: where it went in the
+    /// Trash and where it lived. The file goes to the TRASH, not to nothing —
+    /// so even a missed undo is recoverable in Finder.
+    struct DeletedMeeting {
+        let trashURL: URL
+        let originalURL: URL
+        let title: String
+    }
+
+    /// Immediate, no confirmation theater — same contract as Ask
+    /// conversations (owner's call, 2026-08-29): delete now, offer undo.
+    static func delete(_ meeting: ArchivedMeeting) -> DeletedMeeting? {
+        var trashed: NSURL?
+        do {
+            try FileManager.default.trashItem(at: meeting.url, resultingItemURL: &trashed)
+        } catch {
+            Log.d("meeting: trash failed — \(error.localizedDescription)")
+            return nil
+        }
         Log.d("meeting: moved \(meeting.url.lastPathComponent) to the trash")
+        guard let trashURL = trashed as URL? else { return nil }
+        return DeletedMeeting(trashURL: trashURL, originalURL: meeting.url,
+                              title: meeting.title ?? meeting.url.deletingPathExtension().lastPathComponent)
+    }
+
+    /// The one-step regret: the file walks back out of the Trash.
+    @discardableResult
+    static func undelete(_ deleted: DeletedMeeting) -> Bool {
+        do {
+            try FileManager.default.moveItem(at: deleted.trashURL, to: deleted.originalURL)
+            Log.d("meeting: restored \(deleted.originalURL.lastPathComponent) from the trash")
+            return true
+        } catch {
+            Log.d("meeting: undelete failed — \(error.localizedDescription)")
+            return false
+        }
     }
 }

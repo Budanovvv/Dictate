@@ -270,7 +270,12 @@ final class MeetingSession: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func start() throws {
+    /// `fromCallPrompt` marks a session born from the detection card: that
+    /// IS a sighted call, whatever the tab titles show later — without it, a
+    /// background-tab call never sets platformEverSeen and the forgotten-
+    /// recording rule falls back to the slow dead-air path (weak-case
+    /// review, 2026-08-29).
+    func start(fromCallPrompt: Bool = false) throws {
         guard !isActive else { return }
         sessionStart = Date()
         themPCM = Data()
@@ -385,9 +390,9 @@ final class MeetingSession: ObservableObject {
             self?.checkDiskSpace()
         }
         autoStopReason = nil
-        platformEverSeen = false
-        lastPlatformAliveAt = nil
         lastVoicedAt = Date()
+        platformEverSeen = fromCallPrompt
+        lastPlatformAliveAt = fromCallPrompt ? Date() : nil
         langVotes = [:]
         langPinned = [:]
         langProbe = [:]

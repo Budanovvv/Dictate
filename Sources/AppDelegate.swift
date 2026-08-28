@@ -307,9 +307,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private func startMeetingSession(asPill: Bool = false) {
         callPrompt.hide()
         do {
-            try meeting.start()
+            try meeting.start(fromCallPrompt: asPill)
             statusController.applyState(dictation.state)   // show the red mark
-            if asPill {
+            // The pill only when there is no window already on screen: with
+            // the portal open, recording lands in it — a pill OVER an open
+            // window would be two surfaces for one recording (weak-case
+            // review, 2026-08-29).
+            if asPill, meetingWindow?.isVisible != true {
                 meetingMinimized = true
                 meetingPillController().show(from: nil)
                 Log.d("meeting: started as the pill")
