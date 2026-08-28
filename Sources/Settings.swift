@@ -78,14 +78,6 @@ final class Settings {
         set { d.set(newValue, forKey: "dictationCount") }
     }
 
-    /// The translate key produced a result at least once (incl. onboarding) —
-    /// the user knows the feature, the tip stays silent forever.
-    /// The consent reminder has been shown once. Recording other people
-    /// without their knowledge is illegal in many places, so the app says so —
-    /// but it says it ONCE, on the first meeting ever recorded. Before every
-    /// session it was friction that taught nothing after the first time
-    /// (owner's call, 2026-08-19); never at all would leave a public app
-    /// silent on the one thing about it that carries legal weight.
     /// Name scheduled meetings from the calendar instead of from the model.
     /// Off until asked for: turning it on is what triggers the macOS calendar
     /// prompt, and this app already spends three permissions before it works

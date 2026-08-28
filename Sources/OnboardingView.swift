@@ -218,7 +218,7 @@ struct OnboardingView: View {
     }
 
     private func startDownload() {
-        // Both models in one visible download with a weighted combined bar —
+        // The one model, with a single visible bar —
         // so the translate try-out later is instant, not a surprise download.
         // download() only fetches; loading into the Neural Engine happens in
         // the background (preloadModel on step ≥2) so the bar never freezes.

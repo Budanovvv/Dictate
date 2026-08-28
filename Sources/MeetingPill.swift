@@ -8,8 +8,8 @@ import SwiftUI
 /// borderless, non-activating, `.statusBar` level, and it rides to whatever
 /// Space is in front. Those four are what let a recording stay visible over a
 /// full-screen call without ever taking the keyboard away from it — the same
-/// reasoning (and the same hard-won `.moveToActiveSpace`) as the pill that
-/// shows while dictating.
+/// reasoning as the pill that shows while dictating — though this one joins
+/// ALL Spaces and follows the person across displays.
 ///
 /// The one thing it does that the HUD deliberately does not: it takes mouse
 /// clicks. The HUD is a read-only status light and ignores the mouse entirely;
@@ -168,7 +168,7 @@ final class MeetingPill {
         panel.isMovableByWindowBackground = true
         // All Spaces, not move-once: the pill is the recording's visible
         // mark and must be wherever the person is looking (owner's call,
-        // 2026-08-29) — including других apps' full-screen Spaces.
+        // 2026-08-29) — including other apps' full-screen Spaces.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         // A drag is a choice worth keeping ACROSS launches, not just for the

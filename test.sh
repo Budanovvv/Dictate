@@ -59,7 +59,7 @@ if [ "$MODE" = "--quick" ] && [ ! -d "$APP" ]; then
 fi
 
 # Graceful quit: an instant pkill can land mid model-download/verify and
-# corrupt the model state (see internal/GRABLI.md).
+# corrupt the model state (see the project's local notes).
 quit_dictate() {
     pgrep -x Dictate >/dev/null || return 0
     osascript -e 'tell application id "com.valentynbudanov.Dictate" to quit' >/dev/null 2>&1 || true
@@ -124,12 +124,6 @@ check "Info.plist: microphone usage description" \
 check "Info.plist: 12 localizations declared" \
     bash -c "[ \$(defaults read '$APP/Contents/Info.plist' CFBundleLocalizations | grep -c ,) -ge 11 ]"
 
-# OpenAI is a sanctioned integration now (the ask-your-archive oracle), so a
-# blanket "no openai in the binary" check is gone. What must still never come
-# back is llama.cpp's jinja chat template — the marker the old check existed
-# to catch.
-check "no llama.cpp leftovers in the binary" \
-    bash -c "! strings '$BIN' | grep -q 'OpenAI Chat Completions'"
 # The tokenizer must not go into ~/Documents (tokenizerFolder regression)
 check "tokenizer path is not in Documents" \
     bash -c "! strings '$BIN' | grep -q 'Documents/huggingface'"

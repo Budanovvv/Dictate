@@ -1,24 +1,16 @@
 import Foundation
 
-/// Post-processing of recognized text, two layers:
-///
-/// 1. Built-in voice commands (like the system dictation): five per language,
-///    curated after Apple's dictation command sets. Only things Whisper can't
-///    produce from intonation itself: line breaks and the rare marks. All
-///    languages are active at once — the phrases are language-unique, and in
-///    translate mode Whisper translates the spoken phrase into English where
-///    the English set catches it.
-/// 2. User dictionary: [heard phrase, exact output] pairs from Settings —
-///    names, brands, acronyms ("сиквел" → "SQL"). User rules win over
-///    built-ins on the same phrase. A phrase prefixed with "re:" is treated
-///    as a raw case-insensitive regex (no escaping, no word-boundary wrap) —
-///    one rule for a name that arrives in many spellings and inflections.
+/// Post-processing of recognized text: built-in voice commands (like the
+/// system dictation) — five per language, curated after Apple's dictation
+/// command sets. Only things Whisper can't produce from intonation itself:
+/// line breaks and the rare marks. All languages are active at once — the
+/// phrases are language-unique. (The user dictionary this file once carried
+/// was retired with the setting, 2026-08-27.)
 ///
 /// Matching is case-insensitive; word-boundary aware for alphabetic scripts,
 /// bare for CJK (no spaces there). Longer phrases apply first.
 enum Replacements {
-    /// languageCode → [(spoken phrase, output)]. The settings showcase lists
-    /// the current UI language's five; matching uses all of them.
+    /// languageCode → [(spoken phrase, output)]; matching uses all of them.
     static let commandsByLanguage: [String: [(phrase: String, output: String)]] = [
         "en": [("new line", "\n"), ("new paragraph", "\n\n"),
                ("exclamation mark", "!"), ("question mark", "?"), ("colon", ":")],

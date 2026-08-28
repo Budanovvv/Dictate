@@ -23,9 +23,9 @@ REPO="Budanovvv/Dictate"
 
 echo "==> Release v$VERSION"
 
-# Phantom watch: something on this machine has repeatedly replaced
-# /Applications/Dictate.app during release builds (internal/GRABLI.md).
-# Record evidence while we work; the check at the end reports real changes.
+# Optional local watcher (developer machine only; a clone has no watcher
+# and skips this): records whether anything replaces the installed app
+# mid-release — evidence for a real incident seen on this machine once.
 PHANTOM_LOG="${TMPDIR:-/tmp}/dictate-phantom-watch.log"
 PHANTOM_PID=""
 if [ -f internal/claude-tooling/phantom-watch.py ]; then

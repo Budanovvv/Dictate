@@ -27,6 +27,10 @@ targets:
       - path: Resources/silero-vad-unified-256ms-v6.2.1.mlmodelc
         buildPhase: resources
         type: folder
+      # The bundled model's license rides along — Apache-2.0 wants the
+      # notice to accompany the distribution, not just the source tree.
+      - path: Resources/silero-vad-LICENSE.txt
+        buildPhase: resources
       # The llama.cpp server, embedded as a helper executable and run as a
       # CHILD PROCESS (see LocalTextEngine for why it is a separate process and
       # not a linked library — the SIGABRT-on-every-quit scar in GRABLI).
@@ -132,9 +136,6 @@ targets:
       - path: Sources/MeetingArchive.swift
       - path: Sources/TranscriptCleanup.swift
       - path: Sources/MeetingSearch.swift
-      # MeetingSearch translates a foreign-language query through the app's one
-      # translation path rather than opening a second session of its own.
-      - path: Sources/AppleTranslator.swift
       - path: Sources/TranscriptCopy.swift
       # The WAV plumbing of the dump/replay debug instruments: a dumped file
       # must be replayable by construction, and the round trip is the proof.

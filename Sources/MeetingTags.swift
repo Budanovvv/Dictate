@@ -4,7 +4,7 @@ import Foundation
 /// else can answer.
 ///
 /// Search already covers two axes without being asked — what was said (full
-/// text and meaning) and who said it (the speakers in the file). Neither knows
+/// text) and who said it (the speakers in the file). Neither knows
 /// which PRODUCT a call was about, or which engagement it belonged to. That is
 /// the gap a tag fills, and the reason there is no point tagging anything the
 /// archive can already work out for itself.

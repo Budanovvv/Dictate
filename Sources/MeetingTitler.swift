@@ -488,12 +488,11 @@ enum MeetingTitler {
 /// archive is cut into pieces small enough to describe AND small enough to
 /// feed — see MeetingPolicy.sectionStarts for where the cuts land and why.
 ///
-/// Sections are ENGLISH for every meeting, in every language, and that is
-/// load-bearing rather than a default. It is the same construction the
-/// summaries rest on: `NLEmbedding.sentenceEmbedding` exists for English and
-/// not for Russian, so a Russian meeting is findable by meaning only because
-/// what is indexed about it was written in English. Translating a section back
-/// into the language it was spoken in would quietly end cross-language search.
+/// Sections are still written in ENGLISH for every meeting. The original
+/// reason — the retired English-only semantic index — is gone; what keeps it
+/// for now is inertia and the agent's English-leaning search queries.
+/// Whether outline lines should follow the summaries into the meeting's own
+/// language is an open product call, not something this file decides.
 enum MeetingSectioner {
 
     /// How much of a section the model reads.
@@ -983,7 +982,7 @@ final class MeetingSections: ObservableObject {
     static let shared = MeetingSections()
 
     /// Bumped each time a contents block lands on disk — the library's cue to
-    /// reload, and the search index's cue to pick the new lines up.
+    /// reload.
     @Published private(set) var written = 0
 
     private var running = false

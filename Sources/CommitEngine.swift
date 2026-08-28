@@ -52,9 +52,8 @@ final class CommitEngine {
     private var pendingRaw: [String] = []
     private var pendingNorm: [String] = []
 
-    /// - Parameter holdBackPhrases: voice commands and user replacement phrases
-    ///   (literals only — a "re:" regex rule from Settings has no word form and
-    ///   simply never matches here). Words that form the beginning of any of
+    /// - Parameter holdBackPhrases: voice-command phrases. Words that form
+    ///   the beginning of any of
     ///   these are held back from committing until the phrase either completes
     ///   or diverges, so that a phrase is always typed as ONE chunk: the caller
     ///   runs Replacements over each chunk, and a phrase split across two

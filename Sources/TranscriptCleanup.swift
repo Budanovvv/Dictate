@@ -37,7 +37,7 @@ import Foundation
 ///     over whatever steps 1 and 2 removed from the middle of it.
 enum TranscriptCleanup {
 
-    /// What the cleanup did, for the log and for the tests. Not shown in the
+    /// What the cleanup did, for the tests. Not shown in the
     /// UI: the window shows the result, and a transcript that advertises how
     /// much of itself was hidden would be inviting an argument it cannot win.
     struct Report: Equatable {

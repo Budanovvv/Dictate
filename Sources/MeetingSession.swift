@@ -43,7 +43,7 @@ final class MeetingSession: ObservableObject {
     /// bars meaning "sound is really being captured".
     @Published private(set) var audioLevel: Double = 0
     /// The two streams metered separately — what tells "You" from "Call
-    /// audio" in the pill's expanded form (design 9b). `audioLevel` above
+    /// audio" in the live window's channel meters. `audioLevel` above
     /// stays the combined meter for the surfaces that show one.
     @Published private(set) var youLevel: Double = 0
     @Published private(set) var themLevel: Double = 0
@@ -502,15 +502,18 @@ final class MeetingSession: ObservableObject {
     /// Which known call app holds the microphone right now — "Zoom",
     /// "FaceTime"… Browsers hold it for every web call alike, so they name no
     /// platform (nil → the library's "other" bucket). Best-effort by design.
+    /// The one list of call apps — the detector's map and the aliveness
+    /// test read the same names, so they can never drift apart.
+    private static let callApps: [(fragment: String, name: String)] = [
+        ("zoom", "Zoom"), ("teams", "Microsoft Teams"), ("facetime", "FaceTime"),
+        ("webex", "Webex"), ("discord", "Discord"), ("slack", "Slack"),
+    ]
+
     static func detectCallApp() -> String? {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
-        let map: [(String, String)] = [
-            ("zoom", "Zoom"), ("teams", "Microsoft Teams"), ("facetime", "FaceTime"),
-            ("webex", "Webex"), ("discord", "Discord"), ("slack", "Slack"),
-        ]
         for name in names {
             let lower = name.lowercased()
-            if let hit = map.first(where: { lower.contains($0.0) }) { return hit.1 }
+            if let hit = callApps.first(where: { lower.contains($0.fragment) }) { return hit.name }
         }
         // A browser holding the mic is a web call — Meet above all, which
         // never appears as an app. The browser's window titles name the
@@ -531,18 +534,7 @@ final class MeetingSession: ObservableObject {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         var parts = ["holders: " + names.joined(separator: ", ")]
         for name in names where MeetingPolicy.isBrowser(appNamed: name) {
-            guard let app = NSWorkspace.shared.runningApplications
-                .first(where: { $0.localizedName == name }) else { continue }
-            let ax = AXUIElementCreateApplication(app.processIdentifier)
-            var raw: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw) == .success,
-                  let windows = raw as? [AXUIElement] else { continue }
-            let titles = windows.compactMap { window -> String? in
-                var t: CFTypeRef?
-                guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &t) == .success,
-                      let title = t as? String, !title.isEmpty else { return nil }
-                return String(title.prefix(40))
-            }
+            let titles = browserWindowTitles(appNamed: name).map { String($0.prefix(40)) }
             parts.append("\(name) windows: " + titles.joined(separator: " | "))
         }
         return parts.joined(separator: "; ")
@@ -556,27 +548,34 @@ final class MeetingSession: ObservableObject {
     /// read as "call over").
     static func callHolderPresent() -> Bool {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
-        let apps = ["zoom", "teams", "facetime", "webex", "discord", "slack"]
         return names.contains { name in
             let lower = name.lowercased()
-            return apps.contains { lower.contains($0) } || MeetingPolicy.isBrowser(appNamed: name)
+            return callApps.contains { lower.contains($0.fragment) }
+                || MeetingPolicy.isBrowser(appNamed: name)
         }
     }
 
-    /// Reads the AX window titles of the named app and asks the policy
-    /// whether any of them is a live call. Best-effort at every step: no
-    /// running app, no AX consent, no windows — all mean nil, never an error.
-    private static func browserCallPlatform(appNamed name: String) -> String? {
+    /// Every window title of the named app, through Accessibility. Best-effort
+    /// at every step: no running app, no AX consent, no windows — all mean an
+    /// empty list, never an error. One walk, shared by the platform check and
+    /// the diagnostic dump.
+    private static func browserWindowTitles(appNamed name: String) -> [String] {
         guard let app = NSWorkspace.shared.runningApplications
-            .first(where: { $0.localizedName == name }) else { return nil }
+            .first(where: { $0.localizedName == name }) else { return [] }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
         var raw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw) == .success,
-              let windows = raw as? [AXUIElement] else { return nil }
-        for window in windows {
+              let windows = raw as? [AXUIElement] else { return [] }
+        return windows.compactMap { window in
             var t: CFTypeRef?
             guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &t) == .success,
-                  let title = t as? String else { continue }
+                  let title = t as? String, !title.isEmpty else { return nil }
+            return title
+        }
+    }
+
+    private static func browserCallPlatform(appNamed name: String) -> String? {
+        for title in browserWindowTitles(appNamed: name) {
             if let hit = MeetingPolicy.callPlatform(inWindowTitle: title) { return hit }
         }
         return nil

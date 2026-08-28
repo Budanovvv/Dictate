@@ -13,12 +13,12 @@
 # once, for the AI-polish feature, and it aborted with SIGABRT on EVERY quit
 # once a model had been loaded — llama's C++ static destructors tear down the
 # Metal device inside exit() and race its own async init worker. See
-# internal/GRABLI.md and Sources/LocalTextEngine.swift.
+# Sources/LocalTextEngine.swift.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Pinned. An unpinned llama.cpp is a different program every week, and the
-# generation quality in internal/CONTEXT.md was measured against this one.
+# generation quality was measured against this one.
 COMMIT="7e4c0a9"
 REPO="https://github.com/ggml-org/llama.cpp"
 WORK="${TMPDIR:-/tmp}/dictate-llama-build"
@@ -71,7 +71,7 @@ echo "==> x86_64 (CPU)"
 # No Metal: an Intel Mac's GPU cannot run these kernels, so the x86_64 slice is
 # an honest CPU build. Slower — measured at ~14 s per passage against ~1.1 s on
 # Apple silicon — which matches the claim this project already makes about
-# Intel (internal/CONTEXT.md, item 5г). GGML_NATIVE=OFF so the binary does not
+# Intel (a local decision record). GGML_NATIVE=OFF so the binary does not
 # bake in THIS machine's instruction set.
 cmake -S "$WORK" -B "$WORK/build-x86" "${COMMON[@]}" \
     -DCMAKE_OSX_ARCHITECTURES=x86_64 \

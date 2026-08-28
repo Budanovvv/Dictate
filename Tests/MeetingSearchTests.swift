@@ -1,12 +1,7 @@
 import XCTest
 
-/// Searching the archive. Two questions share one field — "which transcript
-/// contains these characters" and "which meeting was about this" — and the
-/// rules that decide what the owner sees are pinned here.
-///
-/// Every semantic test uses FIXED vectors, never the model. What is being
-/// tested is the ranking policy, and a test that called NLEmbedding would pass
-/// or fail on whichever assets happen to be on the machine running it.
+/// Searching the archive: one literal search — turns, speakers, titles,
+/// summaries and outline lines — plus the #tag filter grammar.
 final class MeetingSearchTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -61,11 +56,6 @@ final class MeetingSearchTests: XCTestCase {
         XCTAssertEqual(MeetingSearch.literal(archive, query: "").count, 2)
         XCTAssertEqual(MeetingSearch.literal(archive, query: "   ").count, 2)
     }
-
-    // MARK: - What a meeting is scored on
-
-    /// Title and summary, separately — the measured decision (a joined string
-    /// ranked an unrelated meeting above the right one).
 
     // MARK: - The widened literal reach (the semantic ranking's replacement)
 

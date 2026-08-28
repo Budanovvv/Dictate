@@ -761,7 +761,7 @@ private struct HUDView: View {
     }
 }
 
-/// One permanent row of 23 brand capsules: the equalizer and the progress bar
+/// One thin level bar: the equalizer and the progress bar
 /// are the same objects changing height and color — dancing while recording,
 /// settling into a segmented bar that fills capsule by capsule while
 /// recognizing, topping up right before the pill slips away.

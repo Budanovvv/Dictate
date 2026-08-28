@@ -19,7 +19,6 @@ internal/
 # Backup of the Sparkle EdDSA key lives in ~/.config/dictate/ (outside iCloud);
 # the pattern stays as a belt-and-suspenders guard against a stray copy.
 sparkle-private-key.pem
-Dictate.zip
 RESUME-SESSION.md
 # PyCharm MCP bridge config — the port is ephemeral, changes every IDE session
 .mcp.json

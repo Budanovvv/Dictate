@@ -36,7 +36,7 @@ enum MeetingPolicy {
     ///
     /// The old cap of 15 s left a 5 s tail, which is the worst end of that
     /// range. Measured on a dumped 40-minute meeting (bench:
-    /// internal/claude-tooling/diar-bench; ground truth from the owner —
+    /// a local diarization bench; ground truth from the owner —
     /// one participant did 80–90% of the talking):
     ///
     ///   15 s cap: 857 / 539 / 141 s per voice (56/35/9%), 70% of windows

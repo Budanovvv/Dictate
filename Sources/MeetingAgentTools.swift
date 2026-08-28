@@ -70,8 +70,7 @@ enum MeetingAgentTool: String, CaseIterable {
             return "Unknown tool: \(name)"
         }
         // The disk read stays off the main thread (an iCloud-evicted file
-        // blocks on the network — the 16-second hang of 2026-08-17); the
-        // semantic index is main-actor state, so scoring hops there.
+        // blocks on the network — the 16-second hang of 2026-08-17).
         let youLabel = await MainActor.run { L("You") }
         let meetings = await Task.detached(priority: .userInitiated) {
             MeetingArchive.list(youLabel: youLabel)

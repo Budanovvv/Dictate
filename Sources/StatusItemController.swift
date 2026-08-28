@@ -455,7 +455,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
 
-    /// An SF Symbol in the menu's own ink — a template image, so it follows the
 
     /// A line of text in the menu rather than a command.
     private static func label(_ title: String) -> NSMenuItem {

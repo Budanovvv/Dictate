@@ -132,7 +132,7 @@ echo "==> Done: $APP"
 
 if [ "$INSTALL" = 1 ]; then
     # Graceful quit first: an instant pkill can land mid model-download/verify
-    # and corrupt the model state (see internal/GRABLI.md).
+    # and corrupt the model state (see the project's local notes).
     if pgrep -x Dictate >/dev/null; then
         osascript -e 'tell application id "com.valentynbudanov.Dictate" to quit' >/dev/null 2>&1 || true
         for _ in $(seq 8); do pgrep -x Dictate >/dev/null || break; sleep 0.25; done

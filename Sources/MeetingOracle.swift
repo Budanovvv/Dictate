@@ -10,14 +10,10 @@ import Foundation
 /// setup and fits where the searching already happens.
 ///
 /// What DOES need care is the trigger. Nothing is ever inferred from the shape
-/// of what was typed — no question marks, no question words, no classifier. The
-/// answer appears because somebody asked for it, and the row that asks appears
-/// only when the search already found something to answer from. That last
-/// clause is the important one: it means the app can never offer to answer a
-/// question it has no sources for, which is the failure every product in this
-/// category has and none has solved — a person cannot tell "that is not in your
-/// meetings" from "that is not in my index", and both come back as a confident
-/// nothing.
+/// of what was typed — no question marks, no question words, no classifier.
+/// The answer appears because somebody asked for it; the agent then goes
+/// looking with its own tools, and an honest "the archive does not cover
+/// this" beats the confident nothing every product in this category ships.
 protocol MeetingOracle {
 
     /// Whether this oracle can run right now.

@@ -425,7 +425,7 @@ enum MeetingArchive {
                 start: Double(seconds(fromClock: entry.time) ?? 0),
                 speaker: entry.speaker,
                 words: entry.text.split(whereSeparator: \.isWhitespace).count,
-                endsSentence: endsSentence(entry.text),
+                endsSentence: TranscriptCleanup.endsSentence(entry.text),
                 startsSentence: startsSentence(entry.text))
         }
         let starts = MeetingPolicy.sectionStarts(marks, target: detail.target,
@@ -435,11 +435,6 @@ enum MeetingArchive {
         return starts.indices.map { i in
             starts[i]..<(i + 1 < starts.count ? starts[i + 1] : entries.count)
         }
-    }
-
-    private static func endsSentence(_ text: String) -> Bool {
-        guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
-        return ".!?…。？！".contains(last)
     }
 
     /// The first LETTER is a capital. Asked of letters only, so a line opening

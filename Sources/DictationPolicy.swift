@@ -2,7 +2,7 @@ import Foundation
 
 /// Pure decision logic extracted from the controllers so the regression tests
 /// can exercise it directly — no audio hardware, TCC or UI involved. Every
-/// rule here traces back to a documented pitfall (internal/GRABLI.md); keep
+/// rule here traces back to a documented pitfall; keep
 /// the wrappers in DictationController/Permissions paper-thin.
 enum DictationPolicy {
 

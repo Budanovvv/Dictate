@@ -31,7 +31,7 @@ final class TranscribeE2ETests: XCTestCase {
 
     // MARK: - synthesis: say → afconvert → 16 kHz mono float
 
-    private func synthesize(_ phrase: String, voice: String? = nil) throws -> [Float] {
+    private func synthesize(_ phrase: String) throws -> [Float] {
         let dir = FileManager.default.temporaryDirectory
         let aiff = dir.appendingPathComponent("dictate-e2e-\(UUID().uuidString).aiff")
         let wav = aiff.deletingPathExtension().appendingPathExtension("wav")
@@ -39,7 +39,6 @@ final class TranscribeE2ETests: XCTestCase {
                 try? FileManager.default.removeItem(at: wav) }
 
         var sayArgs = ["-o", aiff.path, phrase]
-        if let voice { sayArgs = ["-v", voice] + sayArgs }
         try run("/usr/bin/say", sayArgs)
         try run("/usr/bin/afconvert",
                 ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", aiff.path, wav.path])

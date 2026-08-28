@@ -334,7 +334,7 @@ final class MeetingFlushTests: XCTestCase {
 /// reason it is not a matter of taste: a window longer than the model's fixed
 /// 10.0 s input gets chunked, the last chunk is zero-padded, and a short
 /// padded chunk's embedding clusters as a different person. Measured on a
-/// dumped meeting (bench: internal/claude-tooling/diar-bench): the old 15 s
+/// dumped meeting (a local diarization bench): the old 15 s
 /// cap split 70% of windows and invented a second near-equal speaker; 10 s
 /// splits 6% and reproduces the meeting as it happened.
 final class ThemWindowCapTests: XCTestCase {

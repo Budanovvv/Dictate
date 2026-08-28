@@ -113,7 +113,7 @@ final class LocalTextModelDownload: ObservableObject {
 /// and a person who has never seen a named meeting has no reason to go looking
 /// for one — the owner found this himself on a clean install. So the offer also
 /// appears where the absence is physically visible: a library of meetings named
-/// by date, and a search by meaning with nothing to match against.
+/// by date.
 ///
 /// Everything about the appearance budget is defensive, because this app has no
 /// subscription to sell and a banner that keeps coming back would be the most
@@ -130,7 +130,7 @@ final class LocalTextModelOffer: ObservableObject {
     /// to catch the person who was busy the first time. A third is nagging.
     static let budget = 2
 
-    /// Dismissed for good. Published so all three surfaces vanish on the click
+    /// Dismissed for good. Published so every offer surface vanishes on the click
     /// rather than on the next redraw.
     @Published private(set) var dismissed: Bool
     /// Runs that have already shown it, read ONCE at launch: counting live

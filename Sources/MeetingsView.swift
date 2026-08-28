@@ -38,9 +38,7 @@ struct MeetingsView: View {
     /// Contents blocks arriving for older meetings — each one turns a
     /// fifty-minute transcript into a dozen findable moments.
     @ObservedObject private var sections = MeetingSections.shared
-    /// The semantic index — meetings that match what was typed by MEANING,
-    /// which is a different question from "contains these characters" and gets
-    /// its own group in the list.
+    /// The local text model's download offer state.
     /// Whether the optional text model may still be offered here. Observed so
     /// that "Not now" empties every surface at once.
     @ObservedObject private var offer = LocalTextModelOffer.shared
@@ -48,7 +46,6 @@ struct MeetingsView: View {
     /// Starts a meeting recording through the owner's consent-aware path —
     /// the same flow the menu bar uses (first-run consent alert included).
     let onRecord: () -> Void
-    /// The window owner resizes/levels the panel when the library opens.
 
     // The library is always here. It used to fold away, and during a live
     // call it folded ITSELF, turning the window into a glanceable strip over
@@ -595,15 +592,6 @@ struct MeetingsView: View {
         }
     }
 
-    /// The library's header: the control that closes the library, and nothing
-    /// else — it is the title-bar band, and the window's own buttons own most
-    /// of it.
-    ///
-    /// The toggle lives HERE rather than in the transcript's header whenever
-    /// the sidebar is open, for two reasons. It is the control that hides this
-    /// column, so it belongs over this column and not across the divider from
-    /// it. And moving it out gives the transcript's header a single left edge:
-    /// with the toggle in it, the meeting's title started 50pt in while the
     /// The archive's tags, most-used first, as a scrollable line of chips —
     /// always, not only while the field is empty.
     ///
@@ -1358,7 +1346,6 @@ struct MeetingsView: View {
         return out
     }
 
-    /// Meetings that are ABOUT what was typed without containing it.
     /// "38 meetings · 26 h of audio" for the docked composer (design).
     private var askStats: String? {
         guard !meetings.isEmpty else { return nil }
@@ -1637,12 +1624,10 @@ enum MeetingsChrome {
     /// Height of the header row in BOTH panes, so the rule under them is one
     /// unbroken line across the window.
     ///
-    /// 40 and not the 46 it was, because this row is now the title bar as well:
-    /// AppKit centres the traffic lights in the standard 28pt title-bar band
-    /// whatever the content under it does, so every point this row is taller
-    /// than that band is a point the window's own buttons sit above everything
-    /// beside them. At 40 the two centres are 5pt apart, which reads as one
-    /// row; at 46 it read as buttons floating over a row.
+    /// Tall enough to be the title bar as well: AppKit centres the traffic
+    /// lights in the standard 28pt title-bar band whatever the content under
+    /// it does, and this height keeps the row and the buttons reading as one
+    /// line.
     static let headerHeight: CGFloat = 52
     /// Margin of the transcript pane — its header, its turns and its copy
     /// column all start here.
@@ -2185,7 +2170,7 @@ private struct TranscriptPane<MenuItems: View>: View {
     ///
     /// The sidebar toggle appears here only when there is no sidebar for it to
     /// sit on. While the library is open the toggle lives in the library's own
-    /// header (MeetingsView.headerRow), where it is over the column it hides
+    /// header, where it is over the column it hides
     /// instead of across the divider from it — and where it is not pushing this
     /// title 36pt off the transcript's margin.
     private var header: some View {
@@ -3057,8 +3042,6 @@ private struct TranscriptPane<MenuItems: View>: View {
         )
     }
 
-    /// The utterance still being spoken — grey and italic, replaced by the
-    /// final entry when the window is cut.
     /// The unconfirmed utterance: upright and at full contrast, marked by a
     /// coloured rule instead of dim italics (13a) — a hypothesis is still
     /// words being read, and dimming it punished exactly the line the reader
@@ -3963,7 +3946,7 @@ struct MeetingPillView: View {
             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
     }
 
-    /// Hover: the two streams metered separately — what tells "You" from
+    /// The capsule's one-time teaching line — what tells "You" from
     /// "Call audio" in the transcript, made visible where the recording is.
     /// Shown once, the first time the window is closed mid-recording.
     private var educationCard: some View {
