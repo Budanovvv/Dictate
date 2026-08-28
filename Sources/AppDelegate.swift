@@ -314,17 +314,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     }
 
     /// A call was recognised (CallDetector): the market's converged answer —
-    /// detect, then ask. Auto mode skips the asking; the pill and the menu
-    /// bar mark keep the recording visible either way.
+    /// detect, then ask. Always ask (owner's call, 2026-08-29): the offer is
+    /// automatic, the recording never is.
     private func callDetected(platform: String) {
         guard !meeting.isActive else { return }
-        if Settings.shared.autoRecordCalls, Settings.shared.meetingConsentSeen {
-            Log.d("call: auto-recording (\(platform))")
-            startMeetingSession()
-        } else {
-            callPrompt.show(platform: platform) { [weak self] in
-                self?.startMeetingSession()
-            }
+        Log.d("call: prompting")
+        callPrompt.show(platform: platform) { [weak self] in
+            self?.startMeetingSession()
         }
     }
 

@@ -4,8 +4,9 @@ import SwiftUI
 /// The detection prompt (mechanical shell — visuals follow the designer's
 /// card when it lands): a small non-activating panel at the top of the
 /// screen the moment a call is recognised. Record is primary, "Not this
-/// one" declines for this call, the checkbox upgrades to automatic. It
-/// dismisses itself after ten seconds if untouched.
+/// one" declines for this call. It dismisses itself after ten seconds if
+/// untouched. There is deliberately NO automatic mode (owner's call,
+/// 2026-08-29): the offer is automatic, the recording never is.
 ///
 /// Non-activating on purpose: the person is JOINING A CALL — a prompt that
 /// steals the keyboard from Zoom at that exact moment would be the app
@@ -75,7 +76,6 @@ private struct CallPromptCard: View {
     let firstEver: Bool
     let onRecord: () -> Void
     let onDecline: () -> Void
-    @State private var always = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -94,14 +94,6 @@ private struct CallPromptCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Toggle(isOn: $always) {
-                Text(L("Always record my calls"))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-            }
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            .onChange(of: always) { Settings.shared.autoRecordCalls = $0 }
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 Button(L("Not this one"), action: onDecline)

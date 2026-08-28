@@ -32,7 +32,6 @@ struct SettingsView: View {
     @State private var translateSet = Settings.shared.translateKeyCode != nil
     @State private var language = Settings.shared.language
     @State private var nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
-    @State private var autoRecordCalls = Settings.shared.autoRecordCalls
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showInDock = Settings.shared.showInDock
     @State private var translateTarget = Settings.shared.translateTargetCode
@@ -428,21 +427,6 @@ struct SettingsView: View {
             Section {
                 // The calendar row carries its own permission. Turning it on is
                 // what asks macOS for the calendar, which is why the switch
-                // The way OUT of automatic recording. The way IN is the
-                // detection prompt's checkbox — but once automatic is on the
-                // prompt never shows again, so without this switch the choice
-                // would be irreversible (owner's catch, 2026-08-29).
-                LabeledContent {
-                    Toggle("", isOn: $autoRecordCalls)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .onChange(of: autoRecordCalls) { on in
-                            Settings.shared.autoRecordCalls = on
-                        }
-                } label: {
-                    rowLabel(L("Record detected calls automatically"),
-                             L("Off means Dictate asks first when a call starts. The recording pill and the menu bar mark are always visible either way."))
-                }
                 // snaps back when the request is refused: a switch that stays
                 // on while the feature cannot work is a lie the user only
                 // discovers at the next meeting.
