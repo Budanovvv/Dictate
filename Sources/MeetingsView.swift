@@ -250,13 +250,11 @@ struct MeetingsView: View {
         .sheet(isPresented: $showConnect) {
             AgentConnectSheet(question: connectQuestion, onConnected: {
                 showConnect = false
-                // The first success is the answer to the question they came
-                // with — with whatever passages the search had already found.
+                // The first success is the answer to the question they
+                // came with.
                 if let question = connectQuestion?.trimmingCharacters(in: .whitespaces),
                    !question.isEmpty {
-                    askScope = nil
-                    answer.scopePath = nil
-                    answer.ask(question, from: [], using: oracle)
+                    answer.ask(question, using: oracle)
                     selection = .ask
                 }
                 connectQuestion = nil
@@ -552,10 +550,10 @@ struct MeetingsView: View {
         .onChange(of: selection) { picked in
             guard case .answer(let question) = picked else { return }
             guard answer.lastQuestion != question || answer.lastFailure != nil else { return }
-            // Appends to the running conversation: the session is the window's
-            // lifetime, and a question asked from a fresh search joins it with
-            // its fresh passages rather than starting over.
-            answer.ask(question, from: [], using: oracle)
+            // Appends to the running conversation: the session is the
+            // window's lifetime, and a question asked from a fresh search
+            // joins it rather than starting over.
+            answer.ask(question, using: oracle)
         }
         .listStyle(.sidebar)
         // The list draws itself on the sidebar material above, instead of
@@ -896,7 +894,6 @@ struct MeetingsView: View {
             if Settings.shared.askArchive {
                 navRow(icon: "questionmark.bubble", title: L("Ask"),
                        selected: selection == .ask) {
-                    askScope = nil
                     selection = .ask
                     // One lit row, always (owner's report 2026-08-29: Ask and
                     // Starred glowed together). Entering Ask retires the list
@@ -1066,18 +1063,13 @@ struct MeetingsView: View {
         AnswerPane(answer: answer,
                    suggestions: askSuggestions,
                    headerNote: askHeaderNote,
-                   open: { source in
-            // Going to the passage is an ordinary selection, so the answer
-            // stays behind in the list and one click comes back to it.
-            selection = source.time.map { .moment(source.url, $0) } ?? .archived(source.url)
-        }, followUp: { question in
-            // One Ask, always global (16): no new passages — a question typed
-            // in the pane leans on the conversation and on the agent's own
-            // tools, which search and read the whole archive.
-            answer.ask(question, from: [], using: oracle)
+                   followUp: { question in
+            // One Ask, always global (16): a question typed in the pane
+            // leans on the conversation and on the agent's own tools, which
+            // search and read the whole archive.
+            answer.ask(question, using: oracle)
         }, newChat: {
             answer.clear()
-            askScope = nil
         }, onAddKey: {
             connectQuestion = answer.lastQuestion ?? ""
         }, stats: askStats,
@@ -1104,7 +1096,7 @@ struct MeetingsView: View {
     private var askHeaderNote: String? {
         guard let provider = Settings.shared.askProvider else { return nil }
         return meetings.isEmpty
-            ? Lf("Quotes come from your transcripts; the written answer comes from %@ with your own key.", provider.productName)
+            ? Lf("The agent reads your transcripts on this Mac; the written answer comes from %@ with your own key.", provider.productName)
             : Lf("Across all %d meetings · answered by %@", meetings.count, provider.productName)
     }
 
@@ -1232,10 +1224,8 @@ struct MeetingsView: View {
                                // One Ask, never scoped (16): a transcript's
                                // ask affordance is a door to the single
                                // global Ask — the answer names the meeting
-                               // itself, in prose and in every quote.
+                               // itself in prose.
                                onAsk: Settings.shared.askArchive ? {
-                                   askScope = nil
-                                   answer.scopePath = nil
                                    selection = .ask
                                } : nil,
                                starred: MeetingStars.isStarred(meeting.started),
@@ -1445,12 +1435,6 @@ struct MeetingsView: View {
     }
 
     @StateObject private var answer = MeetingAnswer()
-
-    /// The meeting the conversation is currently scoped to — set by the
-    /// transcript header's ask button, cleared by the portal, the pinned
-    /// entry and New chat. The scope rides into the prompt (see
-    /// scopedSources), not into the UI state machine.
-    @State private var askScope: ArchivedMeeting?
 
     /// Library filters (sidebar): the starred shortlist and one platform.
     @State private var starredOnly = false

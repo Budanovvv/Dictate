@@ -38,59 +38,21 @@ protocol MeetingOracle {
     /// available here: a determinate bar over work whose length nobody knows is
     /// a lie the app would be telling, and this project has that scar already.
     ///
-    /// `prompt` is the already-composed user turn (passages and question, see
-    /// MeetingQuestion.user); `history` is every earlier round of this
-    /// conversation. Both vendors' APIs are stateless, so the memory of the
-    /// chat IS that array, resent whole on every call — that is the visible
-    /// price of a conversation that remembers, and the quality it buys is the
-    /// reason the asking pane is a session rather than a slot machine.
+    /// `prompt` is the user's question; `history` is every earlier round of
+    /// this conversation. Both vendors' APIs are stateless, so the memory of
+    /// the chat IS that array, resent whole on every call — that is the
+    /// visible price of a conversation that remembers, and the quality it
+    /// buys is the reason the asking pane is a session rather than a slot
+    /// machine.
     func answer(_ prompt: String, history: [AnswerExchange])
         -> AsyncThrowingStream<String, Error>
 }
 
-/// One earlier round, exactly as it went over the wire: the composed user
-/// turn (passages included) and the answer that came back. Passages stay in
-/// the history on purpose — a follow-up like "and who owed that?" is usually
-/// about the evidence, and an answer's summary of it is not the evidence.
+/// One earlier round, exactly as it went over the wire: the user turn and
+/// the answer that came back.
 struct AnswerExchange {
     let user: String
     let assistant: String
-}
-
-/// One passage the answer may draw on — a meeting, or a moment inside it.
-///
-/// Assembled from what the search already found. The oracle never goes looking
-/// on its own: retrieval happens locally, instantly and visibly, and the model
-/// only reads what the person can already see on screen. That ordering is what
-/// lets the sources appear before the first token does.
-struct MeetingSource: Identifiable {
-    /// Where the passage came from, so the answer can be checked by going
-    /// there. The whole design of the answer rests on this being one click
-    /// away: measured, citations raise trust even when they are wrong, which
-    /// makes a footnote nobody follows a liability rather than a check.
-    let url: URL
-    let title: String
-    let date: String
-    /// nil when the whole meeting is the source rather than one passage of it.
-    let time: String?
-    /// What was actually said — speaker-attributed lines, verbatim. Shown to
-    /// the reader as well as to the model: evidence that can be read without a
-    /// click is the thing this category never shipped.
-    let text: String
-    /// The passage's channel, for the quote card's colour bar and label
-    /// (design: Supporting quotes) — from the passage's FIRST line. nil for
-    /// restored conversations, which predate the field.
-    var channelIsYou: Bool? = nil
-    var channelLabel: String? = nil
-
-    var id: String { "\(url.path)#\(time ?? "")" }
-
-    /// How a source is written into the prompt. Labelled so the model can name
-    /// it back, which is the only way an answer can be checked.
-    var block: String {
-        let head = time.map { "\(title) — \(date), \($0)" } ?? "\(title) — \(date)"
-        return "<meeting>\n\(head)\n\n\(text)\n</meeting>"
-    }
 }
 
 /// What every oracle is told, kept in one place.
@@ -102,30 +64,29 @@ enum MeetingQuestion {
 
     static let instructions = """
         You answer questions about someone's own recorded meetings, in an \
-        ongoing conversation. A question may bring passages their local \
-        search found; a follow-up may bring none and lean on the passages \
-        already in this conversation.
+        ongoing conversation.
 
-        You also have tools over the same archive: list the meetings, search \
-        them (queries in English), and read one in full. The supplied \
-        passages are excerpts and a starting point — when they do not settle \
-        the question, read the meeting they came from instead of guessing, \
-        and search when the question reaches beyond them.
+        You have tools over that archive: list the meetings, search them, \
+        and read one in full. Go looking before you answer — read the \
+        meeting instead of guessing, search when the question reaches \
+        beyond what this conversation already holds, and try different \
+        words when a search comes back empty.
 
-        Answer only from those passages, this conversation and what the \
-        tools return. Where the wording matters, quote the speaker. Name the \
-        meeting you took each fact from, so it can be checked. Answer in the \
-        language the question was asked in.
+        Answer only from this conversation and what the tools return. \
+        Where the wording matters, quote the speaker. Name the meeting you \
+        took each fact from, so it can be checked. Answer in the language \
+        the question was asked in.
 
         Be careful about who said what. These are real conversations and the \
-        recognition is imperfect. If a passage says a constraint was on one \
-        person's side, do not move it to another's. Where the text genuinely \
-        does not settle who owed what to whom, say that instead of choosing.
+        recognition is imperfect. If a transcript says a constraint was on \
+        one person's side, do not move it to another's. Where the text \
+        genuinely does not settle who owed what to whom, say that instead \
+        of choosing.
 
-        If the passages do not answer the question, say so and say what they do \
-        cover. A confident answer assembled from nothing is worse than an \
-        admission, because the person asking has usually forgotten the meeting \
-        and cannot catch you.
+        If the archive does not answer the question, say so and say what it \
+        does cover. A confident answer assembled from nothing is worse than \
+        an admission, because the person asking has usually forgotten the \
+        meeting and cannot catch you.
 
         Write plainly, a few sentences to a few short paragraphs. No headings, \
         no bullet lists unless the answer is genuinely a list of items.
@@ -144,24 +105,4 @@ enum MeetingQuestion {
         numbering, no dashes, nothing else.
         """
 
-    /// The user turn: the sources, then the question.
-    ///
-    /// The question goes LAST, after the passages. Long-context models attend
-    /// best to what sits at the ends, and of the two the instruction is the one
-    /// that must survive a wall of transcript above it.
-    ///
-    /// A follow-up arrives with no sources of its own and is sent bare — its
-    /// evidence is the passages already in the conversation's history.
-    ///
-    /// `scope` is the one line that pins a conversation to a single meeting
-    /// (set when asking from a transcript's own header): it goes FIRST, so a
-    /// wall of excerpt cannot bury which meeting is being discussed.
-    static func user(question: String, sources: [MeetingSource],
-                     scope: String? = nil) -> String {
-        var parts: [String] = []
-        if let scope { parts.append(scope) }
-        if !sources.isEmpty { parts.append(sources.map(\.block).joined(separator: "\n\n")) }
-        guard !parts.isEmpty else { return question }
-        return parts.joined(separator: "\n\n") + "\n\nThe question: \(question)"
-    }
 }

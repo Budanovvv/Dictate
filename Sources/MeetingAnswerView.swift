@@ -1,19 +1,14 @@
 import SwiftUI
 
-/// One round of the conversation: a question, the passages it brought (none
-/// for a follow-up), and the answer as it streams in.
+/// One round of the conversation: a question and the answer as it streams in.
 struct AnswerTurn: Identifiable {
     let id = UUID()
     /// The question, as typed. Shown back to the reader because by the time an
     /// answer arrives the field may say something else, and an answer without
     /// its question is a paragraph from nowhere.
     let question: String
-    /// The passages this turn brought. On screen from the first moment —
-    /// retrieval is instant and local, generation is not, and showing the real
-    /// work already done beats a bar that guesses at work still to do.
-    let sources: [MeetingSource]
-    /// The composed user turn as it went to the model — kept so later rounds
-    /// can resend the conversation verbatim (the APIs are stateless).
+    /// The user turn as it went to the model — kept so later rounds can
+    /// resend the conversation verbatim (the APIs are stateless).
     let prompt: String
     var text = ""
     var failure: String?
@@ -25,9 +20,8 @@ struct AnswerTurn: Identifiable {
 /// The conversation being had.
 ///
 /// A session, not a slot machine: every question is answered with the whole
-/// conversation so far — earlier passages included — so a follow-up can say
-/// "and who owed that?" and mean something. The session lives exactly as long
-/// as the meetings window does; there is nothing on disk.
+/// conversation so far, so a follow-up can say "and who owed that?" and mean
+/// something. The session lives exactly as long as the meetings window does.
 ///
 /// Separate from the view because the answer outlives any one redraw and has to
 /// survive the list being scrolled, the window being resized and the sidebar
@@ -82,24 +76,19 @@ final class MeetingAnswer: ObservableObject {
     var lastQuestion: String? { turns.last?.question }
     var lastFailure: String? { turns.last?.failure }
 
-    /// The transcript this session's thread is kept with (nil = global).
-    /// Set alongside the first scoped question; rides into every persist.
-    var scopePath: String?
-
-    func ask(_ question: String, from sources: [MeetingSource], using oracle: MeetingOracle,
-             scope: String? = nil) {
+    func ask(_ question: String, using oracle: MeetingOracle) {
         stop()
-        // Earlier rounds go with every request, passages and all — see
-        // AnswerExchange for why the evidence stays in.
+        // Earlier rounds go with every request — the session's memory IS
+        // this array, resent whole (the APIs are stateless).
         let history = turns.compactMap { turn in
             turn.text.isEmpty ? nil : AnswerExchange(user: turn.prompt, assistant: turn.text)
         }
-        let prompt = MeetingQuestion.user(question: question, sources: sources, scope: scope)
-        turns.append(AnswerTurn(question: question, sources: sources, prompt: prompt))
+        let prompt = question
+        turns.append(AnswerTurn(question: question, prompt: prompt))
         // The question itself is deliberately NOT logged (it is the owner's
         // private text); the shape of the work is, so a dead answer can be
         // diagnosed from the log alone.
-        Log.d("ask: question (\(sources.count) passages, \(history.count) earlier turns)")
+        Log.d("ask: question (\(history.count) earlier turns)")
 
         guard oracle.isAvailable else {
             turns[turns.count - 1].failure = oracle.unavailableReason
@@ -200,7 +189,6 @@ final class MeetingAnswer: ObservableObject {
         conversationID = UUID()
         createdAt = Date()
         title = ""
-        scopePath = nil
     }
 
     /// New chat: the previous conversation stays on disk (it was persisted as
@@ -212,7 +200,6 @@ final class MeetingAnswer: ObservableObject {
         conversationID = UUID()
         createdAt = Date()
         title = ""
-        scopePath = nil
     }
 
     /// Re-open a stored conversation: the answer shows instantly from disk —
@@ -223,14 +210,8 @@ final class MeetingAnswer: ObservableObject {
         conversationID = stored.id
         createdAt = stored.createdAt
         title = stored.title
-        scopePath = stored.scopePath
         turns = stored.turns.map { turn in
             AnswerTurn(question: turn.question,
-                       sources: turn.sources.map {
-                           MeetingSource(url: URL(fileURLWithPath: $0.path),
-                                         title: $0.title, date: $0.date,
-                                         time: $0.time, text: $0.text)
-                       },
                        prompt: turn.prompt,
                        text: turn.text)
         }
@@ -242,20 +223,13 @@ final class MeetingAnswer: ObservableObject {
         let kept = turns.filter { !$0.text.isEmpty || $0.failure != nil }
             .map { turn in
                 AskConversation.Turn(question: turn.question, prompt: turn.prompt,
-                                     text: turn.text,
-                                     sources: turn.sources.map {
-                                         AskConversation.Source(path: $0.url.path,
-                                                                title: $0.title,
-                                                                date: $0.date,
-                                                                time: $0.time,
-                                                                text: $0.text)
-                                     })
+                                     text: turn.text)
             }
         guard !kept.isEmpty else { return }
         if title.isEmpty { title = kept[0].question }
         AskHistoryStore.shared.save(AskConversation(
             id: conversationID, title: title, createdAt: createdAt,
-            lastActiveAt: Date(), turns: kept, scopePath: scopePath))
+            lastActiveAt: Date(), turns: kept))
     }
 }
 
@@ -422,10 +396,7 @@ struct ConversationsColumn: View {
     private func subtitle(_ conversation: AskConversation) -> String {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
-        let when = f.localizedString(for: conversation.lastActiveAt, relativeTo: Date())
-        let meetings = conversation.meetingsCount
-        guard meetings > 0 else { return when }
-        return (meetings == 1 ? L("1 meeting") : Lf("%d meetings", meetings)) + " · " + when
+        return f.localizedString(for: conversation.lastActiveAt, relativeTo: Date())
     }
 
     private func commitRename(_ conversation: AskConversation) {
@@ -465,9 +436,7 @@ struct ConversationsColumn: View {
 /// The conversation, in the reading pane.
 ///
 /// Placed where a transcript goes rather than over the list, because an answer
-/// is something to read and the pane is what this window reads in. Nothing the
-/// person was looking at is destroyed: the sidebar still shows the meetings the
-/// answer came from, and clicking any of them returns.
+/// is something to read and the pane is what this window reads in.
 struct AnswerPane: View {
     @ObservedObject var answer: MeetingAnswer
     /// Openers for the cold state — the articulation barrier is real, and a
@@ -478,9 +447,6 @@ struct AnswerPane: View {
     /// are searchable and WHO writes the answer ("answered by Claude") — the
     /// search is local, the answer is not, and this app does not blur that.
     var headerNote: String? = nil
-    /// Going to the meeting a passage came from. The whole point of the source
-    /// list is that this is one click, so it is handed in rather than guessed.
-    let open: (MeetingSource) -> Void
     /// A follow-up typed in the pane itself: it continues THIS conversation
     /// over the passages already on the table, no trip back to the search
     /// field. New material still comes in the search-field way — a fresh
@@ -594,7 +560,7 @@ struct AnswerPane: View {
     private var emptyState: some View {
         Text(L("Ask anything about your meetings"))
             .font(.system(size: 21, weight: .bold))
-        Text(L("Every answer is built from your transcripts and quotes the passages it came from, so you can jump straight to the moment it was said."))
+        Text(L("The agent searches and reads your transcripts on this Mac, and every answer names the meetings it drew from."))
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -647,132 +613,27 @@ struct AnswerPane: View {
         if !turn.text.isEmpty {
             // Reading type (13a): 15/1.65 on a 72-character measure — the
             // content larger than the chrome around it. Serif stays: the
-            // model's voice never wears the transcript's typeface. Sentences
-            // the quotes below actually back carry a dotted underline, so
-            // the supported and the generated part stop looking identical.
-            let marked = supportMarked(turn)
-            Text(marked.text)
+            // model's voice never wears the transcript's typeface. Inline
+            // Markdown only — raw asterisks on screen read as a rendering
+            // bug (field report 2026-08-28).
+            Text((try? AttributedString(
+                markdown: turn.text,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                ?? AttributedString(turn.text))
                 .font(DS.readingBody)
                 .fontDesign(.serif)
                 .lineSpacing(DS.readingLineSpacing / 2)
                 .frame(maxWidth: DS.readingMeasure, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
-            if marked.anySupported {
-                Text(L("Underlined text comes from a quote below. Anything not underlined is the assistant joining those quotes together."))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
         } else if isLast, answer.isRunning {
-            // Before the first token. Not a spinner over nothing: the tool
-            // layer says what the model is doing with the archive, and the
-            // sources below are already on screen — so this line only has
-            // to be honest about the wait.
+            // Before the first token: the tool layer says what the model
+            // is doing with the archive, so the wait is honest.
             Text(answer.progress ?? L("Reading…"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .animation(.easeOut(duration: DS.fade), value: answer.progress)
         }
-
-        if !turn.sources.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(L("Supporting quotes"))
-                    .font(DS.sectionLabel)
-                Text(Lf("%d passages from %d meetings", turn.sources.count,
-                        Set(turn.sources.map(\.url)).count))
-                    .font(.system(size: 11))
-            }
-            .foregroundStyle(.secondary)
-            ForEach(turn.sources) { source in
-                quoteCard(source)
-            }
-        }
-    }
-
-    /// One supporting passage (design: Supporting quotes): a channel colour
-    /// bar, the meeting it came from, when, who was speaking — and the words
-    /// themselves, readable WITHOUT a click. Jump to goes to the moment.
-    private func quoteCard(_ source: MeetingSource) -> some View {
-        let tint: Color? = source.channelIsYou.map { $0 ? DS.you : DS.them }
-        return HStack(alignment: .top, spacing: 11) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(tint ?? Color.primary.opacity(0.15))
-                .frame(width: 3)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(source.title)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .lineLimit(1)
-                    Text(source.date)
-                        .font(.system(size: 10.5).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    if let label = source.channelLabel, let tint {
-                        Text(source.time.map { "\(label) · \($0)" } ?? label)
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(tint)
-                            .lineLimit(1)
-                    } else if let time = source.time {
-                        Text(time)
-                            .font(.system(size: 10.5).monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    Button(L("Jump to")) { open(source) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(DS.accentText)
-                        .hoverHighlight(radius: DS.radiusChip)
-                        .pointerStyle(.link)
-                }
-                Text(source.text)
-                    .font(.system(size: 12.5))
-                    .lineSpacing(3)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8)
-            .fill(.quaternary.opacity(0.5)))
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .onTapGesture { open(source) }
-    }
-
-    /// The turn's text with quote-backed sentences underlined (dotted). Only
-    /// finished turns are marked — running text changes under the analysis.
-    private func supportMarked(_ turn: AnswerTurn) -> (text: AttributedString, anySupported: Bool) {
-        // Inline Markdown only: the models bold their headings and names, and
-        // raw asterisks on screen read as a rendering bug (field report
-        // 2026-08-28). Whitespace is preserved — the answers use blank lines
-        // as paragraphing.
-        var attributed = (try? AttributedString(
-            markdown: turn.text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(turn.text)
-        guard !answer.isRunning || turn.id != answer.turns.last?.id
-        else { return (attributed, false) }
-        let quotes = turn.sources.map(\.text)
-        // The support policy works on the PARSED plain text (the markers are
-        // gone), and its String ranges are mapped back onto the attributed
-        // string by character offset — the characters view is the same text.
-        let plain = String(attributed.characters)
-        var any = false
-        for range in AnswerSupportPolicy.supportedRanges(in: plain, quotes: quotes) {
-            let lowerOffset = plain.distance(from: plain.startIndex, to: range.lowerBound)
-            let length = plain.distance(from: range.lowerBound, to: range.upperBound)
-            let chars = attributed.characters
-            guard let lower = chars.index(attributed.startIndex, offsetBy: lowerOffset,
-                                          limitedBy: attributed.endIndex),
-                  let upper = chars.index(lower, offsetBy: length,
-                                          limitedBy: attributed.endIndex)
-            else { continue }
-            attributed[lower..<upper].underlineStyle = .patternDot
-            any = true
-        }
-        return (attributed, any)
     }
 
     /// The one composer (t14): rests at one line, grows a line at a time to

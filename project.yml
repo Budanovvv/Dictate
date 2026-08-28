@@ -108,8 +108,6 @@ targets:
       # The Ask conversation store — deliberately dependency-free (plain
       # Codable + FileManager) so its round-trip/cap/rename rules test here.
       - path: Sources/AskHistoryStore.swift
-      # Which answer sentences a quote actually backs — pure text policy.
-      - path: Sources/AnswerSupportPolicy.swift
       # Pulled in by RecordingHUD, which the tests compile.
       - path: Sources/DesignSystem.swift
       # The portal home's facts — a pure rule, tested like every policy.

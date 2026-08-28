@@ -3,23 +3,10 @@ import Foundation
 /// A persisted Ask conversation — everything needed to re-show an answer
 /// without re-asking (no API call) and to continue it with a follow-up.
 struct AskConversation: Codable, Identifiable {
-    // Deliberately plain fields, no MeetingSource in sight: this file compiles
-    // into the unit-test target, which builds a dependency-free subset of
-    // Sources (see project.yml) — the MeetingSource conversions live with
-    // MeetingAnswer in the app target.
-    struct Source: Codable {
-        var path: String
-        var title: String
-        var date: String
-        var time: String?
-        var text: String
-    }
-
     struct Turn: Codable {
         var question: String
         var prompt: String
         var text: String
-        var sources: [Source]
     }
 
     var id: UUID
@@ -28,16 +15,6 @@ struct AskConversation: Codable, Identifiable {
     var createdAt: Date
     var lastActiveAt: Date
     var turns: [Turn]
-    /// nil = a global conversation (the Ask view's list). A path = the
-    /// transcript this thread is scoped to — "answers are kept with the
-    /// meeting", shown from its header, not in the global list.
-    var scopePath: String?
-
-    /// How many distinct meetings the answers drew from — the list's
-    /// "3 meetings" note, precomputed so listing never re-reads turns.
-    var meetingsCount: Int {
-        Set(turns.flatMap { $0.sources.map(\.path) }).count
-    }
 }
 
 /// One JSON file per conversation in Application Support — app state, not user
@@ -62,16 +39,9 @@ final class AskHistoryStore {
     }
 
     /// Newest first. Reads every file — they are small local JSONs and there
-    /// are at most `cap` of them. `scope: nil` is the Ask view's global list;
-    /// a path returns the threads kept with that one meeting.
-    func list(scope: String? = nil) -> [AskConversation] {
-        allConversations().filter { $0.scopePath == scope }
-    }
-
-    /// The newest thread kept with a meeting — what its scoped composer
-    /// reopens.
-    func latest(forScope path: String) -> AskConversation? {
-        list(scope: path).first
+    /// are at most `cap` of them.
+    func list() -> [AskConversation] {
+        allConversations()
     }
 
     private func allConversations() -> [AskConversation] {
