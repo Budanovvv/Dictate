@@ -185,6 +185,24 @@ final class MeetingAnswer: ObservableObject {
         persist()
     }
 
+    /// Clear WITHOUT persisting — the delete path only. clear() persists as
+    /// it stops (a half-answer is an answer), and that very persist used to
+    /// resurrect the file the user had just deleted: delete removed the JSON,
+    /// clear() wrote the still-loaded turns straight back under the same id
+    /// ("ни одна из них не удаляется", owner's report 2026-08-29).
+    func discard() {
+        work?.cancel()
+        work = nil
+        isRunning = false
+        progress = nil
+        turns = []
+        suggested = []
+        conversationID = UUID()
+        createdAt = Date()
+        title = ""
+        scopePath = nil
+    }
+
     /// New chat: the previous conversation stays on disk (it was persisted as
     /// it went), this session simply becomes a fresh one.
     func clear() {
@@ -420,9 +438,14 @@ struct ConversationsColumn: View {
     }
 
     private func delete(_ conversation: AskConversation) {
+        // The open conversation is emptied BEFORE its file goes — in that
+        // order, and with discard() rather than clear(): clear() persists on
+        // its way out and would write the deleted file straight back.
+        let wasOpen = conversation.id == answer.conversationID
+        if wasOpen { answer.discard() }
         AskHistoryStore.shared.delete(conversation.id)
         deletedTitle = conversation.title
-        if conversation.id == answer.conversationID { onNew() }
+        if wasOpen { onNew() }
         reload()
     }
 
