@@ -295,7 +295,9 @@ final class MeetingSession: ObservableObject {
         try openTranscriptFile()
         // Voice separation warms up in parallel (first ever run downloads its
         // CoreML models); until it's ready Them-entries just stay collective.
-        Task { await diarizer.startSession(); await diarizer.prepare() }
+        if Settings.shared.separateVoices {
+            Task { await diarizer.startSession(); await diarizer.prepare() }
+        }
         // Whisper warms up too: a meeting started right after app launch
         // would otherwise lose its first windows to a not-yet-loaded model
         // (the "warm-up fired once and died silently" onboarding grabla).
@@ -331,7 +333,7 @@ final class MeetingSession: ObservableObject {
                 self?.appendThem(pcm, peak: peak)
             }
             replay.start()
-        } else {
+        } else if Settings.shared.recordCallAudio {
             try tap.start()   // first run triggers the system-audio TCC prompt
             tap.onBuffer = { [weak self] pcm, peak in
                 DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
@@ -940,7 +942,7 @@ final class MeetingSession: ObservableObject {
                 // stream's voices — "Speaker 1/2…". You needs no ML and must
                 // NOT go through this: the mic channel IS one known voice,
                 // and diarizing it could only invent second speakers.
-                let turns = channel == .them
+                let turns = channel == .them && Settings.shared.separateVoices
                     ? await self.diarizer.speakerTurns(floats: floats, windowStart: pcmStart)
                     : []
                 if turns.count > 1 {
@@ -1179,7 +1181,9 @@ final class MeetingSession: ObservableObject {
             // window, the diagnostics and the titler must all see the same
             // transcript. This is also the last moment the diarizer's voice
             // database exists, which is where the distances come from.
-            await self.mergeMicroSpeakers(in: url)
+            if Settings.shared.separateVoices {
+                await self.mergeMicroSpeakers(in: url)
+            }
             // A platform the probe found after the header was written goes in
             // now, at the top — parseSource reads only the file's head, and
             // the handle is closed, so this is the one safe moment.
@@ -1199,7 +1203,8 @@ final class MeetingSession: ObservableObject {
             // Name and summary in ONE model call: the excerpt and the session
             // (and, for a Russian meeting, the translation hop) are paid for
             // once and answer both questions.
-            if let brief = await MeetingTitler.brief(for: entries) {
+            if Settings.shared.readMeetings,
+               let brief = await MeetingTitler.brief(for: entries) {
                 // A name the owner wrote themselves outranks a name a model read
                 // out of the words. When the calendar supplied one, the model's
                 // title is dropped on the floor and only its summary is kept.
@@ -1238,7 +1243,9 @@ final class MeetingSession: ObservableObject {
             let meetings = MeetingArchive.list(youLabel: youLabel)
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.isActive else { return }
-                MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
+                if Settings.shared.readMeetings {
+                    MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
+                }
                 MeetingSections.shared.backfill(meetings) { [weak self] in self?.isActive != true }
             }
         }

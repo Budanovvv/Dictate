@@ -104,6 +104,10 @@ struct MeetingsView: View {
     /// UserDefaults). Turning it off in the Settings window must take the Ask
     /// row, header button and footer link out of THIS window immediately.
     @State private var askArchiveOn = Settings.shared.askArchive
+    /// The four meeting capabilities as one integer, mirrored so a switch
+    /// flipped in Settings re-renders this window live (same trick as
+    /// askArchiveOn above).
+    @State private var capsSeen = -1
     /// The toolbar's Rename… routes to the same popover the title carries,
     /// so there is one editing surface no matter how you get to it.
     @State private var renamingFromMenu = false
@@ -158,6 +162,7 @@ struct MeetingsView: View {
         // count moves.
         let _ = starRevision
         let _ = askArchiveOn
+        let _ = capsSeen
         // Three columns, the design's own (t13): navigation 214, the meeting
         // list 296, and the reading pane. Selecting Ask drops the list column
         // so the answer gets the width (t2); All Meetings brings it back.
@@ -184,6 +189,10 @@ struct MeetingsView: View {
             if Settings.shared.askArchive != askArchiveOn {
                 askArchiveOn = Settings.shared.askArchive
                 if !askArchiveOn, selection == .ask { selection = nil }
+            }
+            if capsMask != capsSeen {
+                capsSeen = capsMask
+                backfillSummaries()
             }
         }
         .onAppear {
@@ -320,11 +329,28 @@ struct MeetingsView: View {
             .padding(11)
         } else {
             HStack(spacing: 9) {
-                Circle().fill(DS.good).frame(width: 8, height: 8)
-                Text(L("Watching for browser calls"))
-                    .font(DS.helpText)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if Settings.shared.noticeCalls {
+                    // The design's breathing dot, at TimelineView pace like
+                    // PulsingDot below — slow enough to read as "alive",
+                    // never as an alert.
+                    TimelineView(.periodic(from: .now, by: 1.2)) { context in
+                        let dim = Int(context.date.timeIntervalSinceReferenceDate / 1.2) % 2 == 0
+                        Circle().fill(DS.good).frame(width: 8, height: 8)
+                            .opacity(dim ? 0.55 : 1)
+                            .animation(.easeInOut(duration: 1.1), value: dim)
+                    }
+                    Text(L("Watching for calls"))
+                        .font(DS.helpText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.5)
+                        .frame(width: 8, height: 8)
+                    Text(L("Not watching for calls"))
+                        .font(DS.helpText)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
@@ -432,29 +458,44 @@ struct MeetingsView: View {
             .padding(.leading, sidebarHidden ? MeetingsChrome.trafficLights - 12 : 0)
             .padding(.vertical, 8)
             Divider()
-            if !session.isActive {
-                Button {
-                    onRecord()
-                } label: {
-                    HStack(spacing: 7) {
-                        Circle().fill(.white).frame(width: 7, height: 7)
-                        Text(L("Record"))
-                            .font(.system(size: 12.5, weight: .medium))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 26)
-                    // Accent, not record-red: the house rule keeps red for
-                    // "recording is HAPPENING", never for a button at rest.
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(DS.accent))
-                    .contentShape(Rectangle())
+            // The Record band (design StartRecording): at rest an ordinary
+            // control — record red is nowhere on it, the ring glyph carries
+            // the meaning. Recording replaces the band IN PLACE with the
+            // live row, and red appears for the first time.
+            Group {
+                if session.isActive {
+                    liveBand
+                } else {
+                    RecordBand(action: onRecord)
                 }
-                .buttonStyle(.plain)
-                .hoverEmphasis(scale: 1.02)
-                .help(L("Record this call"))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .overlay(alignment: .bottom) { Divider() }
+            if !Settings.shared.noticeCalls, !session.isActive {
+                // Why manual is the only path right now, said where the live
+                // row would be (design MeetingsOff: list).
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L("Calls are not noticed automatically. You can start each one here, or let Dictate offer when a call begins."))
+                            .font(.system(size: 11.5))
+                            .lineSpacing(2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(L("Set up calls…")) { openSettingsWindow(tab: "meetings") }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(DS.accentText)
+                            .pointerStyle(.link)
+                    }
+                }
                 .padding(.horizontal, 12)
-                .padding(.top, 8)
+                .padding(.vertical, 8)
+                .overlay(alignment: .bottom) { Divider() }
             }
             tagFilterRow
                 .padding(.horizontal, 12)
@@ -872,18 +913,20 @@ struct MeetingsView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 .padding(.bottom, 3)
-            if Settings.shared.askArchive {
-                navRow(icon: "questionmark.bubble", title: L("Ask"),
-                       selected: selection == .ask) {
-                    selection = .ask
-                    // One lit row, always (owner's report 2026-08-29: Ask and
-                    // Starred glowed together). Entering Ask retires the list
-                    // filters — they are a place in the library, and Ask is
-                    // another place.
-                    starredOnly = false
-                    recentOnly = false
-                    sourceFilter = nil
-                }
+            // Ask is always in the sidebar now, wearing an "off" chip when
+            // it cannot answer (design FirstRun) — an absent feature cannot
+            // be discovered, a labelled one can.
+            navRow(icon: "questionmark.bubble", title: L("Ask"),
+                   chip: !Settings.shared.readMeetings || !Settings.shared.askArchive,
+                   selected: selection == .ask) {
+                selection = .ask
+                // One lit row, always (owner's report 2026-08-29: Ask and
+                // Starred glowed together). Entering Ask retires the list
+                // filters — they are a place in the library, and Ask is
+                // another place.
+                starredOnly = false
+                recentOnly = false
+                sourceFilter = nil
             }
             navRow(icon: "rectangle.grid.1x2", title: L("All Meetings"),
                    count: meetings.count,
@@ -995,6 +1038,7 @@ struct MeetingsView: View {
     }
 
     private func navRow(icon: String, dot: Color? = nil, title: String,
+                        chip: Bool = false,
                         count: Int? = nil,
                         selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -1012,6 +1056,15 @@ struct MeetingsView: View {
                 }
                 Text(title)
                     .lineLimit(1)
+                if chip {
+                    Text(L("off"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .frame(height: 16)
+                        .background(RoundedRectangle(cornerRadius: 5)
+                            .fill(.quaternary.opacity(0.7)))
+                }
                 Spacer(minLength: 0)
                 if let count, count > 0 {
                     Text("\(count)")
@@ -1057,6 +1110,90 @@ struct MeetingsView: View {
            headerLeading: paneToggles(.ask))
     }
 
+    /// The Ask pane while reading is off (design FirstRun: askOff): the
+    /// same header, what Ask would do, the one switch it needs, and the
+    /// composer visibly present but asleep.
+    private var askOffPane: some View {
+        askGatePane(
+            body: L("Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way."),
+            action: L("Turn on reading"),
+            explain: L("This is what writes the summary and the outline, and what answers questions in Ask. Off, you get the raw transcript and Ask stays unavailable — nothing is sent anywhere either way.")) {
+            Settings.shared.readMeetings = true
+        }
+    }
+
+    /// Reading is on but no provider is connected — the second gate, and the
+    /// only one that involves anybody else's computer.
+    private var askConnectPane: some View {
+        askGatePane(
+            body: L("The agent searches and reads your transcripts on this Mac; the written answer comes from a provider you connect with your own key."),
+            action: L("Connect a provider…"),
+            explain: nil) {
+            connectQuestion = ""
+            showConnect = true
+        }
+    }
+
+    private func askGatePane(body: String, action: String, explain: String?,
+                             perform: @escaping () -> Void) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                paneToggles(.ask).padding(.trailing, 4)
+                Text(L("Ask")).font(DS.windowTitle)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 46)
+            .overlay(alignment: .bottom) { Divider() }
+            VStack(alignment: .leading, spacing: 12) {
+                Text(L("Ask is off"))
+                    .font(.system(size: 15, weight: .semibold))
+                Text(body)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button(action, action: perform)
+                        .buttonStyle(.dsPrimary)
+                    if let explain {
+                        Button(L("What it does")) { showingAskExplain = true }
+                            .buttonStyle(.dsRegular)
+                            .popover(isPresented: $showingAskExplain, arrowEdge: .bottom) {
+                                Text(explain)
+                                    .font(.system(size: 12))
+                                    .lineSpacing(3)
+                                    .frame(width: 280, alignment: .leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(14)
+                            }
+                    }
+                }
+                .padding(.top, 2)
+            }
+            .padding(28)
+            .frame(maxWidth: 480, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            // The composer, present but asleep — the pane still looks like
+            // the place questions will be typed, which is the promise.
+            HStack {
+                Text(L("Ask about your meetings…"))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.quaternary.opacity(0.4)))
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
+            .padding(.top, 10)
+            .overlay(alignment: .top) { Divider() }
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
     /// A copy of the transcript wherever the user points — the .md is the
     /// export format (it IS the file), so this is a save panel and a copy.
     private func exportTranscript(_ meeting: ArchivedMeeting) {
@@ -1098,6 +1235,15 @@ struct MeetingsView: View {
     private var detail: some View {
         switch selection {
         case .answer, .ask:
+            // Two gates before the conversation, in honesty order (design
+            // FirstRun: askOff): Ask needs the model that reads meetings
+            // first, and a provider second — each closed gate says only its
+            // own thing.
+            if !Settings.shared.readMeetings {
+                askOffPane
+            } else if !Settings.shared.askArchive {
+                askConnectPane
+            } else {
             // The Ask view brings its conversation column (11j): past
             // questions, titled by their first one, opened without re-asking.
             // Same manners as the meeting list: the conversations column
@@ -1112,6 +1258,7 @@ struct MeetingsView: View {
                         .zIndex(2)
                 }
                 answerPane
+            }
             }
         case .live:
             // A running meeting has no title yet (it is written when the
@@ -1196,9 +1343,10 @@ struct MeetingsView: View {
                                }(),
                                durationMinutes: Int((meeting.duration ?? 0) / 60),
 
-                               notice: declined(meeting)
+                               notice: bareNotice(for: meeting)
+                                   ?? (declined(meeting)
                                    ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
-                                   : nil,
+                                   : nil),
                                headerLeading: paneToggles(.meeting),
                                // One Ask, never scoped (16): a transcript's
                                // ask affordance is a door to the single
@@ -1240,12 +1388,118 @@ struct MeetingsView: View {
             // The brief-portal is retired (the design's launch view is Ask):
             // with nothing selected the pane shows the first-run empty state
             // (10a) or the plain placeholder, never a dashboard.
-            if meetings.isEmpty, !session.isActive {
+            if meetings.isEmpty, !session.isActive, !capsAllOn {
+                firstRunSetup
+            } else if meetings.isEmpty, !session.isActive {
                 firstRunEmpty
             } else {
                 placeholder
             }
         }
+    }
+
+    private var capsMask: Int {
+        let s = Settings.shared
+        return (s.noticeCalls ? 1 : 0) | (s.recordCallAudio ? 2 : 0)
+             | (s.separateVoices ? 4 : 0) | (s.readMeetings ? 8 : 0)
+    }
+
+    private var capsAllOn: Bool {
+        Settings.shared.noticeCalls && Settings.shared.recordCallAudio
+            && Settings.shared.readMeetings
+    }
+
+    /// The setup screen a new user meets instead of the empty state (design
+    /// FirstRun): the meeting capabilities ship OFF, and this is where each
+    /// says what it adds. It doubles as the onboarding for the meetings side
+    /// — the owner's framing: the default IS the onboarding, so nobody has
+    /// to find Settings first.
+    private var firstRunSetup: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(L("Three things are off. Here is what each one adds."))
+                    .font(.system(size: 16, weight: .semibold))
+                Text(L("Dictation works already — hold the dictation key and speak anywhere. Everything below is about meetings, and none of it is required. Turn on what you want; the rest stays off."))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+                VStack(spacing: 0) {
+                    setupRow(1, L("Notice calls and record them"),
+                             L("Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there."),
+                             on: Settings.shared.noticeCalls) {
+                        Settings.shared.noticeCalls = true
+                    }
+                    Divider()
+                    setupRow(2, L("Record the call audio, and separate the voices"),
+                             L("Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns."),
+                             on: Settings.shared.recordCallAudio) {
+                        Settings.shared.recordCallAudio = true
+                        Settings.shared.separateVoices = true
+                    }
+                    Divider()
+                    setupRow(3, L("Let the model read your meetings"),
+                             L("This is what writes the summary and the outline, and what answers questions in Ask. Off, you get the raw transcript and Ask stays unavailable — nothing is sent anywhere either way."),
+                             on: Settings.shared.readMeetings) {
+                        Settings.shared.readMeetings = true
+                    }
+                }
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5)))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+                .padding(.top, 16)
+                HStack(spacing: 12) {
+                    Button(L("Turn all three on")) {
+                        Settings.shared.noticeCalls = true
+                        Settings.shared.recordCallAudio = true
+                        Settings.shared.separateVoices = true
+                        Settings.shared.readMeetings = true
+                    }
+                    .buttonStyle(.dsPrimary)
+                    Text(L("Or leave this and set them up later in Settings."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 14)
+            }
+            .padding(28)
+            .frame(maxWidth: 560, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private func setupRow(_ number: Int, _ title: String, _ why: String,
+                          on: Bool, turnOn: @escaping () -> Void) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(number)")
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(.quaternary.opacity(0.6)))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Text(why)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 10)
+            if on {
+                Label(L("On"), systemImage: "checkmark")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(DS.good)
+                    .labelStyle(.titleAndIcon)
+                    .padding(.top, 2)
+            } else {
+                Button(L("Turn on"), action: turnOn)
+                    .buttonStyle(.dsSmall)
+            }
+        }
+        .padding(12)
     }
 
     /// The whole window before anything was ever recorded (design 10a): the
@@ -1426,6 +1680,7 @@ struct MeetingsView: View {
     @ObservedObject private var agentOffer = AgentOffer.shared
     @State private var showConnect = false
     @State private var connectQuestion: String?
+    @State private var showingAskExplain = false
 
     /// Who answers — the provider picked in Settings; everything above this
     /// knows only the protocol.
@@ -1469,6 +1724,25 @@ struct MeetingsView: View {
     /// transcript, came back with neither. A model that is running and produced
     /// nothing here declined here. The backfill has to be finished before that
     /// reasoning holds, or the answer is simply "not its turn yet".
+    /// The bare-transcript banner (design FirstRun: bare) for a meeting that
+    /// has no summary because reading is off. Turning it on redoes the
+    /// reading for this transcript — the backfill picks it up first thing.
+    private func bareNotice(for meeting: ArchivedMeeting) -> AnyView? {
+        guard !Settings.shared.readMeetings,
+              meeting.summary == nil, meeting.sections.isEmpty,
+              !meeting.entries.isEmpty else { return nil }
+        let micOnly = !Settings.shared.recordCallAudio
+            && !meeting.entries.contains { !$0.isYou }
+        return AnyView(BareTranscriptBanner(micOnly: micOnly) {
+            Settings.shared.readMeetings = true
+            if micOnly {
+                Settings.shared.recordCallAudio = true
+                Settings.shared.separateVoices = true
+            }
+            backfillSummaries()
+        })
+    }
+
     private func declined(_ meeting: ArchivedMeeting) -> Bool {
         guard #available(macOS 26, *), offer.allowed else { return false }
         guard !summaries.running, meeting.entries.count >= 3 else { return false }
@@ -1541,7 +1815,7 @@ struct MeetingsView: View {
     /// to the meeting in progress, and an old transcript can wait until it
     /// isn't.
     private func backfillSummaries() {
-        guard !session.isActive else { return }
+        guard !session.isActive, Settings.shared.readMeetings else { return }
         // The same question again before every meeting in the queue — a call
         // can start halfway through, and then the rest waits.
         MeetingSummaries.shared.backfill(meetings) { [session] in !session.isActive }
@@ -1779,6 +2053,39 @@ struct SidebarMaterial: View {
 /// The states are the download's own — pressing Download turns the button into
 /// the bar it started, so the button cannot look like it did nothing, and the
 /// whole view disappears when the model lands (there is nothing left to offer).
+/// What a transcript recorded with the capabilities off says about itself
+/// (design FirstRun: bare, the honest version): the summary and outline can
+/// be redone from the text that exists; the other side's audio cannot be
+/// recovered, so the banner promises only what turning things on actually
+/// delivers (owner's call, 2026-08-30).
+private struct BareTranscriptBanner: View {
+    let micOnly: Bool
+    let redo: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(micOnly ? L("This is your microphone only, and there is no summary")
+                         : L("There is no summary"))
+                .font(.system(size: 12.5, weight: .semibold))
+            Text(micOnly
+                 ? L("Call audio and voice separation are off, so the other side is missing and the text is one block. Reading your meetings is off too, which is why there is no summary or outline above. Turning them on writes the summary for this recording and covers the calls that come next — audio that was not recorded is gone.")
+                 : L("Reading your meetings is off, which is why there is no summary or outline above. It can be turned on now and applied to this recording."))
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(micOnly ? L("Turn both on and redo this one")
+                           : L("Turn it on and redo this one"), action: redo)
+                .buttonStyle(.dsSmall)
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(.quaternary.opacity(0.35)))
+    }
+}
+
 private struct TextModelOffer: View {
     /// What is lost without it, in this particular place.
     let line: String
@@ -3066,6 +3373,69 @@ private struct TranscriptPane<MenuItems: View>: View {
         }
     }
 
+}
+
+/// The live replacement of the Record band (design StartRecording:
+/// bandLive): the tinted row, the pulsing dot, the running clock, Stop.
+private extension MeetingsView {
+    var liveBand: some View {
+        HStack(spacing: 10) {
+            PulsingDot()
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.scheduledTitle ?? L("Recording"))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .lineLimit(1)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let s = Int(context.date.timeIntervalSince(session.startedAt))
+                    Text(String(format: "%02d:%02d", s / 60, s % 60) + " · " + L("listening"))
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            Button(L("Stop")) { session.stop() }
+                .buttonStyle(.dsSmall)
+                .foregroundStyle(DS.record)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(DS.record.opacity(0.07)))
+    }
+}
+
+/// The Record control at the top of the meeting list (design
+/// StartRecording: band): ordinary control material, the ring glyph, and
+/// on hover the fill lifts and the label takes accent — still not red.
+private struct RecordBand: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                RecordRing(size: 14)
+                Text(L("Record"))
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(hovering ? AnyShapeStyle(DS.accentText) : AnyShapeStyle(.primary))
+            .frame(maxWidth: .infinity)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+                    .shadow(color: .black.opacity(hovering ? 0.10 : 0.06),
+                            radius: hovering ? 3 : 1, y: hovering ? 1 : 0.5)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: DS.fade), value: hovering)
+        .help(L("Record this call"))
+    }
 }
 
 /// A draggable column divider (design MeetingsWindow: grip). At rest a short

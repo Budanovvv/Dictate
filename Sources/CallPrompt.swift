@@ -1,30 +1,33 @@
 import AppKit
 import SwiftUI
 
-/// The detection prompt (mechanical shell — visuals follow the designer's
-/// card when it lands): a small non-activating panel at the top of the
-/// screen the moment a call is recognised. Record is primary, "Not this
-/// one" declines for this call. It stays until answered — moving between
-/// screens must not cost the offer (owner's call, 2026-08-29); the one
-/// thing that dismisses it unanswered is the call itself ending. There is
-/// deliberately NO automatic mode: the offer is automatic, the recording
-/// never is.
+/// The detection card (design StartRecording/MeetingsOff): a small
+/// non-activating panel at the top of the screen the moment a call is
+/// recognised. Two styles of the same card:
 ///
-/// Non-activating on purpose: the person is JOINING A CALL — a prompt that
-/// steals the keyboard from Zoom at that exact moment would be the app
-/// working against its user.
+/// * `.prompt` — noticing is on. "Zoom call started", Record / Not this
+///   one. The first one ever carries the consent line and replaces the old
+///   consent dialog for detected calls.
+/// * `.offer` — noticing is OFF. "Zoom call — not being recorded": a
+///   one-time education that the feature exists, with its own decline
+///   bookkeeping — two declines (or "don't offer this again") retire it
+///   for good.
 ///
-/// The very first prompt ever carries the consent card's legal line and
-/// stands in for it — answered once, like the dialog it replaces.
+/// The card stays until answered — moving between screens must not cost
+/// the offer (owner's call, 2026-08-29; the designer's ten-second timer is
+/// deliberately not implemented). The one thing that dismisses it
+/// unanswered is the call itself ending. There is NO automatic mode and no
+/// "always record" checkbox: the offer is automatic, the recording never
+/// is (owner's call — the mockup's checkbox predates that decision).
 @MainActor
 final class CallPrompt {
+    enum Style { case prompt, offer }
+
     private var panel: NSPanel?
 
-    /// Shows the prompt for a recognised call. `record` runs on the primary
-    /// action, after consent bookkeeping.
-    func show(platform: String?, record: @escaping () -> Void) {
+    func show(platform: String?, style: Style, record: @escaping () -> Void) {
         hide()
-        let firstEver = !Settings.shared.meetingConsentSeen
+        let firstEver = style == .prompt && !Settings.shared.meetingConsentSeen
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 10),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -36,11 +39,12 @@ final class CallPrompt {
         panel.level = .statusBar
         // The card CHASES the person: whatever Space or full-screen app
         // they are on when it appears — or move to while it waits — the
-        // offer is in front of them (owner's rule: wherever I am).
+        // offer is in front of them.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         let hosting = NSHostingView(rootView: CallPromptCard(
             platform: platform,
+            style: style,
             firstEver: firstEver,
             onRecord: { [weak self] in
                 Log.d("call: prompt → record")
@@ -50,19 +54,25 @@ final class CallPrompt {
             },
             onDecline: { [weak self] in
                 Log.d("call: prompt → not this one")
+                if style == .offer {
+                    Settings.shared.callOfferDeclines += 1
+                }
+                self?.hide()
+            },
+            onNever: { [weak self] in
+                Log.d("call: offer → never again")
+                Settings.shared.callOfferRetired = true
                 self?.hide()
             }))
         hosting.frame.size = hosting.fittingSize
         panel.contentView = hosting
         panel.setContentSize(hosting.fittingSize)
-        // Top-centre of the screen with the keyboard focus — under the menu
-        // bar, where the eyes already are while a call window opens.
         if let screen = NSScreen.main {
             let v = screen.visibleFrame
             panel.setFrameOrigin(NSPoint(x: v.midX - panel.frame.width / 2,
                                          y: v.maxY - panel.frame.height - 12))
         }
-        Log.d("call: prompt shown (\(platform ?? "unnamed")) at \(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y)) on \(NSScreen.main?.localizedName ?? "?")")
+        Log.d("call: prompt shown (\(platform ?? "unnamed"), \(style)) at \(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y)) on \(NSScreen.main?.localizedName ?? "?")")
         panel.orderFrontRegardless()
         self.panel = panel
     }
@@ -80,46 +90,108 @@ final class CallPrompt {
     }
 }
 
+/// The design's card (StartRecording.dc): pulsing record dot, the call's
+/// name, a full-width accent Record with the ring glyph, Not this one.
 private struct CallPromptCard: View {
     let platform: String?
+    let style: CallPrompt.Style
     let firstEver: Bool
     let onRecord: () -> Void
     let onDecline: () -> Void
+    let onNever: () -> Void
+
+    @State private var pulse = false
+
+    private var headline: String {
+        switch style {
+        case .prompt:
+            return platform.map { Lf("%@ call started", $0) } ?? L("Call started")
+        case .offer:
+            return platform.map { Lf("%@ call — not being recorded", $0) }
+                ?? L("Call — not being recorded")
+        }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 9) {
-                Circle().fill(DS.record).frame(width: 8, height: 8)
-                Text(platform.map { Lf("%@ call started", $0) } ?? L("Call started"))
-                    .font(.system(size: 13, weight: .semibold))
+                Circle()
+                    .fill(DS.record)
+                    .frame(width: 9, height: 9)
+                    .opacity(pulse ? 0.55 : 1)
+                Text(headline)
+                    .font(.system(size: 13.5, weight: .semibold))
                     .lineLimit(1)
             }
             if firstEver {
-                // The consent dialog's legal line, said here because this
-                // prompt replaces that dialog for detected calls.
+                // The consent dialog's legal line — this card replaces that
+                // dialog for detected calls, and says so.
                 Text(L("Dictate will record your microphone and the audio from the call, and keep the transcript on this Mac. Recording other people may require their consent where you are."))
                     .font(.system(size: 11.5))
                     .lineSpacing(2.5)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if style == .offer {
+                Text(L("Call recording is off, so this one is passing untranscribed. Turning it on gives you a searchable transcript and a summary afterwards, kept on this Mac."))
+                    .font(.system(size: 11.5))
+                    .lineSpacing(2.5)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 8) {
-                Spacer(minLength: 0)
-                Button(L("Not this one"), action: onDecline)
-                    .buttonStyle(.dsRegular)
                 Button(action: onRecord) {
-                    HStack(spacing: 6) {
-                        Circle().fill(.white).frame(width: 7, height: 7)
-                        Text(L("Record"))
+                    HStack(spacing: 7) {
+                        RecordRing()
+                        Text(style == .offer ? L("Record this call") : L("Record"))
                     }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(DS.accent))
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.dsPrimary)
+                .buttonStyle(.plain)
+                .hoverEmphasis()
+                Button(style == .offer ? L("Not now") : L("Not this one"), action: onDecline)
+                    .buttonStyle(.dsRegular)
+            }
+            if firstEver {
+                Text(L("Asked once. After this, the panel is the short version above."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+            if style == .offer {
+                Button(L("Don't offer this again"), action: onNever)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .pointerStyle(.link)
             }
         }
-        .padding(EdgeInsets(top: 13, leading: 15, bottom: 12, trailing: 15))
+        .padding(EdgeInsets(top: 15, leading: 16, bottom: 14, trailing: 16))
         .frame(width: 380, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DS.radiusPanel, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: DS.radiusPanel, style: .continuous)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatCount(7, autoreverses: true)) {
+                pulse = true
+            }
+        }
+    }
+}
+
+/// The record glyph of the design: a ring with a filled centre.
+struct RecordRing: View {
+    var size: CGFloat = 13
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(lineWidth: 1.5)
+            Circle().frame(width: size * 0.32, height: size * 0.32)
+        }
+        .frame(width: size, height: size)
     }
 }

@@ -78,6 +78,57 @@ final class Settings {
         set { d.set(newValue, forKey: "dictationCount") }
     }
 
+    // MARK: Meeting capabilities (design MeetingsOff/FirstRun, 2026-08-29)
+    //
+    // The meetings side is granular and OPT-IN: each switch below adds one
+    // thing and defaults to off for a fresh install — the meetings window's
+    // first-run screen is the onboarding that turns them on. Existing
+    // installations are migrated to all-on once (AppDelegate), because for
+    // them the switches describe what was already happening.
+
+    /// Watch for calls and offer to record them (the detection prompt).
+    var noticeCalls: Bool {
+        get { d.bool(forKey: "meetingNoticeCalls") }
+        set { d.set(newValue, forKey: "meetingNoticeCalls") }
+    }
+
+    /// Capture the call's own audio (system-audio tap). Off, a recording
+    /// holds only the microphone — your half of the conversation.
+    var recordCallAudio: Bool {
+        get { d.bool(forKey: "meetingRecordCallAudio") }
+        set { d.set(newValue, forKey: "meetingRecordCallAudio") }
+    }
+
+    /// Diarize the call side into named turns.
+    var separateVoices: Bool {
+        get { d.bool(forKey: "meetingSeparateVoices") }
+        set { d.set(newValue, forKey: "meetingSeparateVoices") }
+    }
+
+    /// Let the local model read meetings: titles, summaries, outlines — and
+    /// the thing Ask needs before a provider even matters.
+    var readMeetings: Bool {
+        get { d.bool(forKey: "meetingReadMeetings") }
+        set { d.set(newValue, forKey: "meetingReadMeetings") }
+    }
+
+    /// The capability migration ran (all-on for pre-existing installations).
+    var meetingCapsMigrated: Bool {
+        get { d.bool(forKey: "meetingCapsMigrated") }
+        set { d.set(newValue, forKey: "meetingCapsMigrated") }
+    }
+
+    /// The not-being-recorded offer: how many times it was declined (two
+    /// retires it), and the explicit "don't offer this again".
+    var callOfferDeclines: Int {
+        get { d.integer(forKey: "callOfferDeclines") }
+        set { d.set(newValue, forKey: "callOfferDeclines") }
+    }
+    var callOfferRetired: Bool {
+        get { d.bool(forKey: "callOfferRetired") }
+        set { d.set(newValue, forKey: "callOfferRetired") }
+    }
+
     /// Name scheduled meetings from the calendar instead of from the model.
     /// Off until asked for: turning it on is what triggers the macOS calendar
     /// prompt, and this app already spends three permissions before it works

@@ -328,11 +328,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     /// A call was recognised (CallDetector): the market's converged answer —
     /// detect, then ask. Always ask (owner's call, 2026-08-29): the offer is
-    /// automatic, the recording never is.
+    /// automatic, the recording never is. With noticing OFF, the card is the
+    /// one-time educational offer instead — and after two declines (or an
+    /// explicit never), calls pass in silence.
     private func callDetected(platform: String?) {
         guard !meeting.isActive else { return }
-        Log.d("call: prompting")
-        callPrompt.show(platform: platform) { [weak self] in
+        if Settings.shared.noticeCalls {
+            Log.d("call: prompting")
+            callPrompt.show(platform: platform, style: .prompt) { [weak self] in
+                self?.startMeetingSession(asPill: true)
+            }
+            return
+        }
+        guard !Settings.shared.callOfferRetired,
+              Settings.shared.callOfferDeclines < 2 else { return }
+        Log.d("call: offering (noticing off, declines \(Settings.shared.callOfferDeclines))")
+        callPrompt.show(platform: platform, style: .offer) { [weak self] in
             self?.startMeetingSession(asPill: true)
         }
     }
@@ -342,9 +353,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // WindowServer freeze) and write evidence to ~/Library/Logs/Dictate.
         MainThreadWatchdog.shared.start()
 
-        // Call detection (the prompt's trigger). Armed only after onboarding:
-        // a first-run user meets the consent story in order, not as a popup
-        // over their call.
+        // Capability migration (design MeetingsOff, 2026-08-29): the
+        // switches default OFF for a fresh install — the meetings window's
+        // first-run screen is the onboarding. An installation that already
+        // recorded meetings (or consented to) predates the switches; for it
+        // they describe what was already happening, so they migrate to on.
+        if !Settings.shared.meetingCapsMigrated {
+            Settings.shared.meetingCapsMigrated = true
+            let existing = Settings.shared.meetingConsentSeen
+                || !((try? FileManager.default.contentsOfDirectory(
+                        at: MeetingArchive.directory, includingPropertiesForKeys: nil)) ?? [])
+                    .filter { $0.pathExtension == "md" }.isEmpty
+            if existing {
+                Settings.shared.noticeCalls = true
+                Settings.shared.recordCallAudio = true
+                Settings.shared.separateVoices = true
+                Settings.shared.readMeetings = true
+                Log.d("meeting: capability migration — existing install, all on")
+            }
+        }
+
+        // Call detection. Armed only after onboarding: a first-run user
+        // meets the consent story in order, not as a popup over their call.
+        // The watcher runs even with noticing OFF — solely to make the
+        // one-time "this call is not being recorded" offer (design
+        // MeetingsOff); after two declines it goes quiet for good.
         callDetector.isRecording = { [weak self] in self?.meeting.isActive ?? false }
         callDetector.onCallDetected = { [weak self] platform in
             self?.callDetected(platform: platform)

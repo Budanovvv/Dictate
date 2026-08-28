@@ -32,6 +32,10 @@ struct SettingsView: View {
     @State private var translateSet = Settings.shared.translateKeyCode != nil
     @State private var language = Settings.shared.language
     @State private var nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
+    @State private var noticeCalls = Settings.shared.noticeCalls
+    @State private var recordCallAudio = Settings.shared.recordCallAudio
+    @State private var separateVoices = Settings.shared.separateVoices
+    @State private var readMeetings = Settings.shared.readMeetings
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showInDock = Settings.shared.showInDock
     @State private var translateTarget = Settings.shared.translateTargetCode
@@ -425,6 +429,66 @@ struct SettingsView: View {
             // features instead of one; the shared footer now carries the one
             // privacy story all three answer to.
             Section {
+                // Everything off is a state worth a sentence, not four silent
+                // switches (design MeetingsOff): the banner says what the
+                // silence costs and offers the one-click way out.
+                if !noticeCalls && !recordCallAudio && !separateVoices && !readMeetings {
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "moon.zzz")
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L("Everything here is off, so calls pass unnoticed"))
+                                .font(.system(size: 12.5, weight: .medium))
+                            Text(L("Dictation still works. Each switch below says what it adds; you can turn on one and leave the rest alone."))
+                                .font(DS.helpText)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button(L("Turn all on")) {
+                            noticeCalls = true; recordCallAudio = true
+                            separateVoices = true; readMeetings = true
+                        }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.35)))
+                }
+                // The meeting capabilities, granular and in the order they
+                // touch a call: notice it, record it, tell voices apart, read
+                // it (design MeetingsOff). Each why-text says what the switch
+                // ADDS, because "on" is a decision about this Mac's ears.
+                LabeledContent {
+                    Toggle("", isOn: $noticeCalls).labelsHidden().toggleStyle(.switch)
+                        .onChange(of: noticeCalls) { Settings.shared.noticeCalls = $0 }
+                } label: {
+                    rowLabel(L("Notice when a call starts"),
+                             L("With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything."))
+                }
+                LabeledContent {
+                    Toggle("", isOn: $recordCallAudio).labelsHidden().toggleStyle(.switch)
+                        .onChange(of: recordCallAudio) { Settings.shared.recordCallAudio = $0 }
+                } label: {
+                    rowLabel(L("Record the call audio too"),
+                             L("Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well."))
+                }
+                LabeledContent {
+                    Toggle("", isOn: $separateVoices).labelsHidden().toggleStyle(.switch)
+                        .onChange(of: separateVoices) { Settings.shared.separateVoices = $0 }
+                } label: {
+                    rowLabel(L("Separate the voices"),
+                             L("Turns one block of text into named turns, so you can see who committed to what. Names are yours to set and can be changed after the fact."))
+                }
+                LabeledContent {
+                    Toggle("", isOn: $readMeetings).labelsHidden().toggleStyle(.switch)
+                        .onChange(of: readMeetings) { Settings.shared.readMeetings = $0 }
+                } label: {
+                    rowLabel(L("Write a summary and outline"),
+                             L("An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it."))
+                }
+
                 // The calendar row carries its own permission. Turning it on is
                 // what asks macOS for the calendar, which is why the switch
                 // snaps back when the request is refused: a switch that stays
@@ -454,8 +518,8 @@ struct SettingsView: View {
                             }
                         }
                 } label: {
-                    rowLabel(L("Name meetings from my calendar"),
-                             L("Unscheduled calls are still named from what was said."))
+                    rowLabel(L("Read meeting names from Calendar"),
+                             L("Recordings arrive already titled instead of as “Zoom call, 14:02”. Only titles overlapping a recording are read."))
                 }
                 // The switch snapping back off is macOS saying no — a banner
                 // says so and points at the only place that can change it
