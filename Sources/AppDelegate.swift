@@ -336,6 +336,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         callDetector.onCallDetected = { [weak self] platform in
             self?.callDetected(platform: platform)
         }
+        callDetector.onCallOver = { [weak self] in
+            self?.callPrompt.callOver()
+        }
         if Settings.shared.onboardingDone { callDetector.start() }
 
         // Before anything acquires state worth keeping: a translocated run is

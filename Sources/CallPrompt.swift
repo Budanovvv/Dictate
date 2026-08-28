@@ -4,9 +4,11 @@ import SwiftUI
 /// The detection prompt (mechanical shell — visuals follow the designer's
 /// card when it lands): a small non-activating panel at the top of the
 /// screen the moment a call is recognised. Record is primary, "Not this
-/// one" declines for this call. It dismisses itself after ten seconds if
-/// untouched. There is deliberately NO automatic mode (owner's call,
-/// 2026-08-29): the offer is automatic, the recording never is.
+/// one" declines for this call. It stays until answered — moving between
+/// screens must not cost the offer (owner's call, 2026-08-29); the one
+/// thing that dismisses it unanswered is the call itself ending. There is
+/// deliberately NO automatic mode: the offer is automatic, the recording
+/// never is.
 ///
 /// Non-activating on purpose: the person is JOINING A CALL — a prompt that
 /// steals the keyboard from Zoom at that exact moment would be the app
@@ -17,7 +19,6 @@ import SwiftUI
 @MainActor
 final class CallPrompt {
     private var panel: NSPanel?
-    private var dismissTimer: Timer?
 
     /// Shows the prompt for a recognised call. `record` runs on the primary
     /// action, after consent bookkeeping.
@@ -61,19 +62,16 @@ final class CallPrompt {
         Log.d("call: prompt shown (\(platform ?? "unnamed")) at \(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y)) on \(NSScreen.main?.localizedName ?? "?")")
         panel.orderFrontRegardless()
         self.panel = panel
-        // Untouched, it leaves by itself — the menu bar and the Record
-        // button in the list remain the ways to catch the call later.
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                Log.d("call: prompt → timed out")
-                self?.hide()
-            }
-        }
+    }
+
+    /// The call the card was offering ended before anyone answered.
+    func callOver() {
+        guard panel != nil else { return }
+        Log.d("call: prompt → dismissed, call over")
+        hide()
     }
 
     func hide() {
-        dismissTimer?.invalidate()
-        dismissTimer = nil
         panel?.orderOut(nil)
         panel = nil
     }

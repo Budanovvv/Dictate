@@ -22,6 +22,9 @@ final class CallDetector {
     /// browser is on a call whose tab is not frontmost (the title names the
     /// platform, and a background tab has no visible title).
     var onCallDetected: ((String?) -> Void)?
+    /// The latched call's microphone episode ended — whoever shows UI for
+    /// the call takes it down.
+    var onCallOver: (() -> Void)?
     /// Answers whether a meeting session is already running — detection
     /// pauses itself around one.
     var isRecording: () -> Bool = { false }
@@ -102,6 +105,7 @@ final class CallDetector {
                     inCall = false
                     quietTicks = 0
                     Log.d("call: over (quiet \(5 * 4)s)")
+                    onCallOver?()
                 }
             }
         }
