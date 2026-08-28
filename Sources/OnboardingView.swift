@@ -306,10 +306,14 @@ private struct WelcomeStep: View {
                     .lineSpacing(15 * 0.35)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                // The four pillars (owner 2026-08-29): dictation offline,
+                // translation offline, meetings structured, an agent over
+                // them — the same story the README and the release tell.
                 VStack(alignment: .leading, spacing: 9) {
-                    bullet(L("Speech recognition runs entirely on this Mac. Nothing is uploaded."))
-                    bullet(L("A second key translates what you say into another language as it types."))
-                    bullet(L("No account, no subscription, open source."))
+                    bullet(L("Dictation that works offline — recognition runs entirely on this Mac."))
+                    bullet(L("Translation that works offline — speak your language, another comes out."))
+                    bullet(L("Meetings, recorded and structured: speakers, summary, outline, search."))
+                    bullet(L("An optional agent that knows your meetings — answers quote the moment they came from."))
                 }
                 .padding(.top, 2)
             }

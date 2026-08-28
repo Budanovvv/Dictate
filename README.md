@@ -6,29 +6,27 @@
 
 <p align="center"><b>Hold a key, speak, let go. Everything happens on this Mac.</b></p>
 
-**Hold a key. Speak. Release — your words appear right where your cursor is, in any app.**
-
-**Hold a second key and speak your own language — the words appear in English.**
-
-One key types what you say. The other types it in English. Zero dollars.
+<p align="center">Dictation and translation that work offline. Meetings that structure themselves.<br>An agent that knows them all. Zero dollars.</p>
 
 ### [⬇︎ Download the latest release](https://github.com/Budanovvv/Dictate/releases/latest)
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-blue) ![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-green) ![Apple Silicon](https://img.shields.io/badge/chip-Apple%20Silicon-lightgrey) [![Latest release](https://img.shields.io/github/v/release/Budanovvv/Dictate?label=release)](https://github.com/Budanovvv/Dictate/releases/latest)
 
-Dictate is push-to-talk dictation and a meeting recorder for macOS. Everything runs on your Mac: Whisper **large-v3-turbo** on your Neural Engine, via Core ML. No cloud, no account, no API keys. Don't take our word for it: **turn Wi-Fi off — Dictate keeps working.**
+Dictate does four things, and does them all on your Mac. No cloud, no account, no subscription. Don't take our word for it: **turn Wi-Fi off — Dictate keeps working.**
 
-## Features
+## The four things
 
-- **Works in any app** — Slack, Mail, your editor, your terminal: text is typed wherever your cursor is.
-- **Push-to-talk** — hold a key you never use (right ⌥ by default), speak, release. Nothing keeps listening after you let go.
-- **Whisper large-v3-turbo, on-device** — 112 languages, great with accents, fast enough to show live text as you speak.
-- **Speak your language, send English** — hold a second key and your speech is typed as English (or another language you pick). Translated on your Mac, like everything else.
-- **Live text** — watch your words appear in the pill while you're still speaking.
-- **Meeting transcripts** — record a call (Zoom, Google Meet in a browser, anything) and get a Markdown transcript that names who spoke, written live to `~/Documents/Dictate Meetings`. Your microphone and the call's audio are captured separately, so the two sides are told apart. Local, like everything else.
-- **A meeting library** — every recording gets a title and a one-line summary written by a local model, a clickable outline of the moments that mattered, per-voice speaking time, tags, stars, and which platform the call ran on. Search finds meetings by meaning, not just by words.
-- **Ask your meetings** *(optional)* — connect your own Claude or ChatGPT API key and ask questions across everything you've recorded; answers quote the passages they came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and the recordings themselves never leave your Mac.
-- **Private by architecture** — the microphone listens only during a dictation you started; recognition never touches the network. The one-time model download (~630 MB) is the only time Dictate needs the internet.
+**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 112 languages, great with accents, fast enough to show live text while you're still speaking.
+
+**2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated on this Mac, like everything else.
+
+**3 · Meetings, recorded and structured.** Record any call — Zoom, Google Meet in a browser, anything — and get more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search that finds meetings by meaning, not just by words. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
+
+**4 · An agent that knows your meetings.** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and the recordings themselves never leave your Mac.
+
+## The details
+
+- **Private by architecture** — the microphone listens only during a dictation or a recording you started; recognition never touches the network. The one-time model download (~630 MB) is the only time Dictate needs the internet.
 - **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.
 - **Honest utility** — no settings maze, no account, no subscription. Auto-updates via Sparkle, cryptographically signed.
 
@@ -38,7 +36,7 @@ Local dictation on a Mac is a solved problem now: Whisper runs on the Neural Eng
 
 It's free and open source under GPL-3.0: a local app has no servers to pay for, and I'd rather you read the code than take my word on privacy. No accounts, no "Pro" tier. Dictation and transcription have no cloud path — ever; the one optional feature that asks a model about your archive uses your own API key and is off until you turn it on.
 
-There are other good free, open dictation apps too — [Handy](https://github.com/cjpais/Handy), [VoiceInk](https://github.com/Beingpax/VoiceInk), [FluidVoice](https://github.com/altic-dev/FluidVoice) — and I'm glad they exist; we're all making the same point. Dictate's own angle is being fully native Swift *and* translating your speech to English on a second key.
+There are other good free, open dictation apps too — [Handy](https://github.com/cjpais/Handy), [VoiceInk](https://github.com/Beingpax/VoiceInk), [FluidVoice](https://github.com/altic-dev/FluidVoice) — and I'm glad they exist; we're all making the same point. Dictate's own angle is being fully native Swift, translating your speech on a second key, and turning your calls into a structured, searchable archive an agent can actually answer from.
 
 ## Install
 
