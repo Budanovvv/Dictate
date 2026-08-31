@@ -958,16 +958,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             onCheckForUpdates: { [weak self] in
                 self?.activateThenRun { self?.updater.checkForUpdates(nil) }
             })
-        let window = makeWindow(title: L("Dictate Settings"), content: view)
+        let window = makeWindow(title: L("Dictate Settings"), content: view,
+                                activating: false)
         settingsWindow = window
         present(window, over: meetingWindow?.isVisible == true ? meetingWindow : nil)
     }
 
-    private func makeWindow<V: View>(title: String, content: V) -> NSWindow {
+    private func makeWindow<V: View>(title: String, content: V,
+                                     activating: Bool = true) -> NSWindow {
         let hosting = NSHostingController(rootView: content)
-        let window = NSWindow(contentViewController: hosting)
+        // Non-activating is the house norm — the meetings window, the HUD,
+        // the pill and the cards are all panels that never activate the app,
+        // and therefore never make macOS switch Spaces. Settings joins them
+        // (owner's reports 2026-08-31: opening it kept yanking him out of
+        // his full-screen IDE onto the desktop). Onboarding stays a real,
+        // activating window: first run WANTS the app front and centre.
+        let window: NSWindow = activating
+            ? NSWindow(contentViewController: hosting)
+            : NSPanel(contentViewController: hosting)
         window.title = title
         window.styleMask = [.titled, .closable, .miniaturizable]
+        if !activating {
+            window.styleMask.insert(.nonactivatingPanel)
+            (window as? NSPanel)?.becomesKeyOnlyIfNeeded = false
+        }
         // We keep strong references (onboardingWindow/settingsWindow) — without
         // this, closing releases the NSWindow under ARC and the next touch of
         // the dangling reference is an over-release crash.
@@ -992,15 +1006,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         return window
     }
 
-    /// Runs UI that is about to go MODAL (Sparkle's alerts, panels) only
-    /// after the app is truly frontmost. Activation kicked off in the same
-    /// runloop turn has not settled yet — a modal alert fired that instant
-    /// opens BEHIND other apps' windows, invisible, and the modal loop then
-    /// reads as a hang (watchdog, 2026-08-31 12:32 and 12:42: the "You're
-    /// up to date" alert, twice).
+    /// Runs work that is about to go MODAL (Sparkle's alerts) with a
+    /// rescue armed: the alert of a non-activated app opens on some other
+    /// Space, behind other windows, invisible — and its modal loop then
+    /// reads as a hang (three times on 2026-08-31). A timer added to the
+    /// MODAL runloop modes still fires inside runModal (the main dispatch
+    /// queue does not), finds the modal window and drags it to the user:
+    /// modal level, onto the active Space, front regardless.
     private func activateThenRun(_ work: @escaping () -> Void) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        var attempts = 0
+        let rescue = Timer(timeInterval: 0.5, repeats: true) { timer in
+            attempts += 1
+            if let modal = NSApp.modalWindow {
+                Log.d("updates: modal rescue — forcing \"\(modal.title)\" onto the active Space")
+                modal.collectionBehavior.insert(.moveToActiveSpace)
+                modal.collectionBehavior.insert(.fullScreenAuxiliary)
+                modal.level = .modalPanel
+                modal.orderFrontRegardless()
+                timer.invalidate()
+            } else if attempts > 40 {
+                timer.invalidate()   // no modal appeared in 20 s — nothing to save
+            }
+        }
+        RunLoop.main.add(rescue, forMode: .common)
+        RunLoop.main.add(rescue, forMode: .modalPanel)
         DispatchQueue.main.async { work() }
     }
 
@@ -1044,23 +1074,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // Activate on the next runloop turn: the .accessory→.regular switch must
         // settle first, otherwise Picker/Menu popups can't open (the app isn't
         // truly frontmost yet).
+        let nonactivating = window.styleMask.contains(.nonactivatingPanel)
         DispatchQueue.main.async {
-            // Order BEFORE activating, not after: moveToActiveSpace puts the
-            // window on the Space the user is on right now, and once it is
-            // the key window there, activation has nothing to switch Spaces
-            // for. Activated first, macOS jumps to "a Space with this app's
-            // windows" — the desktop with the meetings window — yanking the
-            // user out of their full-screen app (field report 2026-08-31).
+            // Order BEFORE any activation: moveToActiveSpace puts the window
+            // on the Space the user is on right now.
             window.makeKeyAndOrderFront(nil)
-            // Above other apps' windows even when cooperative activation
-            // says no — which it does whenever the request originates in
-            // the meetings panel: a NON-ACTIVATING panel's clicks never
-            // count as "the user is in this app", so activate() is quietly
-            // refused and the window lands BEHIND the frontmost app
-            // (field logs 2026-08-31 12:53: ordered front, visible=true,
-            // and the owner saw nothing).
+            // Above other apps' windows even without activation — clicks in
+            // our non-activating panels never count as "the user is in this
+            // app", so a polite orderFront can land BEHIND the frontmost app
+            // (field logs 2026-08-31 12:53).
             window.orderFrontRegardless()
-            NSApp.activate(ignoringOtherApps: true)
+            // Activation is exactly the thing that switches Spaces ("switch
+            // to a Space with open windows" pulls every display to this
+            // app's other windows — the owner kept getting yanked out of
+            // full-screen PyCharm onto the desktop). A non-activating panel
+            // can be key without it, so for one of those we never activate.
+            if !nonactivating { NSApp.activate(ignoringOtherApps: true) }
             Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace)")
         }
     }

@@ -109,9 +109,10 @@ final class MainThreadWatchdog {
         RunLoop.main.perform(inModes: [.common, .modalPanel]) {
             guard let modal = NSApp.modalWindow else { return }
             Log.d("watchdog: modal rescue — forcing \"\(modal.title)\" front")
+            modal.collectionBehavior.insert(.moveToActiveSpace)
+            modal.collectionBehavior.insert(.fullScreenAuxiliary)
             modal.level = .modalPanel
             modal.orderFrontRegardless()
-            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
