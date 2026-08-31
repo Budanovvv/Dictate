@@ -1175,13 +1175,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // can be key without it, so for one of those we never activate.
             if !nonactivating { NSApp.activate() }
             // The corner menu's popover re-asserts ITS parent panel to the
-            // front as it tears down — which buried a perfectly placed
-            // Settings window exactly behind the meetings window (field
-            // logs 2026-08-31 16:47: centres identical to the point,
-            // visible, and unseen). One more raise after the popover's
-            // dismissal animation has finished.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            // front as it tears down — one more raise after its dismissal
+            // animation. And then the COMPOSITOR gets the last word: every
+            // position/space/level metric can read "visible" while not one
+            // pixel is on a lit screen (the whole 2026-08-31 saga — the
+            // window kept being found later "among the desktop clutter").
+            // occlusionState is ground truth; if it says unseen, the window
+            // stops being polite and moves to the centre of the screen the
+            // CURSOR is on — the one place the user provably is.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 window.orderFrontRegardless()
+                let seen = window.occlusionState.contains(.visible)
+                Log.d("present: +0.6s occlusion=\(seen ? "visible" : "NOT VISIBLE") frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) screen=\(window.screen?.localizedName ?? "nil") onActiveSpace=\(window.isOnActiveSpace)")
+                guard !seen else { return }
+                let mouse = NSEvent.mouseLocation
+                let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) })
+                    ?? NSScreen.main
+                if let vis = screen?.visibleFrame {
+                    let size = window.frame.size
+                    window.setFrameOrigin(NSPoint(x: vis.midX - size.width / 2,
+                                                  y: vis.midY - size.height / 2))
+                    window.orderFrontRegardless()
+                    Log.d("present: rescue — moved to cursor screen \(screen?.localizedName ?? "?"), occlusion now \(window.occlusionState.contains(.visible) ? "visible" : "STILL NOT VISIBLE")")
+                }
             }
             Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace) anchor=\(anchor.map { "\(Int($0.frame.midX)),\(Int($0.frame.midY)) \($0.screen?.localizedName ?? "nil")" } ?? "none")")
         }
