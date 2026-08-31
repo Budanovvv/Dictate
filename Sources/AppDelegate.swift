@@ -1164,6 +1164,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // full-screen PyCharm onto the desktop). A non-activating panel
             // can be key without it, so for one of those we never activate.
             if !nonactivating { NSApp.activate() }
+            // The corner menu's popover re-asserts ITS parent panel to the
+            // front as it tears down — which buried a perfectly placed
+            // Settings window exactly behind the meetings window (field
+            // logs 2026-08-31 16:47: centres identical to the point,
+            // visible, and unseen). One more raise after the popover's
+            // dismissal animation has finished.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                window.orderFrontRegardless()
+            }
             Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace) anchor=\(anchor.map { "\(Int($0.frame.midX)),\(Int($0.frame.midY)) \($0.screen?.localizedName ?? "nil")" } ?? "none")")
         }
     }
