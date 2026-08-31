@@ -15,7 +15,7 @@ enum AppRelocator {
     /// permission states GRABLI documents.
     static func offerMoveIfTranslocated() {
         guard Permissions.isTranslocated else { return }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         // The app's own dialog vocabulary (design Onboarding: dmg), not
         // NSAlert's — this window is the first thing a new user ever sees.
         let panel = NSPanel(
@@ -40,6 +40,7 @@ enum AppRelocator {
         // first launch from the DMG may run modal before activation has
         // settled, and an invisible relocation dialog is a frozen app.
         panel.level = .modalPanel
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.orderFrontRegardless()
         let response = NSApp.runModal(for: panel)
         panel.orderOut(nil)

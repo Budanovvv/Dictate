@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// A hand-started update probe is in flight — the delegate answers with
     /// a card only for these; the daily background checks stay silent.
     private var manualUpdateProbe = false
+    /// The probe found an update; the silent download starts once the
+    /// probe's session has CLOSED — Sparkle refuses a new check while one
+    /// is still in progress, and the refusal is a silent log line.
+    private var startDownloadAfterProbe = false
     /// Invisible 1×1 panel hosting the Apple Translation session (the
     /// framework only works through a SwiftUI view — see AppleTranslator).
     private var translatorHostPanel: NSPanel?
@@ -195,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // which is how the library ended up drawn in the inactive appearance
         // every single time it was opened the normal way.
         DispatchQueue.main.async { [weak self] in
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             self?.meetingWindow?.makeKeyAndOrderFront(nil)
         }
     }
@@ -358,9 +362,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // Accepting the offer IS turning the capability on — a "Record
             // this call" that then recorded only the microphone would be
             // the silent degradation section 9 forbids.
-            MeetingCapability.recordCallAudio.isOn = true
-            MeetingCapability.separateVoices.isOn = true
-            OfferLedger.decided(.recordCallAudio)
+            MeetingCapability.recordCallAudio.turnOnByHand()
+            MeetingCapability.separateVoices.turnOnByHand()
             self?.startMeetingSession(asPill: true, fromCallPrompt: true)
         }
     }
@@ -497,8 +500,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                               WhisperEngine.shared.isModelDownloaded(tier: .fast)
                         else { return }
                         self.hud.setWarming(true)
-                        while await !WhisperEngine.shared.isReady(for: .fast) {
+                        // Bounded: if prepare failed (offline tokenizer
+                        // fetch), isReady never turns true — an unbounded
+                        // loop here would spin forever, and every dictation
+                        // would add another one (review find, 2026-08-31).
+                        var waited = 0
+                        while await !WhisperEngine.shared.isReady(for: .fast),
+                              waited < 200 {
                             try? await Task.sleep(for: .milliseconds(300))
+                            waited += 1
                         }
                         self.hud.setWarming(false)
                     }
@@ -588,7 +598,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // from outliving us (the other two are the quit below and SIGPIPE on
         // our log pipe when we crash): anything still running from a previous
         // run dies here. The app is a login item, so "the next launch" is soon.
-        LlamaServer.reapOrphans()
+        // Off the main thread: reaping waits up to 3 s for a helper that
+        // ignores SIGTERM, and launch must not stall behind it.
+        DispatchQueue.global(qos: .utility).async { LlamaServer.reapOrphans() }
         // Persistent invisible host for Apple Translation: the translationTask
         // modifier needs a live, on-screen view to run in.
         let panel = NSPanel(
@@ -617,16 +629,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // Settings, nothing happens").
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.openSettings"), object: nil, queue: .main
-        ) { [weak self] _ in
-            Log.d("corner: openSettings notification received")
-            self?.showSettings()
-        })
+        ) { [weak self] _ in self?.showSettings() })
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.checkUpdates"), object: nil, queue: .main
-        ) { [weak self] _ in
-            Log.d("corner: checkUpdates notification received")
-            self?.manualUpdateCheck()
-        })
+        ) { [weak self] _ in self?.manualUpdateCheck() })
 
         applyDebugShot()
     }
@@ -720,6 +726,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        meeting.cancelDecodes()
         if meeting.isActive { meeting.stop() }
         dictation.shutdown()
         // Synchronous, and it has to be: this handler does not outlive an async
@@ -825,13 +832,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         guard manualUpdateProbe else { return }
         manualUpdateProbe = false
-        DispatchQueue.main.async { [weak self] in
+        startDownloadAfterProbe = true
+        DispatchQueue.main.async {
             Log.d("updates: manual probe — v\(item.displayVersionString) available")
             UpdateNotice.show(Lf("Update %@ is on its way — downloading now, it installs itself soon.",
                                  item.displayVersionString))
-            // The probe only looks; this starts Sparkle's silent
-            // download-and-stage, the same path the daily check uses.
-            self?.updater.updater.checkForUpdatesInBackground()
         }
     }
 
@@ -847,6 +852,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
                  error: Error?) {
+        if startDownloadAfterProbe {
+            // Deferred one more turn: this callback still runs inside the
+            // closing session (verified in Sparkle's source — the session
+            // flag clears in a later main-queue hop), and a check started
+            // now is refused with nothing but an SULog line.
+            startDownloadAfterProbe = false
+            DispatchQueue.main.async { [weak self] in
+                Log.d("updates: probe session closed — starting the silent download")
+                self?.updater.updater.checkForUpdatesInBackground()
+            }
+            return
+        }
         // The probe failed outright (offline, bad appcast) — without this
         // the flag would stay armed and the button would go dead.
         guard manualUpdateProbe, error != nil else { return }
@@ -954,6 +971,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     }
 
     private func showOnboarding() {
+        if let onboardingWindow {
+            present(onboardingWindow)
+            return
+        }
         let view = OnboardingView(finish: { [weak self] in
             guard let self else { return }
             Settings.shared.onboardingDone = true
@@ -963,6 +984,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             self.onboardingWindow?.close()
             self.onboardingWindow = nil
             self.dictation.restart()
+            // Detection was skipped at launch while onboarding was pending —
+            // without this a fresh install never notices a call until the
+            // app is relaunched (review find, 2026-08-31).
+            self.callDetector.start()
         }, dictation: dictation)
         let window = makeWindow(title: L("Welcome to Dictate"), content: view)
         // The view draws its own 46 px top strip with the "Step N of 5" label
@@ -1114,7 +1139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // app's other windows — the owner kept getting yanked out of
             // full-screen PyCharm onto the desktop). A non-activating panel
             // can be key without it, so for one of those we never activate.
-            if !nonactivating { NSApp.activate(ignoringOtherApps: true) }
+            if !nonactivating { NSApp.activate() }
             Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace)")
         }
     }

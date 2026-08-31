@@ -50,8 +50,8 @@ enum Log {
             }
             if let h = FileHandle(forWritingAtPath: url.path) {
                 defer { try? h.close() }
-                h.seekToEndOfFile()
-                h.write(line.data(using: .utf8)!)
+                _ = try? h.seekToEnd()
+                try? h.write(contentsOf: Data(line.utf8))
             } else {
                 try? line.write(to: url, atomically: true, encoding: .utf8)
             }

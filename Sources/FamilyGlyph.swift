@@ -189,29 +189,3 @@ struct GlyphMark: View {
                height: width * FamilyGlyph.designSize.height / FamilyGlyph.designSize.width)
     }
 }
-
-/// A row of vertical capsule bars, heights given per bar — the primitive the
-/// level meters draw with (their height is a path change, never a layout
-/// change; see LevelWave for the 11%-of-a-core story that rule comes from).
-/// Moved here when Brand.swift (the retired identity) was deleted.
-struct WaveShape: Shape {
-    /// Height of each bar, in points, laid out from the leading edge.
-    var heights: [CGFloat]
-    var barWidth: CGFloat
-    var spacing: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        var x = rect.minX
-        for height in heights {
-            defer { x += barWidth + spacing }
-            guard height > 0 else { continue }
-            // A capsule cannot be shorter than it is round.
-            let drawn = max(barWidth, height)
-            path.addRoundedRect(
-                in: CGRect(x: x, y: rect.midY - drawn / 2, width: barWidth, height: drawn),
-                cornerSize: CGSize(width: barWidth / 2, height: barWidth / 2))
-        }
-        return path
-    }
-}

@@ -22,10 +22,11 @@ struct ClaudeAPIOracle: MeetingOracle {
     /// headroom so an answer never stops mid-sentence.
     private let maxTokens = 4096
 
-    /// Medium rather than the default high. The work is reading five passages
-    /// and answering from them, not solving anything — and past ten seconds a
-    /// person stops waiting, which makes latency part of the answer's quality
-    /// here. Worth re-tuning against real questions once there are some.
+    /// Medium rather than the default high. The work is an agentic
+    /// list/search/read loop over the archive with a grounded answer at the
+    /// end, not puzzle-solving — and past ten seconds a person stops
+    /// waiting, which makes latency part of the answer's quality here.
+    /// Worth re-tuning against real questions once there are some.
     private let effort = "medium"
 
     var isAvailable: Bool { APIKey.current(.anthropic) != nil }

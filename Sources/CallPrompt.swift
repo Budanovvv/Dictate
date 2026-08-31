@@ -31,21 +31,14 @@ final class CallPrompt {
     func show(platform: String?, style: Style, record: @escaping () -> Void) {
         hide()
         shownStyle = style
-        let firstEver = style == .prompt && !Settings.shared.meetingConsentSeen
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 10),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .statusBar
-        // The card CHASES the person: whatever Space or full-screen app
-        // they are on when it appears — or move to while it waits — the
-        // offer is in front of them.
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isReleasedWhenClosed = false
+        // On EITHER face: with noticing off, someone's first-ever recording
+        // can start from the offer card, and the consent sentence must have
+        // been shown before onRecord marks it seen (review find 2026-08-31 —
+        // the offer path skipped the notice yet still set the flag).
+        let firstEver = !Settings.shared.meetingConsentSeen
+        // The chassis CHASES the person — whatever Space or full-screen app
+        // they are on when the card appears, or move to while it waits, the
+        // offer is in front of them (makeTopNoticePanel's manners).
         let hosting = NSHostingView(rootView: CallPromptCard(
             platform: platform,
             style: style,
@@ -69,14 +62,7 @@ final class CallPrompt {
                 OfferLedger.declined(.recordCallAudio)
                 self?.hide()
             }))
-        hosting.frame.size = hosting.fittingSize
-        panel.contentView = hosting
-        panel.setContentSize(hosting.fittingSize)
-        if let screen = NSScreen.main {
-            let v = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: v.midX - panel.frame.width / 2,
-                                         y: v.maxY - panel.frame.height - 12))
-        }
+        let panel = makeTopNoticePanel(hosting: hosting)
         Log.d("call: prompt shown (\(platform ?? "unnamed"), \(style)) at \(Int(panel.frame.origin.x)),\(Int(panel.frame.origin.y)) on \(NSScreen.main?.localizedName ?? "?")")
         panel.orderFrontRegardless()
         self.panel = panel
@@ -107,7 +93,6 @@ private struct CallPromptCard: View {
     let onDecline: () -> Void
     let onNever: () -> Void
 
-    @State private var pulse = false
 
     private var headline: String {
         switch style {
@@ -122,10 +107,7 @@ private struct CallPromptCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(spacing: 9) {
-                Circle()
-                    .fill(DS.record)
-                    .frame(width: 9, height: 9)
-                    .opacity(pulse ? 0.55 : 1)
+                PulsingDot(dimOpacity: 0.55, period: 1.2)
                 Text(headline)
                     .font(.system(size: 13.5, weight: .semibold))
                     .lineLimit(1)
@@ -183,11 +165,6 @@ private struct CallPromptCard: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.2).repeatCount(7, autoreverses: true)) {
-                pulse = true
-            }
-        }
     }
 }
 

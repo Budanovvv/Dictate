@@ -452,9 +452,6 @@ struct AnswerPane: View {
     /// field. New material still comes in the search-field way — a fresh
     /// search, a fresh click, and the new passages join the same session.
     let followUp: (String) -> Void
-    /// Clearing is the library's business too (it owns the scope), so the
-    /// button hands the act back instead of reaching into the model.
-    let newChat: () -> Void
     /// The badKey banner's way out: the connect sheet, where a fresh key can
     /// be pasted (design: askFailures).
     var onAddKey: () -> Void = {}

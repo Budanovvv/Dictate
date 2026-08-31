@@ -87,7 +87,7 @@ final class MeetingSession: ObservableObject {
         fileHandle = nil
         MeetingArchive.rename(speaker: old, to: clean, in: url)
         fileHandle = try? FileHandle(forWritingTo: url)
-        fileHandle?.seekToEndOfFile()
+        _ = try? fileHandle?.seekToEnd()
     }
 
     private let tap = MeetingTap()
@@ -135,6 +135,12 @@ final class MeetingSession: ObservableObject {
     private var fileHandle: FileHandle?
     private var stopping = false
     private let cancelled = CancelToken()
+
+    /// Quit-path only: aborts the decode loops mid-window so the process can
+    /// exit instead of finishing a long transcription into a dying app. The
+    /// token was checked in three places and never tripped — wired up on the
+    /// 2026-08-31 review.
+    func cancelDecodes() { cancelled.cancel() }
 
     // Them: accumulated 16k Int16 PCM of the current window.
     private var themPCM = Data()
@@ -334,9 +340,27 @@ final class MeetingSession: ObservableObject {
             }
             replay.start()
         } else if Settings.shared.recordCallAudio {
-            try tap.start()   // first run triggers the system-audio TCC prompt
+            // The sink is set BEFORE start(): the CoreAudio IO thread reads
+            // onBuffer as soon as the tap runs, and an assignment racing it
+            // from the main thread could drop the first buffers (review
+            // find, 2026-08-31).
             tap.onBuffer = { [weak self] pcm, peak in
                 DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
+            }
+            do {
+                try tap.start()   // first run triggers the system-audio TCC prompt
+            } catch {
+                // The throw above this point would leak the started state:
+                // the sleep-blocking activity stays on (the Mac never idles
+                // again until the next successful start) and the transcript
+                // file handle stays open. Undo both before rethrowing.
+                if let activity = powerActivity {
+                    ProcessInfo.processInfo.endActivity(activity)
+                    powerActivity = nil
+                }
+                try? fileHandle?.close()
+                fileHandle = nil
+                throw error
             }
             // The recorder retries a failing input for ~4.5 s on its own; this
             // fires only when it truly gave up (device vanished). One delayed
@@ -565,6 +589,11 @@ final class MeetingSession: ObservableObject {
         guard let app = NSWorkspace.shared.runningApplications
             .first(where: { $0.localizedName == name }) else { return [] }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
+        // These calls are synchronous IPC on the MAIN thread, on a 4 s timer
+        // — the default AX messaging timeout is ~6 s, so one beachballing
+        // browser would freeze dictation and all UI with it (review find,
+        // 2026-08-31). Half a second is plenty for a title.
+        AXUIElementSetMessagingTimeout(ax, 0.5)
         var raw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw) == .success,
               let windows = raw as? [AXUIElement] else { return [] }
@@ -1163,14 +1192,14 @@ final class MeetingSession: ObservableObject {
         // it ended — nothing after it was captured, so nothing is guessed.
         if endedBySleep {
             endedBySleep = false
-            fileHandle?.write(Data(("\n_" + L("Recording ended here — this Mac went to sleep.") + "_\n").utf8))
+            try? fileHandle?.write(contentsOf: Data(("\n_" + L("Recording ended here — this Mac went to sleep.") + "_\n").utf8))
         }
         if let reason = autoStopReason {
             autoStopReason = nil
             let line = reason == .callEnded
                 ? L("Recording stopped by itself — the call ended.")
                 : L("Recording stopped by itself — ten minutes of silence.")
-            fileHandle?.write(Data(("\n_" + line + "_\n").utf8))
+            try? fileHandle?.write(contentsOf: Data(("\n_" + line + "_\n").utf8))
         }
         try? fileHandle?.close()
         fileHandle = nil
@@ -1382,13 +1411,21 @@ final class MeetingSession: ObservableObject {
         }
         try header.data(using: .utf8)!.write(to: url)
         fileHandle = try FileHandle(forWritingTo: url)
-        fileHandle?.seekToEndOfFile()
+        _ = try? fileHandle?.seekToEnd()
         fileURL = url
     }
 
     private func write(_ line: String) {
         guard let data = line.data(using: .utf8) else { return }
-        fileHandle?.write(data)
+        do {
+            try fileHandle?.write(contentsOf: data)
+        } catch {
+            // The legacy write(_:) raised an ObjC exception here — a full
+            // disk or a yanked volume crashed the whole recorder. Losing a
+            // line with a log entry is strictly better; the 30 s disk check
+            // stops the session for the persistent case.
+            Log.d("meeting: transcript write failed — \(error.localizedDescription)")
+        }
     }
 
     private func clock(_ offset: TimeInterval) -> String {

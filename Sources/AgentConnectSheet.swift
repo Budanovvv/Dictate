@@ -242,14 +242,22 @@ struct AgentConnectSheet: View {
             case .refused:
                 refused = true
             case .ok:
-                APIKey.store(key, for: chosen)
+                guard APIKey.store(key, for: chosen) else {
+                    Log.d("connect: keychain refused the key")
+                    refused = true
+                    return
+                }
                 Settings.shared.askProvider = chosen
                 onConnected()
             case .unreachable:
                 // An offline Mac is not a wrong key. Save it, but SAY it is
                 // unverified — the first question is the real check.
                 Log.d("connect: could not verify, saving anyway")
-                APIKey.store(key, for: chosen)
+                guard APIKey.store(key, for: chosen) else {
+                    Log.d("connect: keychain refused the key")
+                    refused = true
+                    return
+                }
                 Settings.shared.askProvider = chosen
                 savedOffline = true
             }

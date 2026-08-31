@@ -18,6 +18,8 @@ struct SettingsView: View {
     @State private var askProvider = Settings.shared.askProvider
     @State private var keyDraft = ""
     @State private var keyRevision = 0
+    /// The Keychain refused the key — say so instead of pretending.
+    @State private var keychainSaveFailed = false
 
     @State private var hotkeyName = Settings.shared.hotkeyName
     @State private var unsafeKey = !KeyNames.isSafeHotkey(Settings.shared.hotkeyKeyCode)
@@ -63,7 +65,6 @@ struct SettingsView: View {
     @State private var micGranted = Permissions.microphone == .granted
     @State private var axGranted = Permissions.accessibility == .granted
 
-    private var languageOptions: [(code: String, name: String)] { LanguageList.options }
 
     private var appearanceHelp: String {
         switch appearance {
@@ -169,10 +170,29 @@ struct SettingsView: View {
         }
         // The corner menu can ask for a tab while this window already
         // exists (it is cached for the app's lifetime) — onAppear alone
-        // only serves the first opening.
+        // only serves the first opening. Reopening also re-checks the
+        // permissions: the panel is non-activating now, so the old
+        // didBecomeActive refresh rarely fires for it.
         .onReceive(NotificationCenter.default.publisher(
             for: .init("dictate.openSettings")).receive(on: RunLoop.main)) { _ in
             applyRequestedTab()
+            textModel.refresh()
+            refreshStatuses()
+        }
+        // The capability switches are flipped from many surfaces (the
+        // first-run rows, the absence strips, the offer card) while this
+        // window sits cached with one-shot @State — mirror every outside
+        // write back in, or the pane shows OFF for switches that are on
+        // (review find, 2026-08-31).
+        .onReceive(NotificationCenter.default.publisher(
+            for: UserDefaults.didChangeNotification).receive(on: RunLoop.main)) { _ in
+            if noticeCalls != Settings.shared.noticeCalls { noticeCalls = Settings.shared.noticeCalls }
+            if recordCallAudio != Settings.shared.recordCallAudio { recordCallAudio = Settings.shared.recordCallAudio }
+            if separateVoices != Settings.shared.separateVoices { separateVoices = Settings.shared.separateVoices }
+            if readMeetings != Settings.shared.readMeetings { readMeetings = Settings.shared.readMeetings }
+            if nameFromCalendar != Settings.shared.nameMeetingsFromCalendar {
+                nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
+            }
         }
         .onDisappear {
             captureMain.cancel()
@@ -448,9 +468,9 @@ struct SettingsView: View {
                         }
                         Spacer(minLength: 8)
                         Button(L("Turn all on")) {
+                            MeetingCapability.turnAllOnByHand()
                             noticeCalls = true; recordCallAudio = true
                             separateVoices = true; readMeetings = true
-                            MeetingCapability.allCases.forEach { OfferLedger.decided($0) }
                         }
                         .buttonStyle(.dsSmall)
                         .controlSize(.small)
@@ -759,7 +779,7 @@ struct SettingsView: View {
                     HStack(spacing: 6) {
                         Text(Self.appVersion)
                         Text("·").foregroundStyle(.tertiary)
-                        Button(L("Check for Updates")) { onCheckForUpdates() }
+                        Button(L("Check for updates")) { onCheckForUpdates() }
                             .buttonStyle(.dsSmall)
                     }
                 }
@@ -814,7 +834,11 @@ struct SettingsView: View {
         }
         // Named vendor, not product: the footer says whose servers the
         // passages reach, and that is Anthropic or OpenAI, not Claude.
-        return Lf("Asking is the one thing that leaves: your question and the few passages the search found go to %@ on your key. Whole meetings never do, and nothing goes anywhere until you click.",
+        // Honest about the agent loop: it OPENS whole transcripts when it
+        // decides to read them, and those go to the provider too. The old
+        // line ("whole meetings never do") predated the tool loop and had
+        // become a false privacy claim (review find, 2026-08-31).
+        return Lf("Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.",
                   provider.vendorName)
     }
 
@@ -876,13 +900,26 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
                         .frame(width: 190)
+                        .onChange(of: keyDraft) { _ in keychainSaveFailed = false }
                     Button(L("Save")) {
-                        APIKey.store(keyDraft, for: provider)
-                        keyDraft = ""
+                        // A failed Keychain write keeps the draft on screen —
+                        // clearing the field on failure would eat the pasted
+                        // key with a success face (review find, 2026-08-31).
+                        if APIKey.store(keyDraft, for: provider) {
+                            keyDraft = ""
+                        } else {
+                            keychainSaveFailed = true
+                        }
                         keyRevision += 1
                     }
                     .controlSize(.small)
                     .disabled(!APIKey.looksValid(keyDraft, for: provider))
+                    if keychainSaveFailed {
+                        Text(L("The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain."))
+                            .font(DS.helpText)
+                            .foregroundStyle(DS.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Link(L("Get a key…"), destination: provider.keysURL)
                     .font(.caption)

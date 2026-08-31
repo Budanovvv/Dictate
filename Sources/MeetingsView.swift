@@ -199,6 +199,7 @@ struct MeetingsView: View {
             }
         }
         .onAppear {
+            capsSeen = capsMask
             // During a call the window is a glanceable strip over the call;
             // opened afterwards it is a library. The sidebar decides which —
             // and does so before the archive has loaded, so the window is on
@@ -237,10 +238,10 @@ struct MeetingsView: View {
                     if let first = meetings.first { selection = .archived(first.url) }
                 }
             }
-            // Ask is the selected item at launch (design t2) — the window
-            // opens on the question, not on a transcript. With the agent off
-            // the nil selection keeps the old portal home, which carries the
-            // connect offer.
+            // The agent is the selected item at launch (design t2) — the
+            // window opens on the question, not on a transcript. With the
+            // agent off the nil selection falls to the first-run setup or
+            // the plain placeholder (see the detail switch's nil case).
             if Settings.shared.askArchive, selection == nil, !session.isActive,
                !forceFirstRun {
                 selection = .ask
@@ -352,15 +353,9 @@ struct MeetingsView: View {
         } else {
             HStack(spacing: 9) {
                 if Settings.shared.noticeCalls {
-                    // The design's breathing dot, at TimelineView pace like
-                    // PulsingDot below — slow enough to read as "alive",
-                    // never as an alert.
-                    TimelineView(.periodic(from: .now, by: 1.2)) { context in
-                        let dim = Int(context.date.timeIntervalSinceReferenceDate / 1.2) % 2 == 0
-                        Circle().fill(DS.good).frame(width: 8, height: 8)
-                            .opacity(dim ? 0.55 : 1)
-                            .animation(.easeInOut(duration: 1.1), value: dim)
-                    }
+                    // The design's breathing dot — the one PulsingDot, slowed
+                    // to read as "alive", never as an alert.
+                    PulsingDot(color: DS.good, dimOpacity: 0.55, period: 1.2)
                     Text(L("Watching for calls"))
                         .font(DS.helpText)
                         .foregroundStyle(.secondary)
@@ -383,7 +378,6 @@ struct MeetingsView: View {
         // bar (Settings, shortcuts, appearance, models, updates, quit).
         Button {
             settingsMenuOpen.toggle()
-            Log.d("corner: gear clicked — menuOpen=\(settingsMenuOpen)")
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: "gearshape")
@@ -405,8 +399,6 @@ struct MeetingsView: View {
         .hoverHighlight()
         .popover(isPresented: $settingsMenuOpen, arrowEdge: .top) {
             settingsCornerMenu
-                .onAppear { Log.d("corner: menu presented") }
-                .onDisappear { Log.d("corner: menu dismissed") }
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 10)
@@ -451,10 +443,7 @@ struct MeetingsView: View {
 
     private func cornerRow(_ title: String, trailing: String? = nil,
                            action: @escaping () -> Void) -> some View {
-        Button(action: {
-            Log.d("corner: row tapped — \(title)")
-            action()
-        }) {
+        Button(action: action) {
             HStack(spacing: 10) {
                 Text(title)
                     .font(.system(size: 12.5))
@@ -1196,8 +1185,6 @@ struct MeetingsView: View {
             // leans on the conversation and on the agent's own tools, which
             // search and read the whole archive.
             answer.ask(question, using: oracle)
-        }, newChat: {
-            answer.clear()
         }, onAddKey: {
             connectQuestion = answer.lastQuestion ?? ""
         }, stats: askStats,
@@ -1213,8 +1200,7 @@ struct MeetingsView: View {
             body: L("Your agent answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way."),
             action: L("Turn on reading"),
             explain: MeetingCapability.readMeetings.adds) {
-            MeetingCapability.readMeetings.isOn = true
-            OfferLedger.decided(.readMeetings)
+            MeetingCapability.readMeetings.turnOnByHand()
         }
     }
 
@@ -1296,7 +1282,7 @@ struct MeetingsView: View {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = meeting.url.lastPathComponent
         panel.canCreateDirectories = true
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         // Next runloop turn: activation must settle or the save panel can
         // open behind the frontmost app (same family as the update-alert
         // hang, 2026-08-31).
@@ -1543,24 +1529,20 @@ struct MeetingsView: View {
                     setupRow(1, MeetingCapability.noticeCalls.name,
                              MeetingCapability.noticeCalls.adds,
                              on: Settings.shared.noticeCalls) {
-                        MeetingCapability.noticeCalls.isOn = true
-                        OfferLedger.decided(.noticeCalls)
+                        MeetingCapability.noticeCalls.turnOnByHand()
                     }
                     Divider()
                     setupRow(2, MeetingCapability.audioAndVoicesName,
                              MeetingCapability.audioAndVoicesAdds,
                              on: Settings.shared.recordCallAudio) {
-                        MeetingCapability.recordCallAudio.isOn = true
-                        MeetingCapability.separateVoices.isOn = true
-                        OfferLedger.decided(.recordCallAudio)
-                        OfferLedger.decided(.separateVoices)
+                        MeetingCapability.recordCallAudio.turnOnByHand()
+                        MeetingCapability.separateVoices.turnOnByHand()
                     }
                     Divider()
                     setupRow(3, MeetingCapability.readMeetings.name,
                              MeetingCapability.readMeetings.adds,
                              on: Settings.shared.readMeetings) {
-                        MeetingCapability.readMeetings.isOn = true
-                        OfferLedger.decided(.readMeetings)
+                        MeetingCapability.readMeetings.turnOnByHand()
                     }
                 }
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1570,10 +1552,7 @@ struct MeetingsView: View {
                 .padding(.top, 16)
                 HStack(spacing: 12) {
                     Button(L("Turn all three on")) {
-                        MeetingCapability.allCases.forEach {
-                            $0.isOn = true
-                            OfferLedger.decided($0)
-                        }
+                        MeetingCapability.turnAllOnByHand()
                     }
                     .buttonStyle(.dsPrimary)
                     Text(L("Or leave this and set them up later in Settings."))
@@ -1865,13 +1844,10 @@ struct MeetingsView: View {
                 writeOnce: { writeOneSummary(for: meeting) },
                 turnOnLabel: bothOff ? L("Turn both on") : L("Turn it on"),
                 turnOn: {
-                    MeetingCapability.readMeetings.isOn = true
-                    OfferLedger.decided(.readMeetings)
+                    MeetingCapability.readMeetings.turnOnByHand()
                     if bothOff {
-                        MeetingCapability.recordCallAudio.isOn = true
-                        MeetingCapability.separateVoices.isOn = true
-                        OfferLedger.decided(.recordCallAudio)
-                        OfferLedger.decided(.separateVoices)
+                        MeetingCapability.recordCallAudio.turnOnByHand()
+                        MeetingCapability.separateVoices.turnOnByHand()
                     }
                     backfillSummaries()
                 }))
@@ -1888,10 +1864,8 @@ struct MeetingsView: View {
                 sub: audioOff ? L("Turning both on covers the calls that come next.") : nil,
                 turnOnLabel: audioOff ? L("Turn both on") : nil,
                 turnOn: {
-                    MeetingCapability.recordCallAudio.isOn = true
-                    MeetingCapability.separateVoices.isOn = true
-                    OfferLedger.decided(.recordCallAudio)
-                    OfferLedger.decided(.separateVoices)
+                    MeetingCapability.recordCallAudio.turnOnByHand()
+                    MeetingCapability.separateVoices.turnOnByHand()
                 }))
         }
         return nil
@@ -4385,26 +4359,6 @@ private struct StatusStrip: View {
 /// `TimelineView` gives exactly that, stops itself when the view goes away,
 /// and — unlike a repeatForever animation — has nothing that can keep running
 /// after the dot is gone.
-private struct PulsingDot: View {
-    /// Blinking is motion; someone who has asked the system for less of it
-    /// gets a steady dot, which says "recording" just as well.
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private static let beat: TimeInterval = 0.6
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: Self.beat)) { context in
-            Circle()
-                .fill(Color.red)
-                .frame(width: 8, height: 8)
-                .opacity(reduceMotion || lit(context.date) ? 1 : 0.45)
-        }
-    }
-
-    private func lit(_ date: Date) -> Bool {
-        Int(date.timeIntervalSinceReferenceDate / Self.beat) % 2 == 0
-    }
-}
-
 /// The meeting, minimized: proof that it is still recording, how long it has
 /// run, and the two controls that matter — stop, and back to the transcript.
 ///
@@ -4625,7 +4579,6 @@ private struct TagRow: View {
     let onFilter: (String) -> Void
     @ObservedObject private var loc = Localization.shared
     @State private var adding = false
-    @State private var addHovering = false
     @State private var draft = ""
 
     var body: some View {
@@ -4651,7 +4604,7 @@ private struct TagRow: View {
             .buttonStyle(.plain)
             .hoverHighlight(radius: 11)
             .pointerStyle(.link)
-            .help(L("Add a tag"))
+            .help(L("Add tag"))
             .popover(isPresented: $adding, arrowEdge: .bottom) { addPopover }
             Spacer(minLength: 0)
         }

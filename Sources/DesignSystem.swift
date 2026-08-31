@@ -178,6 +178,36 @@ enum DS {
     }
 }
 
+// MARK: - The one blinking dot
+
+/// "Something is live here", drawn ONE way everywhere (the recording rows,
+/// the watch footer, the call card — three dialects before the 2026-08-31
+/// consolidation). A periodic TimelineView, not a repeatForever animation:
+/// it steps about twice a second, stops itself when the view goes away, and
+/// leaves nothing running behind a dismissed surface.
+struct PulsingDot: View {
+    var color: Color = DS.record
+    var dimOpacity: Double = 0.45
+    var period: TimeInterval = 0.6
+
+    /// Blinking is motion; someone who has asked the system for less of it
+    /// gets a steady dot, which says "live" just as well.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: period)) { context in
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+                .opacity(reduceMotion || lit(context.date) ? 1 : dimOpacity)
+        }
+    }
+
+    private func lit(_ date: Date) -> Bool {
+        Int(date.timeIntervalSinceReferenceDate / period) % 2 == 0
+    }
+}
+
 // MARK: - Interaction feedback (one vocabulary for hand-built controls)
 
 /// Hover wash for hand-built rows and buttons: DS.hoverFill behind a rounded

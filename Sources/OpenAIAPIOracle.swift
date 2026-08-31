@@ -23,9 +23,10 @@ struct OpenAIAPIOracle: MeetingOracle {
     /// rest is headroom so an answer never stops mid-sentence.
     private let maxTokens = 4096
 
-    /// Medium — the model's own default, stated so the choice is visible. The
-    /// work is reading five passages and answering from them, not solving
-    /// anything, and past ten seconds a person stops waiting.
+    /// Medium — the model's own default, stated so the choice is visible.
+    /// The work is an agentic list/search/read loop over the archive with a
+    /// grounded answer at the end, and past ten seconds a person stops
+    /// waiting.
     private let effort = "medium"
 
     var isAvailable: Bool { APIKey.current(.openai) != nil }

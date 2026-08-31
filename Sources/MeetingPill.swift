@@ -24,6 +24,8 @@ final class MeetingPill {
     /// The user dragged the pill this session — following is off until the
     /// pill is next shown.
     private var pinnedByDrag = false
+    /// The didMove observation's token — held for the panel's lifetime.
+    private var moveObserver: (any NSObjectProtocol)?
     /// Repositions the pill onto the display the user is working on.
     private var followTimer: Timer?
     /// Ticks the mouse has been on a different display than the pill.
@@ -174,7 +176,10 @@ final class MeetingPill {
         // A drag is a choice worth keeping ACROSS launches, not just for the
         // life of the process — the next meeting's pill appears where the last
         // one was left.
-        NotificationCenter.default.addObserver(
+        // The token must be KEPT — a discarded block-observer token
+        // deallocates and the observation dies silently (the corner-menu
+        // bug's pattern, 2026-08-31).
+        moveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification, object: panel, queue: .main
         ) { [weak self] _ in
             guard let self, !self.positioningProgrammatically,

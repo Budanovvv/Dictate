@@ -516,7 +516,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func debugCloseMenu() { item.menu?.cancelTracking() }
 
     @objc private func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         // (The About panel orders itself front on the next turn via the
         // dispatch below — a status-item click does not activate the app,
         // and a panel shown in the same turn can land behind everything.)

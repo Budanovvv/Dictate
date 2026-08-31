@@ -195,6 +195,10 @@ enum Paster {
             AXUIElementCreateSystemWide(),
             kAXFocusedUIElementAttribute as CFString, &focusedRef
         ) == .success, let focused = focusedRef else { return nil }
+        // A guarded cast, not as!: the attribute is documented to be an
+        // AXUIElement, but a misbehaving client returning something else
+        // must cost us a nil, not a crash.
+        guard CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
         return (focused as! AXUIElement)
     }
 

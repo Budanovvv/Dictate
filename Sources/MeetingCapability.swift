@@ -55,6 +55,18 @@ enum MeetingCapability: String, CaseIterable {
         }
     }
 
+    /// The one way a SURFACE turns a capability on: the switch flips and
+    /// the ledger records a human decision in the same breath — the two
+    /// lines were hand-paired at ten call sites before this existed.
+    func turnOnByHand() {
+        isOn = true
+        OfferLedger.decided(self)
+    }
+
+    static func turnAllOnByHand() {
+        allCases.forEach { $0.turnOnByHand() }
+    }
+
     /// Voice separation is meaningless without the call audio it separates
     /// — rendered nested and dimmed under its parent, never as a peer
     /// (design section 9: needs another switch first).

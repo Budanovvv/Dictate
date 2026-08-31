@@ -888,7 +888,7 @@ final class MeetingSummaries: ObservableObject {
     /// Whether the model is currently busy with a summary. Read by the section
     /// backfill, which shares the one on-device model and must not race it
     /// into the same 4096-token window from two directions.
-    private(set) var running = false
+    @Published private(set) var running = false
     /// Meetings the model has already declined once this run.
     private var refused: Set<URL> = []
 

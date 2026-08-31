@@ -1,6 +1,35 @@
 import AppKit
 import SwiftUI
 
+/// The app's top-of-screen notice chassis, shared by the call card and the
+/// update notice (they were 18 duplicated lines before 2026-08-31): a
+/// borderless non-activating panel at status-bar level that joins every
+/// Space, sized to its content and centred under the menu bar. Callers
+/// order it front and keep the reference.
+@MainActor
+func makeTopNoticePanel(hosting: NSView) -> NSPanel {
+    let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 10, height: 10),
+        styleMask: [.borderless, .nonactivatingPanel],
+        backing: .buffered, defer: false
+    )
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = true
+    panel.level = .statusBar
+    panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    panel.isReleasedWhenClosed = false
+    hosting.frame.size = hosting.fittingSize
+    panel.contentView = hosting
+    panel.setContentSize(hosting.fittingSize)
+    if let screen = NSScreen.main {
+        let v = screen.visibleFrame
+        panel.setFrameOrigin(NSPoint(x: v.midX - panel.frame.width / 2,
+                                     y: v.maxY - panel.frame.height - 12))
+    }
+    return panel
+}
+
 /// The manual update check's answer: one line in a small panel at the top
 /// of the screen — the same always-visible manners as the call card
 /// (status-bar level, every Space, shown regardless of activation), because
@@ -14,26 +43,8 @@ enum UpdateNotice {
 
     static func show(_ line: String) {
         hide()
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 10, height: 10),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isReleasedWhenClosed = false
-        let hosting = NSHostingView(rootView: NoticeCard(line: line) { hide() })
-        hosting.frame.size = hosting.fittingSize
-        panel.contentView = hosting
-        panel.setContentSize(hosting.fittingSize)
-        if let screen = NSScreen.main {
-            let v = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: v.midX - panel.frame.width / 2,
-                                         y: v.maxY - panel.frame.height - 12))
-        }
+        let panel = makeTopNoticePanel(
+            hosting: NSHostingView(rootView: NoticeCard(line: line) { hide() }))
         panel.orderFrontRegardless()
         self.panel = panel
         timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { _ in

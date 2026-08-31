@@ -89,8 +89,16 @@ final class MainThreadWatchdog {
         if age >= threshold {
             if !captured {
                 captured = true
-                capture(stuckFor: age)
+                // Rescue BEFORE the sample: the sample takes 5+ seconds and
+                // the rescue is the one act that can end the hang.
                 rescueInvisibleModal()
+                capture(stuckFor: age)
+                // The sample itself blocked this queue for seconds — without
+                // a fresh stamp the next tick reads that as a sleep gap,
+                // re-arms, and samples the same continuing hang again.
+                lock.lock()
+                lastTick = ProcessInfo.processInfo.systemUptime
+                lock.unlock()
             }
         } else {
             captured = false   // main answered again — re-arm for the next hang
@@ -106,14 +114,21 @@ final class MainThreadWatchdog {
     /// modal RUNLOOP still spins — a runloop-based perform in common modes
     /// gets serviced where a dispatch_async never would.
     private func rescueInvisibleModal() {
-        RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+        // CFRunLoopPerformBlock + explicit wake, not RunLoop.perform:
+        // RunLoop is documented non-thread-safe, and a loop asleep in
+        // mach_msg needs the wake-up call or the block sits unserviced.
+        CFRunLoopPerformBlock(CFRunLoopGetMain(),
+                              [RunLoop.Mode.common.rawValue as CFString,
+                               RunLoop.Mode.modalPanel.rawValue as CFString] as CFArray) {
             guard let modal = NSApp.modalWindow else { return }
             Log.d("watchdog: modal rescue — forcing \"\(modal.title)\" front")
-            modal.collectionBehavior.insert(.moveToActiveSpace)
-            modal.collectionBehavior.insert(.fullScreenAuxiliary)
+            // Set, not insert: moveToActiveSpace is documented mutually
+            // exclusive with canJoinAllSpaces, and the window may carry it.
+            modal.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             modal.level = .modalPanel
             modal.orderFrontRegardless()
         }
+        CFRunLoopWakeUp(CFRunLoopGetMain())
     }
 
     private func beat() {
@@ -138,8 +153,8 @@ final class MainThreadWatchdog {
         let tally = dir.appendingPathComponent("hangs.log")
         if let h = try? FileHandle(forWritingTo: tally) {
             defer { try? h.close() }
-            h.seekToEndOfFile()
-            h.write(Data(summary.utf8))
+            _ = try? h.seekToEnd()
+            try? h.write(contentsOf: Data(summary.utf8))
         } else {
             try? summary.write(to: tally, atomically: true, encoding: .utf8)
         }

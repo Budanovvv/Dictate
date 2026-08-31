@@ -263,7 +263,7 @@ struct OnboardingView: View {
                             let secondsLeft = Int((totalMB - mbNow) / ema)
                             let eta = secondsLeft >= 90
                                 ? Lf("%d min", (secondsLeft + 30) / 60)
-                                : Lf("%d sec", max(secondsLeft, 1))
+                                : Lf("%d s", max(secondsLeft, 1))
                             rate = Lf("%@ MB/s · about %@ left",
                                       String(format: "%.1f", ema), eta)
                         }
@@ -571,7 +571,7 @@ private struct HotkeyStep: View {
                 }
                 if language != "en" {
                     Divider()
-                    formRow(label: L("Translate into")) {
+                    formRow(label: L("Translate to")) {
                         TranslateTargetPicker(selection: $translateTarget)
                             .onChange(of: translateTarget) {
                                 Settings.shared.translateTargetCode = $0
