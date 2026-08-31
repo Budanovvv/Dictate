@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var settingsWindow: NSWindow?
     /// Corner-menu notification tokens — alive for the app's lifetime.
     private var menuObservers: [any NSObjectProtocol] = []
+    /// A hand-started update probe is in flight — the delegate answers with
+    /// a card only for these; the daily background checks stay silent.
+    private var manualUpdateProbe = false
     /// Invisible 1×1 panel hosting the Apple Translation session (the
     /// framework only works through a SwiftUI view — see AppleTranslator).
     private var translatorHostPanel: NSPanel?
@@ -622,7 +625,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             forName: .init("dictate.checkUpdates"), object: nil, queue: .main
         ) { [weak self] _ in
             Log.d("corner: checkUpdates notification received")
-            self?.activateThenRun { self?.updater.checkForUpdates(nil) }
+            self?.manualUpdateCheck()
         })
 
         applyDebugShot()
@@ -817,6 +820,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         }
     }
 
+    // MARK: - Sparkle: the manual probe's verdicts
+
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        guard manualUpdateProbe else { return }
+        manualUpdateProbe = false
+        DispatchQueue.main.async { [weak self] in
+            Log.d("updates: manual probe — v\(item.displayVersionString) available")
+            UpdateNotice.show(Lf("Update %@ is on its way — downloading now, it installs itself soon.",
+                                 item.displayVersionString))
+            // The probe only looks; this starts Sparkle's silent
+            // download-and-stage, the same path the daily check uses.
+            self?.updater.updater.checkForUpdatesInBackground()
+        }
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
+        guard manualUpdateProbe else { return }
+        manualUpdateProbe = false
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        DispatchQueue.main.async {
+            Log.d("updates: manual probe — up to date")
+            UpdateNotice.show(Lf("You're up to date — Dictate %@ is the newest version.", version))
+        }
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+                 error: Error?) {
+        // The probe failed outright (offline, bad appcast) — without this
+        // the flag would stay armed and the button would go dead.
+        guard manualUpdateProbe, error != nil else { return }
+        manualUpdateProbe = false
+        DispatchQueue.main.async {
+            Log.d("updates: manual probe failed — \(error!.localizedDescription)")
+            UpdateNotice.show(L("Couldn't reach the update server. Try again once you're online."))
+        }
+    }
+
     // MARK: - Sparkle: apply staged updates without waiting for a quit
 
     /// A silent update was downloaded and staged for install-on-quit. A menu-bar
@@ -956,7 +996,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         let view = SettingsView(
             onHotkeyChanged: { [weak self] in self?.dictation.restart() },
             onCheckForUpdates: { [weak self] in
-                self?.activateThenRun { self?.updater.checkForUpdates(nil) }
+                self?.manualUpdateCheck()
             })
         let window = makeWindow(title: L("Dictate Settings"), content: view,
                                 activating: false)
@@ -1006,32 +1046,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         return window
     }
 
-    /// Runs work that is about to go MODAL (Sparkle's alerts) with a
-    /// rescue armed: the alert of a non-activated app opens on some other
-    /// Space, behind other windows, invisible — and its modal loop then
-    /// reads as a hang (three times on 2026-08-31). A timer added to the
-    /// MODAL runloop modes still fires inside runModal (the main dispatch
-    /// queue does not), finds the modal window and drags it to the user:
-    /// modal level, onto the active Space, front regardless.
-    private func activateThenRun(_ work: @escaping () -> Void) {
-        NSApp.setActivationPolicy(.regular)
-        var attempts = 0
-        let rescue = Timer(timeInterval: 0.5, repeats: true) { timer in
-            attempts += 1
-            if let modal = NSApp.modalWindow {
-                Log.d("updates: modal rescue — forcing \"\(modal.title)\" onto the active Space")
-                modal.collectionBehavior.insert(.moveToActiveSpace)
-                modal.collectionBehavior.insert(.fullScreenAuxiliary)
-                modal.level = .modalPanel
-                modal.orderFrontRegardless()
-                timer.invalidate()
-            } else if attempts > 40 {
-                timer.invalidate()   // no modal appeared in 20 s — nothing to save
-            }
-        }
-        RunLoop.main.add(rescue, forMode: .common)
-        RunLoop.main.add(rescue, forMode: .modalPanel)
-        DispatchQueue.main.async { work() }
+    /// The manual "Check for updates": a HEADLESS probe answered by our own
+    /// card, never Sparkle's modal alert. That alert cost four "the app is
+    /// hung" reports in one day (2026-08-31): shown from a never-active app
+    /// it opens on another Space, invisible, and runModal blocks the whole
+    /// app until someone dismisses a window they cannot see. The probe uses
+    /// the same appcast; the delegate callbacks below carry the verdict.
+    private func manualUpdateCheck() {
+        guard !manualUpdateProbe else { return }
+        manualUpdateProbe = true
+        Log.d("updates: manual probe started")
+        updater.updater.checkForUpdateInformation()
     }
 
     private func present(_ window: NSWindow, over anchor: NSWindow? = nil) {

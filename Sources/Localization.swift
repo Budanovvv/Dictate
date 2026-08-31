@@ -101,6 +101,9 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Не удалось связаться с сервером обновлений. Попробуйте, когда появится сеть.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "Обновление %@ уже в пути — скачивается и вскоре установится само.",
+        "You're up to date — Dictate %@ is the newest version.": "У вас последняя версия — новее Dictate %@ нет.",
         "Recorded meetings appear here.": "Записанные встречи появятся здесь.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Здесь только ваш микрофон — вторая сторона звонка не записывалась, и её не восстановить.",
         "Turning both on covers the calls that come next.": "Если включить оба, следующие звонки будут записаны полностью.",
@@ -570,6 +573,9 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Не вдалося зв'язатися з сервером оновлень. Спробуйте, коли з'явиться мережа.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "Оновлення %@ вже в дорозі — завантажується і невдовзі встановиться саме.",
+        "You're up to date — Dictate %@ is the newest version.": "У вас остання версія — новішої за Dictate %@ немає.",
         "Recorded meetings appear here.": "Записані зустрічі з'являться тут.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Тут лише ваш мікрофон — друга сторона дзвінка не записувалась, і її не відновити.",
         "Turning both on covers the calls that come next.": "Якщо увімкнути обидва, наступні дзвінки буде записано повністю.",
@@ -1030,6 +1036,9 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "No se pudo contactar el servidor de actualizaciones. Inténtelo cuando esté en línea.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "La actualización %@ está en camino: descargando ahora, se instalará sola en breve.",
+        "You're up to date — Dictate %@ is the newest version.": "Está al día: Dictate %@ es la versión más reciente.",
         "Recorded meetings appear here.": "Las reuniones grabadas aparecen aquí.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Esto es solo su micrófono: la otra parte de la llamada no se grabó y no se puede recuperar.",
         "Turning both on covers the calls that come next.": "Al activar ambos, las próximas llamadas quedan cubiertas.",
@@ -1499,6 +1508,9 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Não foi possível contatar o servidor de atualizações. Tente de novo quando estiver online.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "A atualização %@ está a caminho — baixando agora, se instala sozinha em breve.",
+        "You're up to date — Dictate %@ is the newest version.": "Você está em dia — Dictate %@ é a versão mais recente.",
         "Recorded meetings appear here.": "As reuniões gravadas aparecem aqui.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Isto é só o seu microfone — o outro lado da chamada não foi gravado e não pode ser recuperado.",
         "Turning both on covers the calls that come next.": "Ao ativar ambos, as próximas chamadas ficam cobertas.",
@@ -1968,6 +1980,9 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Impossible de joindre le serveur de mise à jour. Réessayez une fois en ligne.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "La mise à jour %@ arrive — téléchargement en cours, elle s'installera d'elle-même bientôt.",
+        "You're up to date — Dictate %@ is the newest version.": "Vous êtes à jour — Dictate %@ est la version la plus récente.",
         "Recorded meetings appear here.": "Les réunions enregistrées apparaissent ici.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Ceci n'est que votre micro — l'autre partie de l'appel n'a pas été enregistrée et ne peut pas être récupérée.",
         "Turning both on covers the calls that come next.": "En activant les deux, les prochains appels seront couverts.",
@@ -2437,6 +2452,9 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Der Update-Server ist nicht erreichbar. Versuchen Sie es, sobald Sie online sind.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "Update %@ ist unterwegs — lädt gerade und installiert sich bald von selbst.",
+        "You're up to date — Dictate %@ is the newest version.": "Sie sind auf dem neuesten Stand — Dictate %@ ist die aktuellste Version.",
         "Recorded meetings appear here.": "Aufgenommene Meetings erscheinen hier.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Das ist nur Ihr Mikrofon — die Gegenseite des Anrufs wurde nicht aufgenommen und ist nicht wiederherstellbar.",
         "Turning both on covers the calls that come next.": "Beide eingeschaltet decken die nächsten Anrufe ab.",
@@ -2906,6 +2924,9 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "无法连接更新服务器。联网后再试一次。",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "更新 %@ 正在路上——正在下载，稍后会自动安装。",
+        "You're up to date — Dictate %@ is the newest version.": "已是最新版本——Dictate %@ 就是最新版。",
         "Recorded meetings appear here.": "录制的会议会显示在这里。",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "这里只有你的麦克风——通话对方没有被录下，无法找回。",
         "Turning both on covers the calls that come next.": "两项都开启后，之后的通话会被完整记录。",
@@ -3375,6 +3396,9 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "アップデートサーバーに接続できません。オンラインになったらもう一度お試しください。",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "アップデート %@ が届きます — ダウンロード中で、まもなく自動的にインストールされます。",
+        "You're up to date — Dictate %@ is the newest version.": "最新の状態です — Dictate %@ が最新バージョンです。",
         "Recorded meetings appear here.": "録音したミーティングはここに表示されます。",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "これはあなたのマイクのみです — 通話の相手側は録音されておらず、取り戻せません。",
         "Turning both on covers the calls that come next.": "両方オンにすると、次の通話からはすべて記録されます。",
@@ -3844,6 +3868,9 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "업데이트 서버에 연결할 수 없습니다. 온라인 상태가 되면 다시 시도하세요.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "업데이트 %@가 오는 중입니다 — 지금 다운로드 중이며 곧 자동 설치됩니다.",
+        "You're up to date — Dictate %@ is the newest version.": "최신 상태입니다 — Dictate %@가 최신 버전입니다.",
         "Recorded meetings appear here.": "녹음된 회의가 여기에 표시됩니다.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "여기에는 내 마이크만 담겨 있습니다 — 통화 상대방은 녹음되지 않았고 되돌릴 수 없습니다.",
         "Turning both on covers the calls that come next.": "둘 다 켜면 다음 통화부터는 모두 담깁니다.",
@@ -4313,6 +4340,9 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Không thể kết nối máy chủ cập nhật. Thử lại khi có mạng.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "Bản cập nhật %@ đang trên đường đến — đang tải xuống, sẽ tự cài đặt sớm.",
+        "You're up to date — Dictate %@ is the newest version.": "Bạn đang dùng bản mới nhất — Dictate %@ là phiên bản mới nhất.",
         "Recorded meetings appear here.": "Các cuộc họp đã ghi sẽ xuất hiện ở đây.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Đây chỉ là micrô của bạn — phía bên kia của cuộc gọi không được ghi âm và không thể khôi phục.",
         "Turning both on covers the calls that come next.": "Bật cả hai sẽ bao trọn các cuộc gọi tiếp theo.",
@@ -4782,6 +4812,9 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Couldn't reach the update server. Try again once you're online.": "Hindi maabot ang update server. Subukan ulit kapag online ka na.",
+        "Update %@ is on its way — downloading now, it installs itself soon.": "Parating na ang update %@ — dina-download ngayon, mag-i-install ito mag-isa.",
+        "You're up to date — Dictate %@ is the newest version.": "Updated ka na — ang Dictate %@ ang pinakabagong bersyon.",
         "Recorded meetings appear here.": "Dito lalabas ang mga na-record na meeting.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Mikropono mo lang ito — ang kabilang panig ng tawag ay hindi na-record at hindi na maibabalik.",
         "Turning both on covers the calls that come next.": "Kapag binuksan pareho, sakop na ang mga susunod na tawag.",
