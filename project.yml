@@ -147,6 +147,9 @@ targets:
       - path: Sources/MeetingTextEngine.swift
       - path: Sources/LocalTextEngine.swift
       - path: Sources/Log.swift
+      # The canonical capability strings and the offers' central ceiling —
+      # the ledger's ignore/decline/decided rules are tested here.
+      - path: Sources/MeetingCapability.swift
       - path: Sources/WhisperEngine.swift
       - path: Sources/RecordingHUD.swift
       # The mark family RecordingHUD draws its state glyphs with.

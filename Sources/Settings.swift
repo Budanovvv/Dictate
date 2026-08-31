@@ -120,14 +120,6 @@ final class Settings {
 
     /// The not-being-recorded offer: how many times it was declined (two
     /// retires it), and the explicit "don't offer this again".
-    var callOfferDeclines: Int {
-        get { d.integer(forKey: "callOfferDeclines") }
-        set { d.set(newValue, forKey: "callOfferDeclines") }
-    }
-    var callOfferRetired: Bool {
-        get { d.bool(forKey: "callOfferRetired") }
-        set { d.set(newValue, forKey: "callOfferRetired") }
-    }
 
     /// Name scheduled meetings from the calendar instead of from the model.
     /// Off until asked for: turning it on is what triggers the macOS calendar

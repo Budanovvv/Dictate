@@ -1125,8 +1125,9 @@ struct MeetingsView: View {
         askGatePane(
             body: L("Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way."),
             action: L("Turn on reading"),
-            explain: L("This is what writes the summary and the outline, and what answers questions in Ask. Off, you get the raw transcript and Ask stays unavailable — nothing is sent anywhere either way.")) {
-            Settings.shared.readMeetings = true
+            explain: MeetingCapability.readMeetings.adds) {
+            MeetingCapability.readMeetings.isOn = true
+            OfferLedger.decided(.readMeetings)
         }
     }
 
@@ -1433,24 +1434,32 @@ struct MeetingsView: View {
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
+                // Row names and why-texts are the canonical capability
+                // strings (MeetingCapability) — the same words Settings
+                // shows, because two descriptions of one switch is how
+                // people stop trusting either.
                 VStack(spacing: 0) {
-                    setupRow(1, L("Notice calls and record them"),
-                             L("Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there."),
+                    setupRow(1, MeetingCapability.noticeCalls.name,
+                             MeetingCapability.noticeCalls.adds,
                              on: Settings.shared.noticeCalls) {
-                        Settings.shared.noticeCalls = true
+                        MeetingCapability.noticeCalls.isOn = true
+                        OfferLedger.decided(.noticeCalls)
                     }
                     Divider()
-                    setupRow(2, L("Record the call audio, and separate the voices"),
-                             L("Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns."),
+                    setupRow(2, MeetingCapability.audioAndVoicesName,
+                             MeetingCapability.audioAndVoicesAdds,
                              on: Settings.shared.recordCallAudio) {
-                        Settings.shared.recordCallAudio = true
-                        Settings.shared.separateVoices = true
+                        MeetingCapability.recordCallAudio.isOn = true
+                        MeetingCapability.separateVoices.isOn = true
+                        OfferLedger.decided(.recordCallAudio)
+                        OfferLedger.decided(.separateVoices)
                     }
                     Divider()
-                    setupRow(3, L("Let the model read your meetings"),
-                             L("This is what writes the summary and the outline, and what answers questions in Ask. Off, you get the raw transcript and Ask stays unavailable — nothing is sent anywhere either way."),
+                    setupRow(3, MeetingCapability.readMeetings.name,
+                             MeetingCapability.readMeetings.adds,
                              on: Settings.shared.readMeetings) {
-                        Settings.shared.readMeetings = true
+                        MeetingCapability.readMeetings.isOn = true
+                        OfferLedger.decided(.readMeetings)
                     }
                 }
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1460,10 +1469,10 @@ struct MeetingsView: View {
                 .padding(.top, 16)
                 HStack(spacing: 12) {
                     Button(L("Turn all three on")) {
-                        Settings.shared.noticeCalls = true
-                        Settings.shared.recordCallAudio = true
-                        Settings.shared.separateVoices = true
-                        Settings.shared.readMeetings = true
+                        MeetingCapability.allCases.forEach {
+                            $0.isOn = true
+                            OfferLedger.decided($0)
+                        }
                     }
                     .buttonStyle(.dsPrimary)
                     Text(L("Or leave this and set them up later in Settings."))
@@ -1742,10 +1751,13 @@ struct MeetingsView: View {
         let micOnly = !Settings.shared.recordCallAudio
             && !meeting.entries.contains { !$0.isYou }
         return AnyView(BareTranscriptBanner(micOnly: micOnly) {
-            Settings.shared.readMeetings = true
+            MeetingCapability.readMeetings.isOn = true
+            OfferLedger.decided(.readMeetings)
             if micOnly {
-                Settings.shared.recordCallAudio = true
-                Settings.shared.separateVoices = true
+                MeetingCapability.recordCallAudio.isOn = true
+                MeetingCapability.separateVoices.isOn = true
+                OfferLedger.decided(.recordCallAudio)
+                OfferLedger.decided(.separateVoices)
             }
             backfillSummaries()
         })

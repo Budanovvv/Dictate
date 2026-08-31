@@ -347,10 +347,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             }
             return
         }
-        guard !Settings.shared.callOfferRetired,
-              Settings.shared.callOfferDeclines < 2 else { return }
-        Log.d("call: offering (noticing off, declines \(Settings.shared.callOfferDeclines))")
+        guard OfferLedger.mayOffer(.recordCallAudio) else { return }
+        Log.d("call: offering (noticing off)")
         callPrompt.show(platform: platform, style: .offer) { [weak self] in
+            // Accepting the offer IS turning the capability on — a "Record
+            // this call" that then recorded only the microphone would be
+            // the silent degradation section 9 forbids.
+            MeetingCapability.recordCallAudio.isOn = true
+            MeetingCapability.separateVoices.isOn = true
+            OfferLedger.decided(.recordCallAudio)
             self?.startMeetingSession(asPill: true, fromCallPrompt: true)
         }
     }

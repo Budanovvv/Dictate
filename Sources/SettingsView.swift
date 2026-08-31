@@ -449,6 +449,7 @@ struct SettingsView: View {
                         Button(L("Turn all on")) {
                             noticeCalls = true; recordCallAudio = true
                             separateVoices = true; readMeetings = true
+                            MeetingCapability.allCases.forEach { OfferLedger.decided($0) }
                         }
                         .buttonStyle(.dsSmall)
                         .controlSize(.small)
@@ -460,33 +461,49 @@ struct SettingsView: View {
                 // touch a call: notice it, record it, tell voices apart, read
                 // it (design MeetingsOff). Each why-text says what the switch
                 // ADDS, because "on" is a decision about this Mac's ears.
+                // Names and why-texts come from the one canonical set
+                // (MeetingCapability) — this pane renders them, it does not
+                // write them. A hand-flipped switch is a DECISION, which is
+                // what retires the capability from ever being offered.
                 LabeledContent {
                     Toggle("", isOn: $noticeCalls).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: noticeCalls) { Settings.shared.noticeCalls = $0 }
+                        .onChange(of: noticeCalls) {
+                            Settings.shared.noticeCalls = $0
+                            OfferLedger.decided(.noticeCalls)
+                        }
                 } label: {
-                    rowLabel(L("Notice when a call starts"),
-                             L("With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything."))
+                    rowLabel(MeetingCapability.noticeCalls.name,
+                             MeetingCapability.noticeCalls.adds)
                 }
                 LabeledContent {
                     Toggle("", isOn: $recordCallAudio).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: recordCallAudio) { Settings.shared.recordCallAudio = $0 }
+                        .onChange(of: recordCallAudio) {
+                            Settings.shared.recordCallAudio = $0
+                            OfferLedger.decided(.recordCallAudio)
+                        }
                 } label: {
-                    rowLabel(L("Record the call audio too"),
-                             L("Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well."))
+                    rowLabel(MeetingCapability.recordCallAudio.name,
+                             MeetingCapability.recordCallAudio.adds)
                 }
                 LabeledContent {
                     Toggle("", isOn: $separateVoices).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: separateVoices) { Settings.shared.separateVoices = $0 }
+                        .onChange(of: separateVoices) {
+                            Settings.shared.separateVoices = $0
+                            OfferLedger.decided(.separateVoices)
+                        }
                 } label: {
-                    rowLabel(L("Separate the voices"),
-                             L("Turns one block of text into named turns, so you can see who committed to what. Names are yours to set and can be changed after the fact."))
+                    rowLabel(MeetingCapability.separateVoices.name,
+                             MeetingCapability.separateVoices.adds)
                 }
                 LabeledContent {
                     Toggle("", isOn: $readMeetings).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: readMeetings) { Settings.shared.readMeetings = $0 }
+                        .onChange(of: readMeetings) {
+                            Settings.shared.readMeetings = $0
+                            OfferLedger.decided(.readMeetings)
+                        }
                 } label: {
-                    rowLabel(L("Write a summary and outline"),
-                             L("An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it."))
+                    rowLabel(MeetingCapability.readMeetings.name,
+                             MeetingCapability.readMeetings.adds)
                 }
 
                 // The calendar row carries its own permission. Turning it on is

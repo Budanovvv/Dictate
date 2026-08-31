@@ -24,9 +24,13 @@ final class CallPrompt {
     enum Style { case prompt, offer }
 
     private var panel: NSPanel?
+    /// Which face the visible card wears — an unanswered OFFER counts
+    /// against the two-mentions ceiling when the call ends under it.
+    private var shownStyle: Style?
 
     func show(platform: String?, style: Style, record: @escaping () -> Void) {
         hide()
+        shownStyle = style
         let firstEver = style == .prompt && !Settings.shared.meetingConsentSeen
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 10),
@@ -54,14 +58,15 @@ final class CallPrompt {
             },
             onDecline: { [weak self] in
                 Log.d("call: prompt → not this one")
-                if style == .offer {
-                    Settings.shared.callOfferDeclines += 1
-                }
+                // Any explicit answer retires the offer (designer's Q3
+                // answer, 2026-08-31): the ceiling governs ignored cards
+                // only.
+                if style == .offer { OfferLedger.declined(.recordCallAudio) }
                 self?.hide()
             },
             onNever: { [weak self] in
                 Log.d("call: offer → never again")
-                Settings.shared.callOfferRetired = true
+                OfferLedger.declined(.recordCallAudio)
                 self?.hide()
             }))
         hosting.frame.size = hosting.fittingSize
@@ -81,12 +86,14 @@ final class CallPrompt {
     func callOver() {
         guard panel != nil else { return }
         Log.d("call: prompt → dismissed, call over")
+        if shownStyle == .offer { OfferLedger.shownIgnored(.recordCallAudio) }
         hide()
     }
 
     func hide() {
         panel?.orderOut(nil)
         panel = nil
+        shownStyle = nil
     }
 }
 
@@ -133,7 +140,7 @@ private struct CallPromptCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if style == .offer {
-                Text(L("Call recording is off, so this one is passing untranscribed. Turning it on gives you a searchable transcript and a summary afterwards, kept on this Mac."))
+                Text(MeetingCapability.recordOfferBody)
                     .font(.system(size: 11.5))
                     .lineSpacing(2.5)
                     .foregroundStyle(.secondary)

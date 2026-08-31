@@ -102,7 +102,6 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 extension Localization {
     static let ru: [String: String] = [
         "%@ call — not being recorded": "Звонок в %@ — не записывается",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Час транскрипта сплошной стеной не читается. Это создаёт абзац резюме и оглавление, которые стоят над ним.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "«Спросить» отвечает на вопросы по всему, что вы записали, — «что мы решили по дате заморозки» — и называет митинг и момент, откуда взят ответ. Для этого нужна модель, которая читает ваши митинги, а она сейчас выключена. В любом случае с этого Mac ничего не уходит.",
         "Ask is off": "«Спросить» выключено",
         "Asked once. After this, the panel is the short version above.": "Спрашивается один раз. Дальше панель будет короткой, как выше.",
@@ -117,7 +116,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Здесь всё выключено, и звонки проходят незамеченными",
         "Let the model read your meetings": "Разрешить модели читать ваши митинги",
         "Not watching for calls": "Звонки не отслеживаются",
-        "Notice calls and record them": "Замечать звонки и записывать их",
         "Notice when a call starts": "Замечать, когда начинается звонок",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Выключено — в записи только ваш микрофон: ваша половина разговора одним сплошным блоком. Включено — обе стороны расшифровываются как реплики с именами.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Выключено — только ваш микрофон: ваша половина разговора. Включено — расшифровывается и вторая сторона.",
@@ -145,8 +143,6 @@ extension Localization {
         "Watching for calls": "Звонки отслеживаются",
         "What it does": "Что это делает",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Когда включено, при начале звонка появляется небольшая панель, и вы решаете там — не нужно помнить, что что-то надо запускать.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Без этого список остаётся пустым, пока вы сами не нажмёте «Записать». Включено — при начале звонка появляется небольшая панель, и вы решаете там.",
-        "Write a summary and outline": "Писать резюме и оглавление",
         "listening": "слушаю",
         "off": "выкл",
         "Back to the top": "В начало",
@@ -560,7 +556,6 @@ extension Localization {
 
     static let uk: [String: String] = [
         "%@ call — not being recorded": "Дзвінок у %@ — не записується",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Годину транскрипту суцільною стіною не прочитати. Це створює абзац резюме та зміст, що стоять над ним.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "«Запитати» відповідає на запитання по всьому, що ви записали, — «що ми вирішили щодо дати заморозки» — і називає зустріч та момент, звідки взято відповідь. Для цього потрібна модель, яка читає ваші зустрічі, а вона зараз вимкнена. У будь-якому разі з цього Mac нічого не йде.",
         "Ask is off": "«Запитати» вимкнено",
         "Asked once. After this, the panel is the short version above.": "Запитується один раз. Далі панель буде короткою, як вище.",
@@ -575,7 +570,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Тут усе вимкнено, і дзвінки минають непоміченими",
         "Let the model read your meetings": "Дозволити моделі читати ваші зустрічі",
         "Not watching for calls": "Дзвінки не відстежуються",
-        "Notice calls and record them": "Помічати дзвінки та записувати їх",
         "Notice when a call starts": "Помічати, коли починається дзвінок",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Вимкнено — у записі лише ваш мікрофон: ваша половина розмови одним суцільним блоком. Увімкнено — обидві сторони розшифровуються як репліки з іменами.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Вимкнено — лише ваш мікрофон: ваша половина розмови. Увімкнено — розшифровується і друга сторона.",
@@ -603,8 +597,6 @@ extension Localization {
         "Watching for calls": "Дзвінки відстежуються",
         "What it does": "Що це робить",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Коли увімкнено, на початку дзвінка з'являється невелика панель, і ви вирішуєте там — не треба пам'ятати, що щось слід запускати.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Без цього список лишається порожнім, поки ви самі не натиснете «Записати». Увімкнено — на початку дзвінка з'являється невелика панель, і ви вирішуєте там.",
-        "Write a summary and outline": "Писати резюме та зміст",
         "listening": "слухаю",
         "off": "вимк",
         "Back to the top": "На початок",
@@ -1009,7 +1001,6 @@ extension Localization {
 
     static let es: [String: String] = [
         "%@ call — not being recorded": "Llamada de %@ — no se está grabando",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Una hora de transcripción no se puede leer como un muro. Esto produce el párrafo y el esquema que aparecen encima.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "Preguntar responde a preguntas sobre todo lo que ha grabado — «qué decidimos sobre la fecha de congelación» — y cita la reunión y el momento de donde salió. Necesita el modelo que lee sus reuniones, que ahora está desactivado. En cualquier caso, nada sale de este Mac.",
         "Ask is off": "Preguntar está desactivado",
         "Asked once. After this, the panel is the short version above.": "Se pregunta una sola vez. Después, el panel es la versión corta de arriba.",
@@ -1024,7 +1015,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Todo aquí está desactivado, así que las llamadas pasan desapercibidas",
         "Let the model read your meetings": "Dejar que el modelo lea sus reuniones",
         "Not watching for calls": "Sin vigilar llamadas",
-        "Notice calls and record them": "Detectar llamadas y grabarlas",
         "Notice when a call starts": "Detectar cuándo empieza una llamada",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Desactivado, una grabación contiene solo su micrófono: su mitad de la conversación en un bloque continuo. Activado, ambas partes se transcriben como turnos con nombre.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Desactivado, solo obtiene su propio micrófono: su mitad de la conversación. Activado, la otra parte también se transcribe.",
@@ -1052,8 +1042,6 @@ extension Localization {
         "Watching for calls": "Vigilando llamadas",
         "What it does": "Qué hace",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Con esto activado, aparece un pequeño panel cuando empieza una llamada y usted decide ahí — sin tener que acordarse de iniciar nada.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Sin esto la lista queda vacía salvo que pulse Grabar usted mismo. Activado, aparece un pequeño panel cuando empieza una llamada y usted decide ahí.",
-        "Write a summary and outline": "Escribir resumen y esquema",
         "listening": "escuchando",
         "off": "off",
         "Back to the top": "Volver arriba",
@@ -1467,7 +1455,6 @@ extension Localization {
 
     static let pt: [String: String] = [
         "%@ call — not being recorded": "Chamada no %@ — não está sendo gravada",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Uma hora de transcrição não se lê como um muro. Isto produz o parágrafo e a estrutura que ficam acima dela.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "Perguntar responde a perguntas sobre tudo o que você gravou — «o que decidimos sobre a data de congelamento» — e cita a reunião e o momento de onde veio. Precisa do modelo que lê suas reuniões, que está desativado. De qualquer forma, nada sai deste Mac.",
         "Ask is off": "Perguntar está desativado",
         "Asked once. After this, the panel is the short version above.": "Perguntado só uma vez. Depois disto, o painel é a versão curta acima.",
@@ -1482,7 +1469,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Tudo aqui está desativado, então as chamadas passam despercebidas",
         "Let the model read your meetings": "Deixar o modelo ler suas reuniões",
         "Not watching for calls": "Sem vigiar chamadas",
-        "Notice calls and record them": "Perceber chamadas e gravá-las",
         "Notice when a call starts": "Perceber quando uma chamada começa",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Desativado, a gravação contém só o seu microfone — a sua metade da conversa, em um bloco contínuo. Ativado, os dois lados são transcritos como falas nomeadas.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Desativado, você tem só o próprio microfone — a sua metade da conversa. Ativado, o outro lado também é transcrito.",
@@ -1510,8 +1496,6 @@ extension Localization {
         "Watching for calls": "Vigiando chamadas",
         "What it does": "O que faz",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Com isto ativado, um pequeno painel aparece quando uma chamada começa e você decide ali — sem precisar lembrar de iniciar nada.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Sem isto a lista fica vazia, a menos que você mesmo aperte Gravar. Ativado, um pequeno painel aparece quando uma chamada começa e você decide ali.",
-        "Write a summary and outline": "Escrever resumo e estrutura",
         "listening": "escutando",
         "off": "off",
         "Back to the top": "Voltar ao topo",
@@ -1925,7 +1909,6 @@ extension Localization {
 
     static let fr: [String: String] = [
         "%@ call — not being recorded": "Appel %@ — non enregistré",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Une heure de transcription ne se lit pas comme un mur. Ceci produit le paragraphe et le plan qui la surplombent.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "Demander répond aux questions sur tout ce que vous avez enregistré — « qu'avons-nous décidé pour la date de gel » — et cite la réunion et le moment d'où vient la réponse. Il lui faut le modèle qui lit vos réunions, actuellement désactivé. Dans tous les cas, rien ne quitte ce Mac.",
         "Ask is off": "Demander est désactivé",
         "Asked once. After this, the panel is the short version above.": "Demandé une seule fois. Ensuite, le panneau est la version courte ci-dessus.",
@@ -1940,7 +1923,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Tout est désactivé ici : les appels passent inaperçus",
         "Let the model read your meetings": "Laisser le modèle lire vos réunions",
         "Not watching for calls": "Appels non surveillés",
-        "Notice calls and record them": "Détecter les appels et les enregistrer",
         "Notice when a call starts": "Détecter le début d'un appel",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Désactivé, un enregistrement ne contient que votre micro — votre moitié de la conversation, en un seul bloc. Activé, les deux côtés sont transcrits en répliques nommées.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Désactivé, vous n'avez que votre micro — votre moitié de la conversation. Activé, l'autre côté est aussi transcrit.",
@@ -1968,8 +1950,6 @@ extension Localization {
         "Watching for calls": "Surveillance des appels",
         "What it does": "Ce que ça fait",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Activé, un petit panneau apparaît quand un appel commence et vous décidez là — pas besoin de penser à lancer quoi que ce soit.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Sans cela, la liste reste vide à moins d'appuyer vous-même sur Enregistrer. Activé, un petit panneau apparaît quand un appel commence et vous décidez là.",
-        "Write a summary and outline": "Écrire un résumé et un plan",
         "listening": "à l'écoute",
         "off": "off",
         "Back to the top": "Revenir en haut",
@@ -2383,7 +2363,6 @@ extension Localization {
 
     static let de: [String: String] = [
         "%@ call — not being recorded": "%@-Anruf — wird nicht aufgenommen",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Eine Stunde Transkript liest sich nicht als Textwand. Dies erzeugt den Absatz und die Gliederung, die darüber stehen.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "Fragen beantwortet Fragen zu allem, was Sie aufgenommen haben — „was haben wir zum Stichtag entschieden“ — und nennt das Meeting und den Moment, aus dem die Antwort stammt. Dafür braucht es das Modell, das Ihre Meetings liest, und das ist derzeit aus. So oder so verlässt nichts diesen Mac.",
         "Ask is off": "Fragen ist aus",
         "Asked once. After this, the panel is the short version above.": "Einmal gefragt. Danach ist das Panel die kurze Version oben.",
@@ -2398,7 +2377,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Hier ist alles aus, Anrufe bleiben unbemerkt",
         "Let the model read your meetings": "Das Modell Ihre Meetings lesen lassen",
         "Not watching for calls": "Anrufe werden nicht beobachtet",
-        "Notice calls and record them": "Anrufe bemerken und aufnehmen",
         "Notice when a call starts": "Bemerken, wenn ein Anruf beginnt",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Aus enthält eine Aufnahme nur Ihr Mikrofon — Ihre Hälfte des Gesprächs, in einem Block. An werden beide Seiten als benannte Wortmeldungen transkribiert.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Aus erhalten Sie nur Ihr eigenes Mikrofon — Ihre Hälfte des Gesprächs. An wird auch die Gegenseite transkribiert.",
@@ -2426,8 +2404,6 @@ extension Localization {
         "Watching for calls": "Anrufe werden beobachtet",
         "What it does": "Was es tut",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Eingeschaltet erscheint beim Beginn eines Anrufs ein kleines Panel, und Sie entscheiden dort — an nichts muss man selbst denken.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Ohne dies bleibt die Liste leer, außer Sie drücken selbst auf Aufnehmen. An erscheint beim Beginn eines Anrufs ein kleines Panel, und Sie entscheiden dort.",
-        "Write a summary and outline": "Zusammenfassung und Gliederung schreiben",
         "listening": "hört zu",
         "off": "aus",
         "Back to the top": "Nach oben",
@@ -2841,7 +2817,6 @@ extension Localization {
 
     static let zh: [String: String] = [
         "%@ call — not being recorded": "%@ 通话 — 未在录制",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "一小时的转录文字堆成一面墙没法读。这项功能生成置于其上方的摘要段落和大纲。",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "「提问」能回答你录下的一切——「关于冻结日期我们定了什么」——并注明答案出自哪次会议、哪个时刻。它需要阅读会议的模型，而该功能目前已关闭。无论如何，任何内容都不会离开这台 Mac。",
         "Ask is off": "「提问」已关闭",
         "Asked once. After this, the panel is the short version above.": "只询问一次。此后面板将是上方的简短版本。",
@@ -2856,7 +2831,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "这里全部关闭，通话会被悄悄略过",
         "Let the model read your meetings": "让模型阅读你的会议",
         "Not watching for calls": "未在留意通话",
-        "Notice calls and record them": "察觉通话并录制",
         "Notice when a call starts": "察觉通话开始",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "关闭时，录音只有你的麦克风——只有你这半边对话，且是一整块。开启后，双方都会被转录为带名字的发言。",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "关闭时只有你自己的麦克风——你这半边对话。开启后对方也会被转录。",
@@ -2884,8 +2858,6 @@ extension Localization {
         "Watching for calls": "正在留意通话",
         "What it does": "它的作用",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "开启后，通话开始时会出现一个小面板，由你当场决定——无需记得手动开始。",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "没有它，除非你自己按「录制」，否则列表一直是空的。开启后，通话开始时会出现一个小面板，由你当场决定。",
-        "Write a summary and outline": "撰写摘要和大纲",
         "listening": "正在聆听",
         "off": "关",
         "Back to the top": "回到顶部",
@@ -3299,7 +3271,6 @@ extension Localization {
 
     static let ja: [String: String] = [
         "%@ call — not being recorded": "%@ の通話 — 録音されていません",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "1時間分の文字起こしは壁のようでは読めません。これはその上に置かれる要約の段落とアウトラインを作ります。",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "質問は録音したすべてに答えます —「凍結日について何を決めたか」— そして出典のミーティングと時点を示します。これにはミーティングを読むモデルが必要ですが、現在オフです。いずれにせよ、この Mac から何も出ていきません。",
         "Ask is off": "質問はオフです",
         "Asked once. After this, the panel is the short version above.": "確認は一度だけ。以後、パネルは上の短い表示になります。",
@@ -3314,7 +3285,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "ここはすべてオフのため、通話は気づかれないまま過ぎます",
         "Let the model read your meetings": "モデルにミーティングを読ませる",
         "Not watching for calls": "通話を見ていません",
-        "Notice calls and record them": "通話に気づいて録音する",
         "Notice when a call starts": "通話の開始に気づく",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "オフでは録音はあなたのマイクのみ — 会話の半分がひとつの塊になります。オンでは両側が名前付きの発言として文字起こしされます。",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "オフでは自分のマイクのみ — 会話の半分だけです。オンでは相手側も文字起こしされます。",
@@ -3342,8 +3312,6 @@ extension Localization {
         "Watching for calls": "通話を見ています",
         "What it does": "何をするか",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "オンにすると、通話が始まったときに小さなパネルが現れ、そこで決められます — 何かを始めるのを覚えておく必要はありません。",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "これがないと、自分で録音を押さない限りリストは空のままです。オンにすると、通話が始まったときに小さなパネルが現れ、そこで決められます。",
-        "Write a summary and outline": "要約とアウトラインを書く",
         "listening": "聞き取り中",
         "off": "オフ",
         "Back to the top": "先頭に戻る",
@@ -3757,7 +3725,6 @@ extension Localization {
 
     static let ko: [String: String] = [
         "%@ call — not being recorded": "%@ 통화 — 녹음되지 않는 중",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "한 시간 분량의 기록은 벽처럼 쌓이면 읽을 수 없습니다. 이 기능은 그 위에 놓이는 요약 문단과 개요를 만듭니다.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "질문은 녹음한 모든 내용에 대해 답합니다 — “동결 날짜에 대해 무엇을 결정했나” — 그리고 답이 나온 회의와 순간을 알려줍니다. 회의를 읽는 모델이 필요한데, 지금은 꺼져 있습니다. 어느 쪽이든 이 Mac 밖으로는 아무것도 나가지 않습니다.",
         "Ask is off": "질문이 꺼져 있음",
         "Asked once. After this, the panel is the short version above.": "한 번만 묻습니다. 이후 패널은 위의 짧은 버전으로 표시됩니다.",
@@ -3772,7 +3739,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "여기 모든 것이 꺼져 있어 통화가 그냥 지나갑니다",
         "Let the model read your meetings": "모델이 회의를 읽도록 허용",
         "Not watching for calls": "통화를 지켜보지 않는 중",
-        "Notice calls and record them": "통화를 알아차리고 녹음",
         "Notice when a call starts": "통화 시작 알아차리기",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "꺼져 있으면 녹음에는 내 마이크만 담깁니다 — 대화의 절반이 한 덩어리로. 켜면 양쪽 모두 이름이 붙은 발언으로 기록됩니다.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "꺼져 있으면 내 마이크만 — 대화의 절반만 담깁니다. 켜면 상대방도 기록됩니다.",
@@ -3800,8 +3766,6 @@ extension Localization {
         "Watching for calls": "통화를 지켜보는 중",
         "What it does": "무슨 기능인지",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "켜 두면 통화가 시작될 때 작은 패널이 나타나 거기서 결정하면 됩니다 — 무언가를 시작해야 한다고 기억할 필요가 없습니다.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "이것이 없으면 직접 녹음을 누르지 않는 한 목록은 비어 있습니다. 켜면 통화가 시작될 때 작은 패널이 나타나 거기서 결정하면 됩니다.",
-        "Write a summary and outline": "요약과 개요 작성",
         "listening": "듣는 중",
         "off": "꺼짐",
         "Back to the top": "맨 위로",
@@ -4215,7 +4179,6 @@ extension Localization {
 
     static let vi: [String: String] = [
         "%@ call — not being recorded": "Cuộc gọi %@ — không được ghi âm",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Một giờ bản ghi chép không thể đọc như một bức tường chữ. Tính năng này tạo đoạn tóm tắt và dàn ý nằm phía trên nó.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "Hỏi trả lời các câu hỏi về mọi thứ bạn đã ghi — “chúng ta đã quyết gì về ngày chốt” — và nêu rõ cuộc họp cùng thời điểm chứa câu trả lời. Nó cần mô hình đọc các cuộc họp của bạn, hiện đang tắt. Dù thế nào, không có gì rời khỏi máy Mac này.",
         "Ask is off": "Hỏi đang tắt",
         "Asked once. After this, the panel is the short version above.": "Chỉ hỏi một lần. Sau lần này, bảng sẽ là bản ngắn như ở trên.",
@@ -4230,7 +4193,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Mọi thứ ở đây đang tắt, nên các cuộc gọi trôi qua không ai hay",
         "Let the model read your meetings": "Cho mô hình đọc các cuộc họp của bạn",
         "Not watching for calls": "Không theo dõi cuộc gọi",
-        "Notice calls and record them": "Nhận biết cuộc gọi và ghi âm",
         "Notice when a call starts": "Nhận biết khi cuộc gọi bắt đầu",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Tắt, bản ghi chỉ có micrô của bạn — nửa cuộc trò chuyện của bạn, trong một khối liền. Bật, cả hai phía được ghi chép thành lượt nói có tên.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Tắt, bạn chỉ có micrô của mình — nửa cuộc trò chuyện của bạn. Bật, phía bên kia cũng được ghi chép.",
@@ -4258,8 +4220,6 @@ extension Localization {
         "Watching for calls": "Đang theo dõi cuộc gọi",
         "What it does": "Nó làm gì",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Bật lên, một bảng nhỏ xuất hiện khi cuộc gọi bắt đầu và bạn quyết định tại đó — không cần nhớ phải khởi động gì.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Không có nó, danh sách sẽ trống trừ khi bạn tự bấm Ghi âm. Bật, một bảng nhỏ xuất hiện khi cuộc gọi bắt đầu và bạn quyết định tại đó.",
-        "Write a summary and outline": "Viết tóm tắt và dàn ý",
         "listening": "đang nghe",
         "off": "tắt",
         "Back to the top": "Về đầu",
@@ -4673,7 +4633,6 @@ extension Localization {
 
     static let tl: [String: String] = [
         "%@ call — not being recorded": "Tawag sa %@ — hindi nire-record",
-        "An hour of transcript is not readable as a wall. This produces the paragraph and the outline that sit above it.": "Hindi mababasa ang isang oras ng transcript kung parang pader. Ito ang gumagawa ng talata at balangkas na nasa itaas nito.",
         "Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way.": "Sinasagot ng Magtanong ang mga tanong sa lahat ng na-record mo — “ano ang napagdesisyunan natin sa freeze date” — at binabanggit ang meeting at sandaling pinagmulan nito. Kailangan nito ang model na nagbabasa ng mga meeting mo, na naka-off ngayon. Anuman ang mangyari, walang umaalis sa Mac na ito.",
         "Ask is off": "Naka-off ang Magtanong",
         "Asked once. After this, the panel is the short version above.": "Minsan lang itatanong. Pagkatapos nito, ang panel ay ang maikling bersyon sa itaas.",
@@ -4688,7 +4647,6 @@ extension Localization {
         "Everything here is off, so calls pass unnoticed": "Naka-off ang lahat dito, kaya lumilipas ang mga tawag nang hindi napapansin",
         "Let the model read your meetings": "Hayaang basahin ng model ang mga meeting mo",
         "Not watching for calls": "Hindi nagbabantay sa mga tawag",
-        "Notice calls and record them": "Pansinin ang mga tawag at i-record",
         "Notice when a call starts": "Pansinin kapag nagsimula ang tawag",
         "Off, a recording holds your microphone only — your half of the conversation, in one unbroken block. On, both sides are transcribed as named turns.": "Kapag naka-off, ang recording ay mikropono mo lang — ang kalahati mo ng usapan, sa iisang tuloy-tuloy na bloke. Kapag naka-on, parehong panig ang naitatala bilang may pangalang pagkakasunod.",
         "Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.": "Kapag naka-off, sarili mong mikropono lang — ang kalahati mo ng usapan. Kapag naka-on, naitatala rin ang kabilang panig.",
@@ -4716,8 +4674,6 @@ extension Localization {
         "Watching for calls": "Nagbabantay sa mga tawag",
         "What it does": "Ano ang ginagawa nito",
         "With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.": "Kapag naka-on ito, lumilitaw ang maliit na panel kapag nagsimula ang tawag at doon ka magdedesisyon — hindi mo na kailangang tandaang magsimula ng kahit ano.",
-        "Without this the list stays empty unless you press Record yourself. On, a small panel appears when a call starts and you decide there.": "Kung wala ito, mananatiling walang laman ang listahan maliban kung ikaw mismo ang pipindot ng I-record. Kapag naka-on, lumilitaw ang maliit na panel kapag nagsimula ang tawag at doon ka magdedesisyon.",
-        "Write a summary and outline": "Sumulat ng buod at balangkas",
         "listening": "nakikinig",
         "off": "off",
         "Back to the top": "Balik sa itaas",
