@@ -106,10 +106,16 @@ enum DS {
 
     // Type roles (spec: emphasis = colour role → weight → size, size last).
     /// Transcripts and answers: content larger than the chrome around it.
-    static let readingBody = Font.system(size: 15)
-    static let readingLineSpacing: CGFloat = 15 * 0.65   // 15/1.65
+    /// The model's reading voice, at the global text scale — the size
+    /// preference applies to the agent's answers as much as to transcripts
+    /// (design turn 19: one preference, every reading surface).
+    static var readingBody: Font { Font.system(size: TextScale.current.body) }
+    static var readingLineSpacing: CGFloat { TextScale.current.extraLeading }
     /// The 72-character measure reading columns cap at.
-    static let readingMeasure: CGFloat = 620
+    /// The reading column at the CURRENT text scale: the measure stays a
+    /// constant ~70ch, so the column widens with the type and lines never
+    /// get longer (design turn 19).
+    static var readingMeasure: CGFloat { 620 * TextScale.current.body / 15 }
     static let windowTitle = Font.system(size: 13.5, weight: .semibold)
     static let helpText = Font.system(size: 11.5)
     static let sectionLabel = Font.system(size: 11, weight: .semibold)
@@ -127,26 +133,32 @@ enum DS {
         /// Reading text: transcript turns and the summary. Small sits well
         /// under the design's 13.5 — the owner wanted a real spread between
         /// the ends, with large staying put (2026-08-29).
-        var body: CGFloat {
-            switch self { case .small: return 12.5; case .medium: return 15; case .large: return 17.5 }
+        var body: CGFloat { raw(12.5, 15, 17.5) }
+
+        /// Steps are RELATIVE to the system's resolved base size, so a
+        /// macOS Accessibility text setting compounds with the choice here
+        /// instead of being overridden by it (design turn 19).
+        private static var systemFactor: CGFloat {
+            NSFont.preferredFont(forTextStyle: .body).pointSize / 13
+        }
+        private func raw(_ s: CGFloat, _ m: CGFloat, _ l: CGFloat) -> CGFloat {
+            let picked: CGFloat
+            switch self { case .small: picked = s; case .medium: picked = m; case .large: picked = l }
+            return (picked * Self.systemFactor).rounded()
         }
         /// The design's line-height, as the extra leading SwiftUI wants.
         /// Larger type carries a tighter ratio (1.7 / 1.65 / 1.6).
         var extraLeading: CGFloat {
             switch self {
-            case .small: return 12.5 * 0.7
-            case .medium: return 15 * 0.65
-            case .large: return 17.5 * 0.6
+            case .small: return body * 0.7
+            case .medium: return body * 0.65
+            case .large: return body * 0.6
             }
         }
         /// Outline leaf rows — the moments under the section heads.
-        var leaf: CGFloat {
-            switch self { case .small: return 11; case .medium: return 13; case .large: return 14.5 }
-        }
+        var leaf: CGFloat { raw(11, 13, 14.5) }
         /// The speaker's name in the gutter.
-        var speaker: CGFloat {
-            switch self { case .small: return 10.5; case .medium: return 12; case .large: return 13 }
-        }
+        var speaker: CGFloat { raw(10.5, 12, 13) }
         /// Vertical air between turns.
         var turnGap: CGFloat {
             switch self { case .small: return 10; case .medium: return 14; case .large: return 20 }

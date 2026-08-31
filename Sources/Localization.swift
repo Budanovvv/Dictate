@@ -101,6 +101,7 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Recorded meetings appear here.": "Записанные встречи появятся здесь.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Здесь только ваш микрофон — вторая сторона звонка не записывалась, и её не восстановить.",
         "Turning both on covers the calls that come next.": "Если включить оба, следующие звонки будут записаны полностью.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ отклонил запрос по биллингу. Пополните счёт у провайдера или отключите агента в настройках.",
@@ -238,7 +239,6 @@ extension Localization {
         "Nothing found": "Ничего не найдено",
         "No transcript contains that.": "Ни в одном транскрипте этого нет.",
         "No meetings yet": "Пока нет митингов",
-        "Start a transcript from the menu bar during a call.": "Начните транскрипт из меню-бара во время звонка.",
         "Select a meeting": "Выберите митинг",
         "Copy transcript": "Скопировать транскрипт",
         "Copy text": "Скопировать текст",
@@ -570,6 +570,7 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Recorded meetings appear here.": "Записані зустрічі з'являться тут.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Тут лише ваш мікрофон — друга сторона дзвінка не записувалась, і її не відновити.",
         "Turning both on covers the calls that come next.": "Якщо увімкнути обидва, наступні дзвінки буде записано повністю.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ відхилив запит через білінг. Поповніть рахунок у провайдера або відключіть агента в налаштуваннях.",
@@ -707,7 +708,6 @@ extension Localization {
         "Nothing found": "Нічого не знайдено",
         "No transcript contains that.": "Жоден транскрипт цього не містить.",
         "No meetings yet": "Ще немає зустрічей",
-        "Start a transcript from the menu bar during a call.": "Почніть транскрипт із меню-бара під час дзвінка.",
         "Select a meeting": "Виберіть зустріч",
         "Copy transcript": "Скопіювати транскрипт",
         "Copy text": "Скопіювати текст",
@@ -1030,6 +1030,7 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Recorded meetings appear here.": "Las reuniones grabadas aparecen aquí.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Esto es solo su micrófono: la otra parte de la llamada no se grabó y no se puede recuperar.",
         "Turning both on covers the calls that come next.": "Al activar ambos, las próximas llamadas quedan cubiertas.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ rechazó la solicitud por motivos de facturación. Añada crédito en su cuenta del proveedor o desconecte el agente en Ajustes.",
@@ -1167,7 +1168,6 @@ extension Localization {
         "Nothing found": "Sin resultados",
         "No transcript contains that.": "Ninguna transcripción contiene eso.",
         "No meetings yet": "Aún no hay reuniones",
-        "Start a transcript from the menu bar during a call.": "Inicia una transcripción desde la barra de menús durante una llamada.",
         "Select a meeting": "Selecciona una reunión",
         "Copy transcript": "Copiar transcripción",
         "Copy text": "Copiar texto",
@@ -1499,6 +1499,7 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Recorded meetings appear here.": "As reuniões gravadas aparecem aqui.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Isto é só o seu microfone — o outro lado da chamada não foi gravado e não pode ser recuperado.",
         "Turning both on covers the calls that come next.": "Ao ativar ambos, as próximas chamadas ficam cobertas.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ recusou a solicitação por motivos de cobrança. Adicione crédito na conta do provedor ou desconecte o agente nos Ajustes.",
@@ -1636,7 +1637,6 @@ extension Localization {
         "Nothing found": "Nada encontrado",
         "No transcript contains that.": "Nenhuma transcrição contém isso.",
         "No meetings yet": "Ainda não há reuniões",
-        "Start a transcript from the menu bar during a call.": "Inicie uma transcrição pela barra de menus durante uma chamada.",
         "Select a meeting": "Selecione uma reunião",
         "Copy transcript": "Copiar transcrição",
         "Copy text": "Copiar texto",
@@ -1968,6 +1968,7 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Recorded meetings appear here.": "Les réunions enregistrées apparaissent ici.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Ceci n'est que votre micro — l'autre partie de l'appel n'a pas été enregistrée et ne peut pas être récupérée.",
         "Turning both on covers the calls that come next.": "En activant les deux, les prochains appels seront couverts.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ a refusé la requête pour des raisons de facturation. Ajoutez du crédit chez votre fournisseur ou déconnectez l'agent dans Réglages.",
@@ -2105,7 +2106,6 @@ extension Localization {
         "Nothing found": "Aucun résultat",
         "No transcript contains that.": "Aucune transcription ne contient cela.",
         "No meetings yet": "Aucune réunion pour l’instant",
-        "Start a transcript from the menu bar during a call.": "Lancez une transcription depuis la barre des menus pendant un appel.",
         "Select a meeting": "Sélectionnez une réunion",
         "Copy transcript": "Copier la transcription",
         "Copy text": "Copier le texte",
@@ -2437,6 +2437,7 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Recorded meetings appear here.": "Aufgenommene Meetings erscheinen hier.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Das ist nur Ihr Mikrofon — die Gegenseite des Anrufs wurde nicht aufgenommen und ist nicht wiederherstellbar.",
         "Turning both on covers the calls that come next.": "Beide eingeschaltet decken die nächsten Anrufe ab.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ hat die Anfrage aus Abrechnungsgründen abgelehnt. Laden Sie Guthaben beim Anbieter auf oder trennen Sie den Agenten in den Einstellungen.",
@@ -2574,7 +2575,6 @@ extension Localization {
         "Nothing found": "Nichts gefunden",
         "No transcript contains that.": "Kein Transkript enthält das.",
         "No meetings yet": "Noch keine Meetings",
-        "Start a transcript from the menu bar during a call.": "Starten Sie ein Transkript während eines Anrufs über die Menüleiste.",
         "Select a meeting": "Meeting auswählen",
         "Copy transcript": "Transkript kopieren",
         "Copy text": "Text kopieren",
@@ -2906,6 +2906,7 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Recorded meetings appear here.": "录制的会议会显示在这里。",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "这里只有你的麦克风——通话对方没有被录下，无法找回。",
         "Turning both on covers the calls that come next.": "两项都开启后，之后的通话会被完整记录。",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ 因计费原因拒绝了请求。请在服务商账户中充值，或在设置中断开代理。",
@@ -3043,7 +3044,6 @@ extension Localization {
         "Nothing found": "未找到结果",
         "No transcript contains that.": "没有转录包含该内容。",
         "No meetings yet": "还没有会议",
-        "Start a transcript from the menu bar during a call.": "通话时从菜单栏开始转录。",
         "Select a meeting": "选择一个会议",
         "Copy transcript": "拷贝转录",
         "Copy text": "拷贝文本",
@@ -3375,6 +3375,7 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Recorded meetings appear here.": "録音したミーティングはここに表示されます。",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "これはあなたのマイクのみです — 通話の相手側は録音されておらず、取り戻せません。",
         "Turning both on covers the calls that come next.": "両方オンにすると、次の通話からはすべて記録されます。",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ が課金上の理由でリクエストを拒否しました。プロバイダのアカウントに残高を追加するか、設定でエージェントを切断してください。",
@@ -3512,7 +3513,6 @@ extension Localization {
         "Nothing found": "見つかりません",
         "No transcript contains that.": "その内容を含む文字起こしはありません。",
         "No meetings yet": "ミーティングはまだありません",
-        "Start a transcript from the menu bar during a call.": "通話中にメニューバーから文字起こしを開始します。",
         "Select a meeting": "ミーティングを選択",
         "Copy transcript": "文字起こしをコピー",
         "Copy text": "テキストをコピー",
@@ -3844,6 +3844,7 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Recorded meetings appear here.": "녹음된 회의가 여기에 표시됩니다.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "여기에는 내 마이크만 담겨 있습니다 — 통화 상대방은 녹음되지 않았고 되돌릴 수 없습니다.",
         "Turning both on covers the calls that come next.": "둘 다 켜면 다음 통화부터는 모두 담깁니다.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@가 결제 문제로 요청을 거부했습니다. 제공자 계정에 크레딧을 추가하거나 설정에서 에이전트 연결을 해제하세요.",
@@ -3981,7 +3982,6 @@ extension Localization {
         "Nothing found": "결과 없음",
         "No transcript contains that.": "해당 내용을 포함한 전사가 없습니다.",
         "No meetings yet": "아직 회의가 없습니다",
-        "Start a transcript from the menu bar during a call.": "통화 중 메뉴 막대에서 전사를 시작하세요.",
         "Select a meeting": "회의 선택",
         "Copy transcript": "전사 복사",
         "Copy text": "텍스트 복사",
@@ -4313,6 +4313,7 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Recorded meetings appear here.": "Các cuộc họp đã ghi sẽ xuất hiện ở đây.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Đây chỉ là micrô của bạn — phía bên kia của cuộc gọi không được ghi âm và không thể khôi phục.",
         "Turning both on covers the calls that come next.": "Bật cả hai sẽ bao trọn các cuộc gọi tiếp theo.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ đã từ chối yêu cầu vì lý do thanh toán. Nạp thêm tín dụng vào tài khoản nhà cung cấp, hoặc ngắt kết nối tác nhân trong Cài đặt.",
@@ -4450,7 +4451,6 @@ extension Localization {
         "Nothing found": "Không tìm thấy",
         "No transcript contains that.": "Không có biên bản nào chứa nội dung đó.",
         "No meetings yet": "Chưa có cuộc họp nào",
-        "Start a transcript from the menu bar during a call.": "Bắt đầu biên bản từ thanh menu trong khi gọi.",
         "Select a meeting": "Chọn một cuộc họp",
         "Copy transcript": "Sao chép biên bản",
         "Copy text": "Sao chép văn bản",
@@ -4782,6 +4782,7 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Recorded meetings appear here.": "Dito lalabas ang mga na-record na meeting.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Mikropono mo lang ito — ang kabilang panig ng tawag ay hindi na-record at hindi na maibabalik.",
         "Turning both on covers the calls that come next.": "Kapag binuksan pareho, sakop na ang mga susunod na tawag.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "Tinanggihan ng %@ ang request dahil sa billing. Magdagdag ng credit sa provider account mo, o idiskonekta ang agent sa Settings.",
@@ -4919,7 +4920,6 @@ extension Localization {
         "Nothing found": "Walang nakita",
         "No transcript contains that.": "Walang transcript na naglalaman niyan.",
         "No meetings yet": "Wala pang meeting",
-        "Start a transcript from the menu bar during a call.": "Simulan ang transcript mula sa menu bar habang tumatawag.",
         "Select a meeting": "Pumili ng meeting",
         "Copy transcript": "Kopyahin ang transcript",
         "Copy text": "Kopyahin ang teksto",

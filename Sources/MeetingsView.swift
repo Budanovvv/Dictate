@@ -632,10 +632,12 @@ struct MeetingsView: View {
                 }
             } else if filtered.isEmpty && !session.isActive {
                 ListEmptyState(
-                    title: meetings.isEmpty ? L("No meetings yet") : L("Nothing found"),
-                    blurb: meetings.isEmpty
-                         ? L("Start a transcript from the menu bar during a call.")
-                         : L("No transcript contains that.")) {
+                    title: meetings.isEmpty ? L("Recorded meetings appear here.")
+                                            : L("Nothing found"),
+                    // The emptiness is explained, not decorated (design turn
+                    // 24) — one line; the setup pane beside it carries the
+                    // rest.
+                    blurb: meetings.isEmpty ? "" : L("No transcript contains that.")) {
                 }
             }
         }
@@ -3660,7 +3662,7 @@ private struct ColumnGrip: View {
                             UserDefaults.standard.set(Double(width), forKey: key)
                         })
             )
-            .overlay(alignment: .topLeading) {
+            .overlay(alignment: .center) {
                 if dragging {
                     Text(verbatim: "\(Int(width)) pt")
                         .font(.system(size: 11).monospacedDigit())
@@ -3673,7 +3675,7 @@ private struct ColumnGrip: View {
                         .overlay(RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.5))
                         .fixedSize()
-                        .offset(x: 8, y: 60)
+                        .offset(x: 8)
                 }
             }
             .animation(.easeOut(duration: DS.fade), value: dragging)
