@@ -675,6 +675,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 statusController.debugOpenMenu()
             case "hud":
                 debugHUD(variant.isEmpty ? "recording" : variant)
+            case "record":
+                // The bench's way to start/stop a session (paired with the
+                // replay defaults) — same path as the menu item.
+                toggleMeetingTranscript()
             case "callprompt":
                 // The detection card, both faces, without a call: the record
                 // action only logs — a photograph must not start a session.
