@@ -1018,11 +1018,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // back to .accessory once all our windows close.
         NSApp.setActivationPolicy(.regular)
         // The window is cached and remembers the display it was last shown on,
-        // which may not be where the user is now. The cursor is the honest
-        // signal — Settings opens from a menu-bar or Dock click — so center on
-        // the screen under it. Same screen → keep the user's manual position.
+        // which may not be where the user is now. With an anchor the RULE is
+        // absolute (owner, 2026-08-31): the main window open means Settings
+        // sits over the main window, full stop — the cursor's screen must
+        // not override that. Only an anchorless open (menu bar, Dock, no
+        // meetings window) follows the cursor.
         let mouse = NSEvent.mouseLocation
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
+        if anchor == nil,
+           let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
            window.screen !== screen {
             let visible = screen.visibleFrame
             let size = window.frame.size
