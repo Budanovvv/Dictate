@@ -1152,8 +1152,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // truly frontmost yet).
         let nonactivating = window.styleMask.contains(.nonactivatingPanel)
         DispatchQueue.main.async {
-            // Order BEFORE any activation: moveToActiveSpace puts the window
-            // on the Space the user is on right now.
+            // THE mechanism for "opened from the app, shown over the app":
+            // a CHILD window. A child is composited wherever its parent is —
+            // same Space, same Stage Manager stage, always ordered above it.
+            // Everything short of this (flags, levels, raises) spent
+            // 2026-08-31 losing to the compositor: a fresh window of a
+            // never-active app gets assigned to the app's own Space/stage,
+            // not the one the user is looking at (occlusion said "not one
+            // pixel" while every other metric read visible).
+            window.parent?.removeChildWindow(window)
+            if let anchor, anchor.isVisible, anchor !== window {
+                anchor.addChildWindow(window, ordered: .above)
+            }
             window.makeKeyAndOrderFront(nil)
             // Above other apps' windows even without activation — clicks in
             // our non-activating panels never count as "the user is in this
@@ -1211,6 +1221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             let closing = note.object as? NSWindow
+            // A closed child leaves its parent — the next presentation
+            // decides freshly whether it rides the meetings window.
+            closing?.parent?.removeChildWindow(closing!)
             // The onboarding window is one-shot: closing it with the red button
             // must drop the reference, or applicationShouldHandleReopen sees a
             // "still open" onboarding and a Dock click does nothing at all.
