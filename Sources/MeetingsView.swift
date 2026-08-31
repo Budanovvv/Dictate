@@ -1086,7 +1086,11 @@ struct MeetingsView: View {
                         Text(agentReadLine)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            // Two lines, not an ellipsis: at the sidebar's
+                            // default width "Off — has read nothing yet"
+                            // truncated, and the OFF half is the message.
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer(minLength: 0)
