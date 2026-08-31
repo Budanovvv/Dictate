@@ -1058,6 +1058,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if !activating {
             window.styleMask.insert(.nonactivatingPanel)
             (window as? NSPanel)?.becomesKeyOnlyIfNeeded = false
+            // FLOATING, deterministically above the meetings panel (which is
+            // .normal in library mode) — the end of the raise war of
+            // 2026-08-31: ordering alone kept losing, because the corner
+            // menu's popover teardown and every later click on the meetings
+            // window re-raised it over a freshly presented Settings, burying
+            // it dead-centre behind the window the user was looking at (he
+            // eventually found it "among the clutter"). A level outranks any
+            // ordering race; floating is also simply what a non-activating
+            // utility panel is on macOS.
+            window.level = .floating
         }
         // We keep strong references (onboardingWindow/settingsWindow) — without
         // this, closing releases the NSWindow under ARC and the next touch of
