@@ -949,6 +949,7 @@ struct SettingsView: View {
         case "general": tab = .general
         default: tab = .keys
         }
+        Log.d("corner: settings landed on tab \(wanted)")
     }
 
     private func rowLabel(_ title: String, _ hint: String?,

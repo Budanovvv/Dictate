@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Catches a wedged main thread and captures evidence.
@@ -89,9 +90,28 @@ final class MainThreadWatchdog {
             if !captured {
                 captured = true
                 capture(stuckFor: age)
+                rescueInvisibleModal()
             }
         } else {
             captured = false   // main answered again — re-arm for the next hang
+        }
+    }
+
+    /// The one kind of wedge that can be UNDONE: a modal window running its
+    /// loop behind another app's windows. The app is a non-activating panel
+    /// most of the time, macOS's cooperative activation quietly refuses our
+    /// activate calls, and a modal shown in that state (Sparkle's "You're up
+    /// to date", three times on 2026-08-31) opens invisible — the loop then
+    /// reads as a hang. The main dispatch QUEUE is stuck mid-drain, but the
+    /// modal RUNLOOP still spins — a runloop-based perform in common modes
+    /// gets serviced where a dispatch_async never would.
+    private func rescueInvisibleModal() {
+        RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+            guard let modal = NSApp.modalWindow else { return }
+            Log.d("watchdog: modal rescue — forcing \"\(modal.title)\" front")
+            modal.level = .modalPanel
+            modal.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 

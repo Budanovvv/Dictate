@@ -614,10 +614,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // Settings, nothing happens").
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.openSettings"), object: nil, queue: .main
-        ) { [weak self] _ in self?.showSettings() })
+        ) { [weak self] _ in
+            Log.d("corner: openSettings notification received")
+            self?.showSettings()
+        })
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.checkUpdates"), object: nil, queue: .main
         ) { [weak self] _ in
+            Log.d("corner: checkUpdates notification received")
             self?.activateThenRun { self?.updater.checkForUpdates(nil) }
         })
 
@@ -937,9 +941,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     private func showSettings() {
         if let settingsWindow {
-            present(settingsWindow)
+            Log.d("corner: showSettings — cached window (visible=\(settingsWindow.isVisible))")
+            // The anchor matters on reopen too: without it the cached
+            // window resurfaces wherever it was last shown, which may be a
+            // different display from the meetings window that asked.
+            present(settingsWindow,
+                    over: meetingWindow?.isVisible == true ? meetingWindow : nil)
             return
         }
+        Log.d("corner: showSettings — building the window")
         // The manual update check moved here from the status menu: updates are
         // found daily and installed silently, so asking by hand is a rare,
         // impatient act — and it is the same Sparkle call it always was.
@@ -1025,6 +1035,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
+            // Above other apps' windows even when cooperative activation
+            // says no — which it does whenever the request originates in
+            // the meetings panel: a NON-ACTIVATING panel's clicks never
+            // count as "the user is in this app", so activate() is quietly
+            // refused and the window lands BEHIND the frontmost app
+            // (field logs 2026-08-31 12:53: ordered front, visible=true,
+            // and the owner saw nothing).
+            window.orderFrontRegardless()
+            Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive)")
         }
     }
 

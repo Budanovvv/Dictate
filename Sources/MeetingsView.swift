@@ -383,6 +383,7 @@ struct MeetingsView: View {
         // bar (Settings, shortcuts, appearance, models, updates, quit).
         Button {
             settingsMenuOpen.toggle()
+            Log.d("corner: gear clicked — menuOpen=\(settingsMenuOpen)")
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: "gearshape")
@@ -404,6 +405,8 @@ struct MeetingsView: View {
         .hoverHighlight()
         .popover(isPresented: $settingsMenuOpen, arrowEdge: .top) {
             settingsCornerMenu
+                .onAppear { Log.d("corner: menu presented") }
+                .onDisappear { Log.d("corner: menu dismissed") }
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 10)
@@ -442,12 +445,16 @@ struct MeetingsView: View {
     private func openSettingsWindow(tab: String?) {
         settingsMenuOpen = false
         if let tab { UserDefaults.standard.set(tab, forKey: "settingsOpenTab") }
+        Log.d("corner: posting openSettings (tab=\(tab ?? "-"))")
         NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
     }
 
     private func cornerRow(_ title: String, trailing: String? = nil,
                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            Log.d("corner: row tapped — \(title)")
+            action()
+        }) {
             HStack(spacing: 10) {
                 Text(title)
                     .font(.system(size: 12.5))
