@@ -1074,15 +1074,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // the dangling reference is an over-release crash.
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        // The window comes to the person, not the person to the window: the
-        // meetings panel rides every Space (canJoinAllSpaces), so its corner
-        // menu gets clicked from INSIDE full-screen apps — and a plain
-        // window then opened on the desktop Space, invisibly (field logs
-        // 2026-08-31 12:58: ordered front, visible, active — and the owner
-        // in full-screen PyCharm saw nothing). moveToActiveSpace brings it
-        // to the current Space; fullScreenAuxiliary lets that Space be a
-        // full-screen one.
-        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        // Plain [] space behavior for the non-activating panel — the same
+        // as the meetings library window, the one window that provably
+        // displays on this Mac. The clever combination tried on 2026-08-31
+        // (.moveToActiveSpace + .fullScreenAuxiliary) produced a window the
+        // compositor refused to draw AT ALL: every metric said visible,
+        // occlusionState said "not one pixel", on the very screen and Space
+        // the cursor was on. Flag combinations from the mutually-exclusive
+        // family poison the window's space state; boring wins.
+        if activating {
+            // Onboarding activates the app, and activation may switch
+            // Spaces legitimately — coming to the user is fine there.
+            window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        }
         window.center()
         // Subscribe once per window here — present() runs on every reopen, and
         // duplicate observers would fire someWindowClosed N times per close.
