@@ -713,12 +713,12 @@ final class AudioRecorder: @unchecked Sendable {
             totalSamples += n
         }
         if onLevel != nil {
-            // ×14, third pass down from ×24 (owner, 2026-08-31: the bar sat
-            // pegged through normal speech — a meter in saturation shows no
-            // dynamics at all, which reads as "constant noise"). Full swing
-            // now needs genuinely loud speech; quiet dictation breathes in
-            // the lower half.
-            let level = min(1.0, (sum / Double(n)).squareRoot() * 14)
+            // ×9, fourth pass down from ×24 via ×14 (owner, 2026-08-31,
+            // tuning by feel): a meter in saturation shows no dynamics at
+            // all, and each step down has been "still too hot" in the field.
+            // Full swing now needs genuinely loud speech; quiet dictation
+            // breathes in the lower half.
+            let level = min(1.0, (sum / Double(n)).squareRoot() * 9)
             // Read the callback on the delivery side (main): capturing the
             // non-Sendable closure value here would carry it across threads.
             DispatchQueue.main.async { self.onLevel?(level) }
