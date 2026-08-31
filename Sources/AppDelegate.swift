@@ -633,6 +633,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // Main by construction: the observer's queue is .main.
             MainActor.assumeIsolated { self?.showSettings() }
         })
+        menuObservers.append(NotificationCenter.default.addObserver(
+            forName: .init("dictate.checkUpdates"), object: nil, queue: .main
+        ) { [weak self] _ in
+            // Main by construction: the observer's queue is .main.
+            MainActor.assumeIsolated { self?.manualUpdateCheck() }
+        })
 
         applyDebugShot()
     }

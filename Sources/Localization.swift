@@ -123,6 +123,9 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Settings": "Настройки",
+        "Keyboard shortcuts": "Сочетания клавиш",
+        "Storage & models": "Хранилище и модели",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Вопросы — единственное, что покидает этот Mac: ваш вопрос, найденные фрагменты и транскрипты, которые агент открывает для ответа, уходят к %@ на вашем ключе. Ничего не отправляется, пока вы не спросите.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain отказался сохранить ключ — он остался в поле. Разблокируйте связку и попробуйте снова.",
         "Couldn't reach the update server. Try again once you're online.": "Не удалось связаться с сервером обновлений. Попробуйте, когда появится сеть.",
@@ -589,6 +592,9 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Settings": "Налаштування",
+        "Keyboard shortcuts": "Сполучення клавіш",
+        "Storage & models": "Сховище та моделі",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Запитання — єдине, що залишає цей Mac: ваше запитання, знайдені фрагменти та транскрипти, які агент відкриває для відповіді, йдуть до %@ на вашому ключі. Нічого не надсилається, поки ви не спитаєте.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain відмовився зберегти ключ — він залишився в полі. Розблокуйте в'язку і спробуйте ще раз.",
         "Couldn't reach the update server. Try again once you're online.": "Не вдалося зв'язатися з сервером оновлень. Спробуйте, коли з'явиться мережа.",
@@ -1046,6 +1052,9 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Settings": "Ajustes",
+        "Keyboard shortcuts": "Atajos de teclado",
+        "Storage & models": "Almacenamiento y modelos",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Preguntar es lo único que sale de este Mac: su pregunta, los resultados de búsqueda y las transcripciones que el agente abre para responder van a %@ con su clave. No se envía nada hasta que usted pregunta.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "El llavero rechazó guardar la clave; sigue en el campo. Desbloquee el llavero e inténtelo de nuevo.",
         "Couldn't reach the update server. Try again once you're online.": "No se pudo contactar el servidor de actualizaciones. Inténtelo cuando esté en línea.",
@@ -1512,6 +1521,9 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Settings": "Definições",
+        "Keyboard shortcuts": "Atalhos de teclado",
+        "Storage & models": "Armazenamento e modelos",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Perguntar é a única coisa que sai deste Mac: sua pergunta, os resultados da busca e as transcrições que o agente abre para responder vão para %@ na sua chave. Nada é enviado até você perguntar.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "As Chaves recusaram salvar a chave — ela continua no campo. Desbloqueie as chaves e tente de novo.",
         "Couldn't reach the update server. Try again once you're online.": "Não foi possível contatar o servidor de atualizações. Tente de novo quando estiver online.",
@@ -1978,6 +1990,9 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Settings": "Réglages",
+        "Keyboard shortcuts": "Raccourcis clavier",
+        "Storage & models": "Stockage et modèles",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Demander est la seule chose qui quitte ce Mac : votre question, les résultats de recherche et les transcriptions que l'agent ouvre pour répondre vont chez %@ avec votre clé. Rien n'est envoyé tant que vous ne demandez pas.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Le trousseau a refusé d'enregistrer la clé — elle reste dans le champ. Déverrouillez le trousseau et réessayez.",
         "Couldn't reach the update server. Try again once you're online.": "Impossible de joindre le serveur de mise à jour. Réessayez une fois en ligne.",
@@ -2444,6 +2459,9 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Settings": "Einstellungen",
+        "Keyboard shortcuts": "Tastaturkurzbefehle",
+        "Storage & models": "Speicher & Modelle",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Fragen ist das Einzige, was diesen Mac verlässt: Ihre Frage, die Suchtreffer und die Transkripte, die der Agent zum Antworten öffnet, gehen mit Ihrem Schlüssel an %@. Nichts wird gesendet, bevor Sie fragen.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Der Schlüsselbund hat das Speichern verweigert — der Schlüssel bleibt im Feld. Entsperren Sie den Schlüsselbund und versuchen Sie es erneut.",
         "Couldn't reach the update server. Try again once you're online.": "Der Update-Server ist nicht erreichbar. Versuchen Sie es, sobald Sie online sind.",
@@ -2910,6 +2928,9 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Settings": "设置",
+        "Keyboard shortcuts": "键盘快捷键",
+        "Storage & models": "存储与模型",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "提问是唯一离开这台 Mac 的内容：你的问题、搜索命中的片段，以及代理为回答而打开的转录文字，都会通过你的密钥发送给 %@。你不提问，什么都不会发送。",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "钥匙串拒绝保存密钥——它仍留在输入框中。解锁钥匙串后重试。",
         "Couldn't reach the update server. Try again once you're online.": "无法连接更新服务器。联网后再试一次。",
@@ -3376,6 +3397,9 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Settings": "設定",
+        "Keyboard shortcuts": "キーボードショートカット",
+        "Storage & models": "ストレージとモデル",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "この Mac から出ていくのは質問だけです。あなたの質問、検索でヒットした断片、そして回答のためにエージェントが開く文字起こしが、あなたのキーで %@ に送られます。質問するまで何も送信されません。",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "キーチェーンがキーの保存を拒否しました — キーは入力欄に残っています。キーチェーンのロックを解除してからもう一度お試しください。",
         "Couldn't reach the update server. Try again once you're online.": "アップデートサーバーに接続できません。オンラインになったらもう一度お試しください。",
@@ -3842,6 +3866,9 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Settings": "설정",
+        "Keyboard shortcuts": "키보드 단축키",
+        "Storage & models": "저장 공간 및 모델",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "이 Mac을 떠나는 것은 질문뿐입니다: 질문, 검색 결과, 그리고 에이전트가 답하기 위해 여는 기록이 내 키로 %@에 전달됩니다. 질문하기 전에는 아무것도 전송되지 않습니다.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "키체인이 키 저장을 거부했습니다 — 키는 입력란에 남아 있습니다. 키체인 잠금을 해제하고 다시 시도하세요.",
         "Couldn't reach the update server. Try again once you're online.": "업데이트 서버에 연결할 수 없습니다. 온라인 상태가 되면 다시 시도하세요.",
@@ -4308,6 +4335,9 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Settings": "Cài đặt",
+        "Keyboard shortcuts": "Phím tắt bàn phím",
+        "Storage & models": "Lưu trữ và mô hình",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Hỏi là thứ duy nhất rời khỏi máy Mac này: câu hỏi của bạn, các kết quả tìm kiếm và những bản ghi chép mà tác nhân mở để trả lời sẽ đến %@ bằng khóa của bạn. Không gì được gửi cho đến khi bạn hỏi.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain từ chối lưu khóa — khóa vẫn còn trong ô. Mở khóa keychain rồi thử lại.",
         "Couldn't reach the update server. Try again once you're online.": "Không thể kết nối máy chủ cập nhật. Thử lại khi có mạng.",
@@ -4774,6 +4804,9 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Settings": "Mga Setting",
+        "Keyboard shortcuts": "Mga keyboard shortcut",
+        "Storage & models": "Storage at mga model",
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Ang pagtatanong lang ang umaalis sa Mac na ito: ang tanong mo, ang mga tama sa paghahanap, at ang mga transcript na binubuksan ng agent para sumagot ay pumupunta sa %@ gamit ang key mo. Walang ipinapadala hangga't hindi ka nagtatanong.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Tumanggi ang Keychain na i-save ang key — nanatili ito sa field. I-unlock ang keychain at subukan ulit.",
         "Couldn't reach the update server. Try again once you're online.": "Hindi maabot ang update server. Subukan ulit kapag online ka na.",

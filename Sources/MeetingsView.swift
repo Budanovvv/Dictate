@@ -356,18 +356,101 @@ struct MeetingsView: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
-            .padding(.bottom, 10)
+            .padding(.bottom, 6)
         }
-        // The corner Settings row is gone (owner, 2026-08-31): a Settings
-        // button whose menu's first item is Settings… said nothing — the
-        // menu bar item and ⌘, are the doors, and the footer is the watch
-        // strip alone.
+        // The corner Settings row (design): the gear, the word, the ⌘, —
+        // and a small menu of the settings SECTIONS (shortcuts, appearance,
+        // models, updates, quit). No "Settings…" inside: the gear row is
+        // itself the settings door, and a menu that led with it was
+        // settings-inside-settings (owner, 2026-08-31).
+        Button {
+            settingsMenuOpen.toggle()
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12))
+                    .frame(width: 15)
+                Text(L("Settings"))
+                    .font(.system(size: 12.5))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("⌘,")
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight()
+        .popover(isPresented: $settingsMenuOpen, arrowEdge: .top) {
+            settingsCornerMenu
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
     }
+
+    /// The corner menu (design): quick doors in the app's own menu
+    /// vocabulary. Every row closes the menu and goes.
+    private var settingsCornerMenu: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            // "Settings…" led this menu once — a Settings row inside the
+            // Settings menu (owner, 2026-08-31: "settings inside settings —
+            // wrong"). The gear row IS the settings door; the menu lists
+            // the sections.
+            cornerRow(L("Keyboard shortcuts")) { openSettingsWindow(tab: "keys") }
+            Divider().padding(.vertical, 4)
+            cornerRow(L("Appearance"), trailing: appearanceValue) { openSettingsWindow(tab: "general") }
+            cornerRow(L("Storage & models")) { openSettingsWindow(tab: "meetings") }
+            Divider().padding(.vertical, 4)
+            cornerRow(L("Check for updates")) {
+                settingsMenuOpen = false
+                NotificationCenter.default.post(name: .init("dictate.checkUpdates"), object: nil)
+            }
+            cornerRow(L("Quit Dictate"), trailing: "⌘Q") {
+                NSApp.terminate(nil)
+            }
+        }
+        .padding(5)
+        .frame(width: 212)
+    }
+
+    private var appearanceValue: String {
+        switch Settings.shared.appearance {
+        case "light": return L("Light")
+        case "dark": return L("Dark")
+        default: return L("Match system")
+        }
+    }
+
 
     private func openSettingsWindow(tab: String?) {
         if let tab { UserDefaults.standard.set(tab, forKey: "settingsOpenTab") }
         Log.d("corner: posting openSettings (tab=\(tab ?? "-"))")
         NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
+    }
+
+    private func cornerRow(_ title: String, trailing: String? = nil,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Text(title)
+                    .font(.system(size: 12.5))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverHighlight()
     }
 
     /// Column two (296): search up top in its own 52 pt header, the meetings
@@ -1687,6 +1770,7 @@ struct MeetingsView: View {
     @State private var showingAskExplain = false
     /// The meeting a one-time summary is being written for right now.
     @State private var writingOnce: URL?
+    @State private var settingsMenuOpen = false
 
     /// Who answers — the provider picked in Settings; everything above this
     /// knows only the protocol.
