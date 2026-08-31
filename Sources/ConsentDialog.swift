@@ -30,6 +30,14 @@ enum ConsentDialog {
         panel.setContentSize(hosting.fittingSize)
         panel.center()
         NSApp.activate(ignoringOtherApps: true)
+        // The caller needs a synchronous answer, so there is no runloop
+        // turn to let activation settle — instead the panel is FORCED
+        // visible regardless of who is frontmost: modal level, ordered in
+        // before the modal loop starts. Without this, a consent asked while
+        // the app is not active can run modal behind another app's windows
+        // (the trap the update alert fell into, 2026-08-31).
+        panel.level = .modalPanel
+        panel.orderFrontRegardless()
         let response = NSApp.runModal(for: panel)
         panel.orderOut(nil)
         return response == .OK

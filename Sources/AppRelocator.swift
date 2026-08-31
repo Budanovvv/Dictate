@@ -36,6 +36,11 @@ enum AppRelocator {
         panel.contentView = hosting
         panel.setContentSize(hosting.fittingSize)
         panel.center()
+        // Forced visible before the modal loop, same as ConsentDialog: a
+        // first launch from the DMG may run modal before activation has
+        // settled, and an invisible relocation dialog is a frozen app.
+        panel.level = .modalPanel
+        panel.orderFrontRegardless()
         let response = NSApp.runModal(for: panel)
         panel.orderOut(nil)
         if response == .OK, move() {

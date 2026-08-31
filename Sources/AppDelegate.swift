@@ -618,8 +618,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.checkUpdates"), object: nil, queue: .main
         ) { [weak self] _ in
-            NSApp.activate(ignoringOtherApps: true)
-            self?.updater.checkForUpdates(nil)
+            self?.activateThenRun { self?.updater.checkForUpdates(nil) }
         })
 
         applyDebugShot()
@@ -947,8 +946,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         let view = SettingsView(
             onHotkeyChanged: { [weak self] in self?.dictation.restart() },
             onCheckForUpdates: { [weak self] in
-                NSApp.activate(ignoringOtherApps: true)
-                self?.updater.checkForUpdates(nil)
+                self?.activateThenRun { self?.updater.checkForUpdates(nil) }
             })
         let window = makeWindow(title: L("Dictate Settings"), content: view)
         settingsWindow = window
@@ -973,6 +971,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             name: NSWindow.willCloseNotification, object: window
         )
         return window
+    }
+
+    /// Runs UI that is about to go MODAL (Sparkle's alerts, panels) only
+    /// after the app is truly frontmost. Activation kicked off in the same
+    /// runloop turn has not settled yet — a modal alert fired that instant
+    /// opens BEHIND other apps' windows, invisible, and the modal loop then
+    /// reads as a hang (watchdog, 2026-08-31 12:32 and 12:42: the "You're
+    /// up to date" alert, twice).
+    private func activateThenRun(_ work: @escaping () -> Void) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { work() }
     }
 
     private func present(_ window: NSWindow, over anchor: NSWindow? = nil) {

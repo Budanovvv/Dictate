@@ -517,6 +517,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
+        // (The About panel orders itself front on the next turn via the
+        // dispatch below — a status-item click does not activate the app,
+        // and a panel shown in the same turn can land behind everything.)
         let credits = NSMutableAttributedString(
             string: "Free & open source · GPL-3.0\n",
             attributes: [.font: NSFont.systemFont(ofSize: 11)]
@@ -533,7 +536,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Show "Version 2.2.0" without the parenthetical build number: it's now
         // the git commit count (a Sparkle-only technical value), meaningless to
         // a user. Empty .version drops the "(…)" the standard panel would add.
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
+        DispatchQueue.main.async {
+            NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
+        }
     }
 
     @objc private func quit() {

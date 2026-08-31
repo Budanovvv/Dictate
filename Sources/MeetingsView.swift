@@ -1290,10 +1290,15 @@ struct MeetingsView: View {
         panel.nameFieldStringValue = meeting.url.lastPathComponent
         panel.canCreateDirectories = true
         NSApp.activate(ignoringOtherApps: true)
+        // Next runloop turn: activation must settle or the save panel can
+        // open behind the frontmost app (same family as the update-alert
+        // hang, 2026-08-31).
+        DispatchQueue.main.async {
         panel.begin { response in
             guard response == .OK, let destination = panel.url else { return }
             try? FileManager.default.removeItem(at: destination)
             try? FileManager.default.copyItem(at: meeting.url, to: destination)
+        }
         }
     }
 
