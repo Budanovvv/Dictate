@@ -77,6 +77,30 @@ enum MeetingCapability: String, CaseIterable {
     static var recordOfferBody: String {
         L("Call recording is off, so this one is passing untranscribed. Turning it on gives you a searchable transcript and a summary afterwards, kept on this Mac.")
     }
+
+    // The absence strip's sentences (design section 9, Q4: one combined
+    // strip, the missing things in one sentence ordered by consequence).
+    // Whole sentences rather than fragments composed at runtime: eleven
+    // languages do not share a grammar, and a sentence stitched from
+    // fragments would read like one.
+    static var absenceMicOnly: String {
+        L("This is your microphone only — the other side of the call is missing, the text is one unbroken block, and there is no summary or outline.")
+    }
+    static var absenceMicOnlySub: String {
+        L("Writing one now reads only this transcript and leaves the switches off. The other side of this call was not recorded and cannot be recovered.")
+    }
+    static var absenceNoSummary: String {
+        L("There is no summary or outline — reading your meetings is off.")
+    }
+    static var absenceNoSummarySub: String {
+        L("Turning it on also writes them for the recordings that come next. Writing one now leaves the switch off.")
+    }
+
+    /// The list column's note while calls go unnoticed — the noticing
+    /// capability's own absence, worded once.
+    static var callsUnnoticedNote: String {
+        L("Calls are not noticed automatically. You can start each one here, or let Dictate offer when a call begins.")
+    }
 }
 
 /// The offers' central ceiling (design section 9; designer's Q3 answer,

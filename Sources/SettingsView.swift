@@ -33,6 +33,10 @@ struct SettingsView: View {
     @State private var language = Settings.shared.language
     @State private var nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
     @State private var noticeCalls = Settings.shared.noticeCalls
+    /// macOS said no to the microphone — the capabilities below can only
+    /// WAIT, and must say so rather than pretend to work (design section 9:
+    /// blocked-by-macOS is its own kind of off).
+    @State private var micDenied = Permissions.microphone == .denied
     @State private var recordCallAudio = Settings.shared.recordCallAudio
     @State private var separateVoices = Settings.shared.separateVoices
     @State private var readMeetings = Settings.shared.readMeetings
@@ -422,6 +426,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var meetingsSection: some View {
+        let _ = refreshMicDenied()
             // — Meetings — ONE section for everything the app can do with a
             // meeting, a row per capability in the order they touch it: name
             // it, understand it, ask about it. They used to be three sections
@@ -434,7 +439,7 @@ struct SettingsView: View {
                 // silence costs and offers the one-click way out.
                 if !noticeCalls && !recordCallAudio && !separateVoices && !readMeetings {
                     HStack(alignment: .top, spacing: 9) {
-                        Image(systemName: "moon.zzz")
+                        Image(systemName: "info.circle")
                             .foregroundStyle(.secondary)
                             .padding(.top, 1)
                         VStack(alignment: .leading, spacing: 3) {
@@ -457,6 +462,32 @@ struct SettingsView: View {
                     .padding(10)
                     .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.35)))
                 }
+                // Blocked by macOS is drawn as BROKEN, not as off (design
+                // section 9): the warning colour, the way out, and switches
+                // that say they are waiting instead of pretending to work.
+                if micDenied {
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(DS.warn)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L("macOS denied microphone access"))
+                                .font(.system(size: 12.5, weight: .medium))
+                            Text(L("Nothing here can hear a call until it is granted in System Settings › Privacy & Security › Microphone."))
+                                .font(DS.helpText)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button(L("Open Settings")) {
+                            Permissions.openSettingsPane("Privacy_Microphone")
+                        }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(DS.warn.opacity(0.08)))
+                }
                 // The meeting capabilities, granular and in the order they
                 // touch a call: notice it, record it, tell voices apart, read
                 // it (design MeetingsOff). Each why-text says what the switch
@@ -473,7 +504,9 @@ struct SettingsView: View {
                         }
                 } label: {
                     rowLabel(MeetingCapability.noticeCalls.name,
-                             MeetingCapability.noticeCalls.adds)
+                             micDenied ? L("Waiting on microphone access.")
+                                       : MeetingCapability.noticeCalls.adds,
+                             warn: micDenied)
                 }
                 LabeledContent {
                     Toggle("", isOn: $recordCallAudio).labelsHidden().toggleStyle(.switch)
@@ -483,18 +516,26 @@ struct SettingsView: View {
                         }
                 } label: {
                     rowLabel(MeetingCapability.recordCallAudio.name,
-                             MeetingCapability.recordCallAudio.adds)
+                             micDenied ? L("Waiting on microphone access.")
+                                       : MeetingCapability.recordCallAudio.adds,
+                             warn: micDenied)
                 }
                 LabeledContent {
                     Toggle("", isOn: $separateVoices).labelsHidden().toggleStyle(.switch)
+                        .disabled(!recordCallAudio)
                         .onChange(of: separateVoices) {
                             Settings.shared.separateVoices = $0
                             OfferLedger.decided(.separateVoices)
                         }
                 } label: {
                     rowLabel(MeetingCapability.separateVoices.name,
-                             MeetingCapability.separateVoices.adds)
+                             recordCallAudio
+                                ? MeetingCapability.separateVoices.adds
+                                : Lf("Waits for “%@” above — there is no call audio to separate yet.",
+                                     MeetingCapability.recordCallAudio.name))
+                        .padding(.leading, 16)
                 }
+                .opacity(recordCallAudio ? 1 : 0.5)
                 LabeledContent {
                     Toggle("", isOn: $readMeetings).labelsHidden().toggleStyle(.switch)
                         .onChange(of: readMeetings) {
@@ -898,13 +939,26 @@ struct SettingsView: View {
     @ViewBuilder
     /// A row's name, and under it the one line that explains it — when there is
     /// one. `nil` leaves the row a single line rather than an empty second one.
-    private func rowLabel(_ title: String, _ hint: String?) -> some View {
+    private func rowLabel(_ title: String, _ hint: String?,
+                          warn: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
             if let hint {
-                Text(hint).font(.caption).foregroundStyle(.secondary)
+                Text(hint).font(.caption)
+                    .foregroundStyle(warn ? AnyShapeStyle(DS.warn)
+                                          : AnyShapeStyle(.secondary))
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// Cheap enough to run on every render of the meetings section — the
+    /// person flips the permission in System Settings and comes back, and
+    /// the pane must not keep claiming it is broken (or working).
+    private func refreshMicDenied() {
+        let denied = Permissions.microphone == .denied
+        if denied != micDenied {
+            DispatchQueue.main.async { micDenied = denied }
         }
     }
 
