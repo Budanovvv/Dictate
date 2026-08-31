@@ -1146,13 +1146,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // app", so a polite orderFront can land BEHIND the frontmost app
             // (field logs 2026-08-31 12:53).
             window.orderFrontRegardless()
+            // The RULE, re-asserted AFTER ordering (owner, 2026-08-31:
+            // "opened from the app, it lands centred on the app"): ordering
+            // and the Space move can both shift the frame that was set
+            // before them, so with the main window on screen the position
+            // is stamped again, last — dead centre over the anchor, same
+            // display, no drift.
+            if let anchor, anchor.isVisible {
+                let a = anchor.frame
+                let size = window.frame.size
+                window.setFrameOrigin(NSPoint(x: a.midX - size.width / 2,
+                                              y: a.midY - size.height / 2))
+            }
             // Activation is exactly the thing that switches Spaces ("switch
             // to a Space with open windows" pulls every display to this
             // app's other windows — the owner kept getting yanked out of
             // full-screen PyCharm onto the desktop). A non-activating panel
             // can be key without it, so for one of those we never activate.
             if !nonactivating { NSApp.activate() }
-            Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace)")
+            Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace) anchor=\(anchor.map { "\(Int($0.frame.midX)),\(Int($0.frame.midY)) \($0.screen?.localizedName ?? "nil")" } ?? "none")")
         }
     }
 
