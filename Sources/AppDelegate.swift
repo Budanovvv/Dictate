@@ -295,19 +295,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // anything they acted on, and deserves the notice again.
             Settings.shared.meetingConsentSeen = true
         }
-        startMeetingSession()
+        // The menu too starts as the pill (owner's call, 2026-08-31: the
+        // portal opened over his screen again) — the full window appears
+        // only when the person opens it themselves. With the window already
+        // open, the guard below records in it, same as the card's path.
+        startMeetingSession(asPill: true)
     }
 
     /// The actual start, shared by the menu, the window's Record control and
     /// the call prompt (which carries its own consent line, so it comes here
-    /// directly). `asPill` is the prompt's way in: the person is ON A CALL —
-    /// dropping the full portal over it helps nobody (owner's call,
-    /// 2026-08-29), so the recording starts as the small pill and the window
-    /// stays wherever it was.
-    private func startMeetingSession(asPill: Bool = false) {
+    /// directly). `asPill` is the presentation: the recording starts as the
+    /// small pill and the window stays wherever it was (owner's rule — the
+    /// portal only ever opens by hand). `fromCallPrompt` is the provenance,
+    /// kept separate on purpose: it seeds the auto-stop's "a call platform
+    /// was here" flag, and a menu start may be no call at all — seeding it
+    /// there would let the dead-air stop kill a dictated note 90 s into its
+    /// first pause.
+    private func startMeetingSession(asPill: Bool = false, fromCallPrompt: Bool = false) {
         callPrompt.hide()
         do {
-            try meeting.start(fromCallPrompt: asPill)
+            try meeting.start(fromCallPrompt: fromCallPrompt)
             statusController.applyState(dictation.state)   // show the red mark
             // The pill only when there is no window already on screen: with
             // the portal open, recording lands in it — a pill OVER an open
@@ -336,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if Settings.shared.noticeCalls {
             Log.d("call: prompting")
             callPrompt.show(platform: platform, style: .prompt) { [weak self] in
-                self?.startMeetingSession(asPill: true)
+                self?.startMeetingSession(asPill: true, fromCallPrompt: true)
             }
             return
         }
@@ -344,7 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
               Settings.shared.callOfferDeclines < 2 else { return }
         Log.d("call: offering (noticing off, declines \(Settings.shared.callOfferDeclines))")
         callPrompt.show(platform: platform, style: .offer) { [weak self] in
-            self?.startMeetingSession(asPill: true)
+            self?.startMeetingSession(asPill: true, fromCallPrompt: true)
         }
     }
 
