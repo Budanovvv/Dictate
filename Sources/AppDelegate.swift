@@ -1045,7 +1045,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // settle first, otherwise Picker/Menu popups can't open (the app isn't
         // truly frontmost yet).
         DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
+            // Order BEFORE activating, not after: moveToActiveSpace puts the
+            // window on the Space the user is on right now, and once it is
+            // the key window there, activation has nothing to switch Spaces
+            // for. Activated first, macOS jumps to "a Space with this app's
+            // windows" — the desktop with the meetings window — yanking the
+            // user out of their full-screen app (field report 2026-08-31).
             window.makeKeyAndOrderFront(nil)
             // Above other apps' windows even when cooperative activation
             // says no — which it does whenever the request originates in
@@ -1055,6 +1060,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // (field logs 2026-08-31 12:53: ordered front, visible=true,
             // and the owner saw nothing).
             window.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
             Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace)")
         }
     }
