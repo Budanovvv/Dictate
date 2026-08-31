@@ -35,13 +35,13 @@ final class Localization: ObservableObject {
     @Published private(set) var language: AppLanguage
 
     private init() {
-        let stored = UserDefaults.standard.string(forKey: "uiLanguage") ?? AppLanguage.system.rawValue
+        let stored = Settings.shared.uiLanguage
         self.language = AppLanguage(rawValue: stored) ?? .system
     }
 
     func setLanguage(_ lang: AppLanguage) {
         language = lang
-        UserDefaults.standard.set(lang.rawValue, forKey: "uiLanguage")
+        Settings.shared.uiLanguage = lang.rawValue
     }
 
     /// The language the system resolves to (never .system).

@@ -1,9 +1,42 @@
 import Foundation
 
 /// App settings, backed by UserDefaults.
+///
+/// OWNERSHIP RULE (review, 2026-08-31): every durable preference key is
+/// declared HERE, and other files read it through `Settings.shared` — a raw
+/// `UserDefaults.standard` write elsewhere is a bug unless it falls in one
+/// of the two sanctioned families: dedicated STORES that own a namespaced
+/// domain of their own (OfferLedger's "offer.*", MeetingStars' star list,
+/// SectionCache), and TRANSIENT MESSAGES that are consumed once and removed
+/// (the debugShot* screenshot harness, settingsOpenTab window routing).
 final class Settings {
     static let shared = Settings()
     private let d = UserDefaults.standard
+
+    /// The interface language (Localization reads it at startup, before
+    /// anything else — kept here so the key has one declared owner).
+    var uiLanguage: String {
+        get { d.string(forKey: "uiLanguage") ?? "system" }
+        set { d.set(newValue, forKey: "uiLanguage") }
+    }
+
+    /// The agent-connect offer's lifetime bookkeeping (AgentOffer applies
+    /// the policy; the keys live here).
+    var agentOfferDismissed: Bool {
+        get { d.bool(forKey: "agentOfferDismissed") }
+        set { d.set(newValue, forKey: "agentOfferDismissed") }
+    }
+    var agentOfferRuns: Int {
+        get { d.integer(forKey: "agentOfferRuns") }
+        set { d.set(newValue, forKey: "agentOfferRuns") }
+    }
+
+    /// Where a hand-dragged meeting pill was left, as [x, y] — nil when the
+    /// pill has never been dragged.
+    var meetingPillOrigin: [Double]? {
+        get { d.array(forKey: "meetingPillOrigin") as? [Double] }
+        set { d.set(newValue, forKey: "meetingPillOrigin") }
+    }
 
     var onboardingDone: Bool {
         get { d.bool(forKey: "onboardingDone") }

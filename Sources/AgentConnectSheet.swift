@@ -10,23 +10,22 @@ import SwiftUI
 final class AgentOffer: ObservableObject {
     static let shared = AgentOffer()
 
-    @Published private(set) var dismissed = UserDefaults.standard.bool(forKey: "agentOfferDismissed")
+    @Published private(set) var dismissed = Settings.shared.agentOfferDismissed
     private var countedThisRun = false
 
     var allowed: Bool {
-        !dismissed && UserDefaults.standard.integer(forKey: "agentOfferRuns") <= 2
+        !dismissed && Settings.shared.agentOfferRuns <= 2
     }
 
     func noteShown() {
         guard !countedThisRun else { return }
         countedThisRun = true
-        let d = UserDefaults.standard
-        d.set(d.integer(forKey: "agentOfferRuns") + 1, forKey: "agentOfferRuns")
+        Settings.shared.agentOfferRuns += 1
     }
 
     func dismiss() {
         dismissed = true
-        UserDefaults.standard.set(true, forKey: "agentOfferDismissed")
+        Settings.shared.agentOfferDismissed = true
     }
 }
 

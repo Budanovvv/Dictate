@@ -83,7 +83,6 @@ final class MeetingPill {
     /// records only the USER's drags — a programmatic placement must not
     /// overwrite a remembered spot.
     private var positioningProgrammatically = false
-    private static let originKey = "meetingPillOrigin"
 
     init(session: MeetingSession,
          onStop: @escaping () -> Void,
@@ -184,7 +183,7 @@ final class MeetingPill {
         ) { [weak self] _ in
             guard let self, !self.positioningProgrammatically,
                   let origin = self.panel?.frame.origin else { return }
-            UserDefaults.standard.set([origin.x, origin.y], forKey: Self.originKey)
+            Settings.shared.meetingPillOrigin = [origin.x, origin.y]
             // A hand-placed pill stays where the hand put it: dragging turns
             // the display-following off until the next recording.
             self.pinnedByDrag = true
@@ -203,8 +202,7 @@ final class MeetingPill {
         // clamped into a CURRENT screen, because the display it was left on
         // may be gone (unplugged monitor) and a pill off every screen is a
         // recording indicator nobody can see.
-        if let stored = UserDefaults.standard.array(forKey: Self.originKey) as? [Double],
-           stored.count == 2 {
+        if let stored = Settings.shared.meetingPillOrigin, stored.count == 2 {
             let point = NSPoint(x: stored[0], y: stored[1])
             let screen = NSScreen.screens.first { $0.visibleFrame.contains(point) }
                 ?? NSScreen.main
