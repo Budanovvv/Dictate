@@ -328,9 +328,11 @@ final class RecordingHUD {
         // samples (~a third of a second) and the fall drains even slower —
         // the bar breathes with the sentence, not with every syllable.
         let current = model.level.value
+        // Owner tuning 2026-08-31: +25% response on both edges (0.35→0.44
+        // rise, 0.12→0.15 fall) — livelier without going back to twitchy.
         model.level.value = level > current
-            ? current * 0.65 + level * 0.35
-            : current * 0.88 + level * 0.12
+            ? current * 0.56 + level * 0.44
+            : current * 0.85 + level * 0.15
     }
 
     // MARK: - private
