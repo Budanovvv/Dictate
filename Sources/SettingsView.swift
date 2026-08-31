@@ -645,7 +645,7 @@ struct SettingsView: View {
                             keyDraft = ""
                         }
                 } label: {
-                    rowLabel(L("AI agent"),
+                    rowLabel(L("The agent uses"),
                              L("Connect one to analyze your meetings."))
                 }
                 // The key row belongs to the chosen provider — it appears

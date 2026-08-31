@@ -177,7 +177,7 @@ struct AgentConnectSheet: View {
             }
             .padding(.top, 4)
 
-            Text(L("Not now keeps Ask off and hidden. Search and transcripts are unaffected."))
+            Text(L("Not now keeps the agent off and hidden. Search and transcripts are unaffected."))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)

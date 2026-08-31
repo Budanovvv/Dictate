@@ -461,6 +461,11 @@ struct AnswerPane: View {
     /// The archive's size, shown quietly inside the docked composer
     /// (design: "38 meetings · 26 h of audio"). nil hides it.
     var stats: String? = nil
+    /// The empty state's headline — a FACT about what the agent has read
+    /// (design turn 26), computed by the library because it owns the
+    /// archive. "Your agent has read all 38 meetings", never an instruction.
+    var headline: String = ""
+
     /// The window-level pane toggle (the sidebar's), handed in by the panes'
     /// owner — with the sidebar folded it also clears the traffic lights.
     var headerLeading: AnyView? = nil
@@ -483,7 +488,7 @@ struct AnswerPane: View {
                 headerLeading.padding(.trailing, 4)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(L("Ask")).font(DS.windowTitle)
+                Text(L("Agent")).font(DS.windowTitle)
                 if let headerNote {
                     Text(headerNote)
                         .font(.system(size: 11))
@@ -558,7 +563,7 @@ struct AnswerPane: View {
     /// questions that already have answers in the archive, and the field.
     @ViewBuilder
     private var emptyState: some View {
-        Text(L("Ask anything about your meetings"))
+        Text(headline)
             .font(.system(size: 21, weight: .bold))
         Text(L("The agent searches and reads your transcripts on this Mac, and every answer names the meetings it drew from."))
             .font(.callout)
@@ -644,7 +649,7 @@ struct AnswerPane: View {
     private var followUpField: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .bottom, spacing: 8) {
-                TextField(answer.isEmpty ? L("Ask about your meetings…")
+                TextField(answer.isEmpty ? L("Ask your agent anything…")
                                          : L("Ask across all meetings…"),
                           text: $draft, axis: .vertical)
                     .lineLimit(1...5)
@@ -742,7 +747,7 @@ struct AnswerPane: View {
         case .outOfCredit:
             failureBox(icon: "creditcard",
                        title: L("Your provider account is out of credit"),
-                       sub: Lf("%@ refused the request for billing reasons. Add credit in your provider account, or switch Ask off in Settings.", provider.vendorName),
+                       sub: Lf("%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.", provider.vendorName),
                        buttonTitle: L("Open Console")) {
                 NSWorkspace.shared.open(provider.keysURL)
             }

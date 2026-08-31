@@ -382,7 +382,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// iCloud may have evicted, which is a stall this app has already paid for
     /// once. The menu does actions; the window does browsing.
     private func addMeetingsItem(to menu: NSMenu) {
-        let item = NSMenuItem(title: L("Meetings & Ask…"),
+        let item = NSMenuItem(title: L("Meetings & Agent…"),
                               action: #selector(showAllMeetings), keyEquivalent: "")
         item.target = self
         menu.addItem(item)

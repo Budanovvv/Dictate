@@ -915,27 +915,19 @@ struct MeetingsView: View {
     @ViewBuilder
     private var libraryNav: some View {
         VStack(alignment: .leading, spacing: 1) {
+            // The agent's own slot, promoted OUT of the Library (design turn
+            // 26): it is not a place in the archive, it is the reader of all
+            // of it — so it sits above the section, over its own hairline.
+            agentSlot
+            Divider()
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
             Text(L("Library"))
                 .font(DS.sectionLabel)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 .padding(.bottom, 3)
-            // Ask is always in the sidebar now, wearing an "off" chip when
-            // it cannot answer (design FirstRun) — an absent feature cannot
-            // be discovered, a labelled one can.
-            navRow(icon: "questionmark.bubble", title: L("Ask"),
-                   chip: !Settings.shared.readMeetings || !Settings.shared.askArchive,
-                   selected: selection == .ask) {
-                selection = .ask
-                // One lit row, always (owner's report 2026-08-29: Ask and
-                // Starred glowed together). Entering Ask retires the list
-                // filters — they are a place in the library, and Ask is
-                // another place.
-                starredOnly = false
-                recentOnly = false
-                sourceFilter = nil
-            }
             navRow(icon: "rectangle.grid.1x2", title: L("All Meetings"),
                    count: meetings.count,
                    selected: selection != .ask && !starredOnly && !recentOnly
@@ -1045,8 +1037,84 @@ struct MeetingsView: View {
         }
     }
 
+    /// What the agent actually has (designer's Q2 answer, 2026-08-31): a
+    /// live line, not a promise — reading is a TASK and wears the task
+    /// spinner, never a state glyph, and "off" wears the hollow ring.
+    private var agentReadCount: Int { meetings.filter { $0.summary != nil }.count }
+
+    private var agentReadLine: String {
+        guard Settings.shared.readMeetings else { return L("Off — has read nothing yet") }
+        let total = meetings.count
+        let read = agentReadCount
+        if total == 0 { return L("Nothing to read yet") }
+        if read < total {
+            return summaries.running ? Lf("Reading %d of %d meetings…", read, total)
+                                     : Lf("Has read %d of %d meetings", read, total)
+        }
+        return total == 1 ? L("Has read 1 meeting")
+                          : Lf("Has read all %d meetings", total)
+    }
+
+    private var agentSlot: some View {
+        Button {
+            selection = .ask
+            // Entering the agent retires the list filters — they are a place
+            // in the library, and the agent is another place.
+            starredOnly = false
+            recentOnly = false
+            sourceFilter = nil
+        } label: {
+            HStack(spacing: 9) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(DS.accent)
+                    Image(systemName: "questionmark.bubble")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L("Agent"))
+                        .font(.system(size: 13, weight: .semibold))
+                    HStack(spacing: 5) {
+                        if Settings.shared.readMeetings, summaries.running,
+                           agentReadCount < meetings.count {
+                            ProgressView().controlSize(.mini)
+                        }
+                        Text(agentReadLine)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                if !Settings.shared.readMeetings {
+                    Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.5)
+                        .frame(width: 8, height: 8)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .background(
+            HStack(spacing: 0) {
+                if selection == .ask {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(DS.accent)
+                        .frame(width: DS.selectionEdge)
+                }
+                Rectangle().fill(selection == .ask ? DS.selectionTint : .clear)
+            }
+        )
+        .hoverHighlight()
+        .clipShape(DS.shape)
+        .padding(.top, 6)
+    }
+
     private func navRow(icon: String, dot: Color? = nil, title: String,
-                        chip: Bool = false,
                         count: Int? = nil,
                         selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -1064,15 +1132,6 @@ struct MeetingsView: View {
                 }
                 Text(title)
                     .lineLimit(1)
-                if chip {
-                    Text(L("off"))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .frame(height: 16)
-                        .background(RoundedRectangle(cornerRadius: 5)
-                            .fill(.quaternary.opacity(0.7)))
-                }
                 Spacer(minLength: 0)
                 if let count, count > 0 {
                     Text("\(count)")
@@ -1115,6 +1174,7 @@ struct MeetingsView: View {
         }, onAddKey: {
             connectQuestion = answer.lastQuestion ?? ""
         }, stats: askStats,
+           headline: agentEmptyFact,
            headerLeading: paneToggles(.ask))
     }
 
@@ -1123,7 +1183,7 @@ struct MeetingsView: View {
     /// composer visibly present but asleep.
     private var askOffPane: some View {
         askGatePane(
-            body: L("Ask answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way."),
+            body: L("Your agent answers questions across everything you have recorded — “what did we decide about the freeze date” — and cites the meeting and moment it came from. It needs the model that reads your meetings, which is currently off. Nothing leaves this Mac either way."),
             action: L("Turn on reading"),
             explain: MeetingCapability.readMeetings.adds) {
             MeetingCapability.readMeetings.isOn = true
@@ -1148,14 +1208,14 @@ struct MeetingsView: View {
         VStack(spacing: 0) {
             HStack {
                 paneToggles(.ask).padding(.trailing, 4)
-                Text(L("Ask")).font(DS.windowTitle)
+                Text(L("Agent")).font(DS.windowTitle)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
             .frame(height: 46)
             .overlay(alignment: .bottom) { Divider() }
             VStack(alignment: .leading, spacing: 12) {
-                Text(L("Ask is off"))
+                Text(L("Your agent is off"))
                     .font(.system(size: 15, weight: .semibold))
                 Text(body)
                     .font(.system(size: 12.5))
@@ -1186,7 +1246,7 @@ struct MeetingsView: View {
             // The composer, present but asleep — the pane still looks like
             // the place questions will be typed, which is the promise.
             HStack {
-                Text(L("Ask about your meetings…"))
+                Text(L("Ask your agent anything…"))
                     .font(.system(size: 13))
                     .foregroundStyle(.tertiary)
                 Spacer(minLength: 0)
@@ -1217,14 +1277,23 @@ struct MeetingsView: View {
         }
     }
 
-    /// The honest line under the Ask title: search is local, the written
-    /// answer is not — it comes from the user's provider with their own key
-    /// (design 16; the header must never claim "answered on this Mac").
+    /// The honest line under the Agent title: what it has read, and who
+    /// writes the answer — the search is local, the written answer is not
+    /// (the header must never claim "answered on this Mac").
     private var askHeaderNote: String? {
         guard let provider = Settings.shared.askProvider else { return nil }
-        return meetings.isEmpty
-            ? Lf("The agent reads your transcripts on this Mac; the written answer comes from %@ with your own key.", provider.productName)
-            : Lf("Across all %d meetings · answered by %@", meetings.count, provider.productName)
+        return agentReadLine + " · " + Lf("answers with %@", provider.productName)
+    }
+
+    /// The empty conversation's headline: a fact about what the agent has,
+    /// never an instruction (design turn 26).
+    private var agentEmptyFact: String {
+        let total = meetings.count
+        let read = agentReadCount
+        if total == 0 { return L("Your agent has nothing to read yet") }
+        if read < total { return Lf("Your agent is reading — %d of %d meetings so far", read, total) }
+        return total == 1 ? L("Your agent has read 1 meeting")
+                          : Lf("Your agent has read all %d meetings", total)
     }
 
     /// Seeds for the cold conversation — a blank prompt box is a question
@@ -2420,12 +2489,12 @@ private struct TranscriptPane<MenuItems: View>: View {
             if live == nil, let onAsk {
                 Divider()
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(L("Questions are never limited to one meeting. Ask searches everything you have recorded and the answer names the meeting and the person."))
+                    Text(L("Questions are never limited to one meeting. Your agent searches everything you have recorded and the answer names the meeting and the person."))
                         .font(DS.helpText)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
-                    Button(L("Open Ask")) { onAsk() }
+                    Button(L("Ask your agent")) { onAsk() }
                         .buttonStyle(.plain)
                         .font(.system(size: 12))
                         .foregroundStyle(DS.accentText)

@@ -32,7 +32,7 @@ enum MeetingCapability: String, CaseIterable {
         case .separateVoices:
             return L("Turns one block of text into named turns, so you can see who committed to what. Names are yours to set and can be changed after the fact.")
         case .readMeetings:
-            return L("This is what writes the summary and the outline, and what answers questions in Ask. Off, you get the raw transcript and Ask stays unavailable — nothing is sent anywhere either way.")
+            return L("This is what writes the summary and the outline, and what gives your agent something to answer from. Off, you get the raw transcript — no summary, no outline, and no agent. Nothing is sent anywhere either way.")
         }
     }
 
