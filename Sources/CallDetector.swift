@@ -30,6 +30,8 @@ final class CallDetector {
     var isRecording: () -> Bool = { false }
 
     private var timer: Timer?
+    /// One probe in flight at a time — a stalled AX call must not stack.
+    private var probing = false
     private var inCall = false
     private var quietTicks = 0
     /// Ticks a browser has held the mic without a title naming the call.
@@ -69,11 +71,37 @@ final class CallDetector {
         // While we record, the platform is "in a call" by definition —
         // stay latched so the end of the recording is not a fresh call.
         if isRecording() { inCall = true; quietTicks = 0; unidentifiedTicks = 0; return }
-        if MeetingSession.callHolderPresent() {
+        // The probe walks HAL mic holders and browser AX titles —
+        // synchronous IPC a beachballing browser can stall for seconds. Off
+        // the main thread (review, 2026-08-31), one probe in flight at a
+        // time; the verdict hops back here.
+        guard !probing else { return }
+        probing = true
+        let latched = inCall
+        Task.detached(priority: .utility) { [weak self] in
+            let holder = MeetingSession.callHolderPresent()
+            // The strict, title-verified detection only matters while not
+            // yet latched; the debug walk only on an unidentified holder.
+            let platform = (holder && !latched) ? MeetingSession.detectCallApp() : nil
+            let holders = (holder && !latched && platform == nil)
+                ? MeetingSession.debugCallHolders() : ""
+            await MainActor.run {
+                guard let self else { return }
+                self.probing = false
+                self.apply(holder: holder, platform: platform, holders: holders)
+            }
+        }
+    }
+
+    /// The tick's verdict, applied with the detector's state — main-actor,
+    /// after the background probe.
+    private func apply(holder: Bool, platform: String?, holders: String) {
+        if isRecording() { inCall = true; quietTicks = 0; unidentifiedTicks = 0; return }
+        if holder {
             if quietTicks > 0 { Log.d("call: holder back after \(quietTicks * 4)s") }
             quietTicks = 0
             guard !inCall else { return }
-            if let platform = MeetingSession.detectCallApp() {
+            if let platform {
                 inCall = true
                 unidentifiedTicks = 0
                 fire(platform)
@@ -86,7 +114,7 @@ final class CallDetector {
             // than stay silent through the meeting.
             unidentifiedTicks += 1
             if unidentifiedTicks == 1 {
-                Log.d("call: unidentified holder — \(MeetingSession.debugCallHolders())")
+                Log.d("call: unidentified holder — \(holders)")
             }
             if unidentifiedTicks >= 3 {
                 inCall = true

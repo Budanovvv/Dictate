@@ -118,6 +118,9 @@ final class MeetingSession: ObservableObject {
     /// A title-verified call was observed during this session.
     private var platformEverSeen = false
     /// When something call-shaped last held the microphone.
+    /// One aliveness probe in flight at a time — a stalled AX call must
+    /// not queue up behind itself tick after tick.
+    private var probingCall = false
     private var lastPlatformAliveAt: Date?
     /// The last VAD-voiced window on EITHER channel (raw voice, not text).
     private var lastVoicedAt = Date()
@@ -647,20 +650,36 @@ final class MeetingSession: ObservableObject {
         // while a call process holds the mic we never stop ourselves; a call
         // that released it and stayed away — or dead air with no call in
         // sight — ends the session, and the file says which one it was.
-        let aliveNow = Self.callHolderPresent()
-        if aliveNow { lastPlatformAliveAt = Date() }
-        if !platformEverSeen, Self.detectCallApp() != nil { platformEverSeen = true }
-        let verdict = MeetingPolicy.autoStopVerdict(
-            platformEverSeen: platformEverSeen,
-            platformAliveNow: aliveNow,
-            lastAliveAt: lastPlatformAliveAt,
-            lastVoicedAt: lastVoicedAt,
-            now: Date())
-        if verdict != .keep {
-            Log.d("meeting: auto-stop (\(verdict)) — platformSeen=\(platformEverSeen), quiet for \(Int(Date().timeIntervalSince(lastVoicedAt)))s")
-            autoStopReason = verdict
-            stop()
-            return
+        //
+        // The probe itself runs OFF the main thread: it walks HAL device
+        // holders and browser AX titles — synchronous IPC that a wedged
+        // browser can stall — and the recorder's main thread must not hang
+        // on it (review, 2026-08-31). The verdict hops back to main.
+        if !probingCall {
+            probingCall = true
+            let everSeen = platformEverSeen
+            Task.detached(priority: .utility) { [weak self] in
+                let aliveNow = Self.callHolderPresent()
+                let platformNow = aliveNow && !everSeen ? Self.detectCallApp() != nil : false
+                await MainActor.run {
+                    guard let self else { return }
+                    self.probingCall = false
+                    guard self.isActive else { return }
+                    if aliveNow { self.lastPlatformAliveAt = Date() }
+                    if platformNow { self.platformEverSeen = true }
+                    let verdict = MeetingPolicy.autoStopVerdict(
+                        platformEverSeen: self.platformEverSeen,
+                        platformAliveNow: aliveNow,
+                        lastAliveAt: self.lastPlatformAliveAt,
+                        lastVoicedAt: self.lastVoicedAt,
+                        now: Date())
+                    if verdict != .keep {
+                        Log.d("meeting: auto-stop (\(verdict)) — platformSeen=\(self.platformEverSeen), quiet for \(Int(Date().timeIntervalSince(self.lastVoicedAt)))s")
+                        self.autoStopReason = verdict
+                        self.stop()
+                    }
+                }
+            }
         }
         let free = (try? url.deletingLastPathComponent()
             .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
