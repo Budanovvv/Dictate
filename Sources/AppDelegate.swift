@@ -973,6 +973,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // the dangling reference is an over-release crash.
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
+        // The window comes to the person, not the person to the window: the
+        // meetings panel rides every Space (canJoinAllSpaces), so its corner
+        // menu gets clicked from INSIDE full-screen apps — and a plain
+        // window then opened on the desktop Space, invisibly (field logs
+        // 2026-08-31 12:58: ordered front, visible, active — and the owner
+        // in full-screen PyCharm saw nothing). moveToActiveSpace brings it
+        // to the current Space; fullScreenAuxiliary lets that Space be a
+        // full-screen one.
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.center()
         // Subscribe once per window here — present() runs on every reopen, and
         // duplicate observers would fire someWindowClosed N times per close.
@@ -1043,7 +1052,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // (field logs 2026-08-31 12:53: ordered front, visible=true,
             // and the owner saw nothing).
             window.orderFrontRegardless()
-            Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive)")
+            Log.d("present: \(window.title.isEmpty ? "window" : window.title) ordered front — visible=\(window.isVisible) frame=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y)) \(Int(window.frame.width))x\(Int(window.frame.height)) screen=\(window.screen?.localizedName ?? "nil") active=\(NSApp.isActive) onActiveSpace=\(window.isOnActiveSpace)")
         }
     }
 
