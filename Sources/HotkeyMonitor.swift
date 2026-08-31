@@ -4,6 +4,11 @@ import CoreGraphics
 /// Global key capture via CGEventTap; needs the Input Monitoring permission.
 /// Modifier keys arrive as flagsChanged, regular keys as keyDown/keyUp.
 /// Callbacks receive the triggering keycode (main key vs translate key).
+///
+/// Main-actor confined: the tap's runloop source is added to the MAIN runloop
+/// (start()), so the event callback — and with it all mutable state here —
+/// runs on the main thread, as do start/stop/isAlive (DictationController).
+@MainActor
 final class HotkeyMonitor {
     /// Tracked keycodes (main key + optional translate key).
     var keyCodes: Set<Int64> = [61]
@@ -27,7 +32,11 @@ final class HotkeyMonitor {
         let callback: CGEventTapCallBack = { _, type, event, refcon in
             if let refcon {
                 let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(refcon).takeUnretainedValue()
-                monitor.handle(type: type, event: event)
+                // The tap's source is added to the MAIN runloop (below), so
+                // this callback always executes on the main thread.
+                MainActor.assumeIsolated {
+                    monitor.handle(type: type, event: event)
+                }
             }
             return Unmanaged.passUnretained(event)
         }
@@ -106,7 +115,11 @@ final class HotkeyMonitor {
 
         let code = event.getIntegerValueField(.keyboardEventKeycode)
         if type == .keyDown, code == 53 {
-            DispatchQueue.main.async { [weak self] in self?.onEsc?() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // Queued on the main queue — the body runs on the main actor.
+                MainActor.assumeIsolated { self.onEsc?() }
+            }
             return
         }
         guard keyCodes.contains(code) else { return }
@@ -128,8 +141,15 @@ final class HotkeyMonitor {
         let was = pressedCodes.contains(code)
         guard now != was else { return }
         if now { pressedCodes.insert(code) } else { pressedCodes.remove(code) }
-        let cb = now ? onPress : onRelease
-        DispatchQueue.main.async { cb?(code) }
+        // Still a deferring hop, as before: the callback must not run inside
+        // the event-tap callout. The callback property is read at fire time
+        // (a non-Sendable closure can't ride along) — it's only ever
+        // reassigned by restart(), to the same handlers.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            // Queued on the main queue — the body runs on the main actor.
+            MainActor.assumeIsolated { (now ? self.onPress : self.onRelease)?(code) }
+        }
     }
 
     /// Physical "is this key held right now", readable without a tap. CRITICAL:

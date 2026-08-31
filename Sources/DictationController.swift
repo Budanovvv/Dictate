@@ -12,6 +12,13 @@ final class CancelToken: @unchecked Sendable {
 }
 
 /// Core logic: hotkey → record → transcribe → insert.
+///
+/// Main-actor confined: every entry point (hotkey callbacks, timers, the UI
+/// surface) already ran on the main thread by convention — the annotation
+/// makes the compiler hold the line. The heavy audio/recognition work stays
+/// off main in `nonisolated` async members (process/transcribeLocal/
+/// previewPass), exactly where it ran before.
+@MainActor
 final class DictationController {
     enum State {
         case idle, recording, transcribing
@@ -219,38 +226,54 @@ final class DictationController {
         monitor.onPress = { [weak self] code in self?.handlePress(code) }
         monitor.onRelease = { [weak self] code in self?.handleRelease(code) }
         monitor.onEsc = { [weak self] in self?.cancel() }
-        recorder.onTruncated = { [weak self] in
-            self?.onError?(Lf("Recording truncated at %d seconds (limit)", AudioRecorder.maxDurationSec))
-        }
-        recorder.onLevel = { [weak self] level in
+        // All four recorder callbacks are delivered on the main thread
+        // (AudioRecorder dispatches them via DispatchQueue.main.async) —
+        // assumeIsolated asserts that contract instead of relying on the
+        // convention.
+        recorder.onTruncated = { @Sendable [weak self] in
             guard let self else { return }
-            self.onLevel?(level)
+            // Fired via DispatchQueue.main.async in AudioRecorder.append.
+            MainActor.assumeIsolated {
+                self.onError?(Lf("Recording truncated at %d seconds (limit)", AudioRecorder.maxDurationSec))
+            }
+        }
+        recorder.onLevel = { @Sendable [weak self] level in
+            guard let self else { return }
             // AudioRecorder delivers levels on the main thread; the silence
             // flush inside types text (MainActor-isolated), so make the
             // isolation explicit instead of relying on the convention.
             MainActor.assumeIsolated {
+                self.onLevel?(level)
                 self.liveLevelTick(level: level)
             }
         }
-        recorder.onMicBusyDetected = { [weak self] in
-            guard let self, self.capturing else { return }
-            let app = self.recorder.busyAppName
-            _ = self.recorder.stop()
-            self.capturing = false
-            self.flushPendingNotices()
-            Log.d("mic busy detected early -> stop + notify")
-            self.onNotice?(.micBusy(app))   // before the state change so it can't be hidden
-            self.updateDerivedState()
+        recorder.onMicBusyDetected = { @Sendable [weak self] in
+            guard let self else { return }
+            // Fired via DispatchQueue.main.asyncAfter (busy watchdog).
+            MainActor.assumeIsolated {
+                guard self.capturing else { return }
+                let app = self.recorder.busyAppName
+                _ = self.recorder.stop()
+                self.capturing = false
+                self.flushPendingNotices()
+                Log.d("mic busy detected early -> stop + notify")
+                self.onNotice?(.micBusy(app))   // before the state change so it can't be hidden
+                self.updateDerivedState()
+            }
         }
-        recorder.onRecoveryFailed = { [weak self] nothingRecorded in
-            guard let self, self.capturing else { return }
-            _ = self.recorder.stop()
-            self.capturing = false
-            self.flushPendingNotices()
-            self.updateDerivedState()
-            self.onError?(nothingRecorded
-                ? Lf("Couldn't start recording: %@", L("Microphone unavailable (no input audio format)"))
-                : L("Audio device changed during recording — recording cancelled, please try again."))
+        recorder.onRecoveryFailed = { @Sendable [weak self] nothingRecorded in
+            guard let self else { return }
+            // Fired via DispatchQueue.main.async in rebuildInputChain.
+            MainActor.assumeIsolated {
+                guard self.capturing else { return }
+                _ = self.recorder.stop()
+                self.capturing = false
+                self.flushPendingNotices()
+                self.updateDerivedState()
+                self.onError?(nothingRecorded
+                    ? Lf("Couldn't start recording: %@", L("Microphone unavailable (no input audio format)"))
+                    : L("Audio device changed during recording — recording cancelled, please try again."))
+            }
         }
         let ok = monitor.start()
         if ok {
@@ -272,24 +295,27 @@ final class DictationController {
         guard tapRetryTimer == nil else { return }
         tapRetryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
-            if self.monitor.isAlive { return }
-            Log.d("tap: dead at health check -> recreating")
-            if self.monitor.start() {
-                Log.d("tap: recreated")
-                self.tapFailureReported = false
-            } else {
-                // Permission revoked MID-RECORDING: the release event will
-                // never arrive, so the capture would run forever collecting
-                // speech it cannot deliver. Stop it now, visibly — the notice
-                // and the menu-bar warning explain, instead of a paste that
-                // fails minutes later (design critique 8d).
-                if self.capturing {
-                    Log.d("tap: permission revoked during capture -> cancelling")
-                    self.cancel()
-                }
-                if !self.tapFailureReported {
-                    self.tapFailureReported = true
-                    self.onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
+            // Scheduled from the main actor, so the timer fires on the main runloop.
+            MainActor.assumeIsolated {
+                if self.monitor.isAlive { return }
+                Log.d("tap: dead at health check -> recreating")
+                if self.monitor.start() {
+                    Log.d("tap: recreated")
+                    self.tapFailureReported = false
+                } else {
+                    // Permission revoked MID-RECORDING: the release event will
+                    // never arrive, so the capture would run forever collecting
+                    // speech it cannot deliver. Stop it now, visibly — the notice
+                    // and the menu-bar warning explain, instead of a paste that
+                    // fails minutes later (design critique 8d).
+                    if self.capturing {
+                        Log.d("tap: permission revoked during capture -> cancelling")
+                        self.cancel()
+                    }
+                    if !self.tapFailureReported {
+                        self.tapFailureReported = true
+                        self.onError?(L("Accessibility permission is off, so the key can't be heard. Turn it on in System Settings → Privacy & Security → Accessibility — Dictate picks it up automatically, no restart needed."))
+                    }
                 }
             }
         }
@@ -443,33 +469,36 @@ final class DictationController {
         keyStateTimer?.invalidate()
         keyStateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
-            guard capturing else {
-                keyStateTimer?.invalidate()
-                keyStateTimer = nil
-                return
-            }
-            // A pipelined paste mid-recording rewrites the session flags
-            // state, and a held modifier reads as "up" until the next real
-            // flags event (that event is usually this key's own release, so
-            // the mute typically lasts to the end of the capture). Stand down
-            // rather than cut a live recording — the 300 s cap and the next
-            // press still bound a genuinely lost release, as before the net.
-            if HotkeyMonitor.isModifierCode(code), !HotkeyMonitor.modifierStateTrustworthy {
-                if !keyWatchdogMuteLogged {
-                    keyWatchdogMuteLogged = true
-                    Log.d("hotkey: flags state clobbered by paste — lost-release net muted for this capture")
+            // Scheduled from the main actor, so the timer fires on the main runloop.
+            MainActor.assumeIsolated {
+                guard self.capturing else {
+                    self.keyStateTimer?.invalidate()
+                    self.keyStateTimer = nil
+                    return
                 }
-                keyUpTicks = 0
-                return
+                // A pipelined paste mid-recording rewrites the session flags
+                // state, and a held modifier reads as "up" until the next real
+                // flags event (that event is usually this key's own release, so
+                // the mute typically lasts to the end of the capture). Stand down
+                // rather than cut a live recording — the 300 s cap and the next
+                // press still bound a genuinely lost release, as before the net.
+                if HotkeyMonitor.isModifierCode(code), !HotkeyMonitor.modifierStateTrustworthy {
+                    if !self.keyWatchdogMuteLogged {
+                        self.keyWatchdogMuteLogged = true
+                        Log.d("hotkey: flags state clobbered by paste — lost-release net muted for this capture")
+                    }
+                    self.keyUpTicks = 0
+                    return
+                }
+                if HotkeyMonitor.isKeyPhysicallyDown(code) {
+                    self.keyUpTicks = 0
+                    return
+                }
+                self.keyUpTicks += 1
+                guard self.keyUpTicks >= 2 else { return }
+                Log.d("hotkey: key \(code) physically up \(self.keyUpTicks)s into recording — release was lost, forcing stop")
+                self.endRecording()
             }
-            if HotkeyMonitor.isKeyPhysicallyDown(code) {
-                keyUpTicks = 0
-                return
-            }
-            keyUpTicks += 1
-            guard keyUpTicks >= 2 else { return }
-            Log.d("hotkey: key \(code) physically up \(keyUpTicks)s into recording — release was lost, forcing stop")
-            endRecording()
         }
     }
 
@@ -481,7 +510,9 @@ final class DictationController {
         // is THE live-typing lag knob. previewBusy keeps a slow decode from
         // piling passes up, so a short interval is safe on any machine.
         previewTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
-            self?.previewTick()
+            guard let self else { return }
+            // Scheduled from the main actor, so the timer fires on the main runloop.
+            MainActor.assumeIsolated { self.previewTick() }
         }
     }
 
@@ -508,25 +539,33 @@ final class DictationController {
         previewCancel = token
         previewBusy = true
         Task { [weak self] in
-            defer { DispatchQueue.main.async { self?.previewBusy = false } }
-            guard await WhisperEngine.shared.isReady(for: .fast) else { return }
-            let floats = AudioRecorder.floatSamples(fromPCM: pcm)
-            // Long recordings: preview only the tail — a full re-decode of the
-            // whole buffer every tick grows quadratically.
-            let window = Array(floats.suffix(30 * AudioRecorder.sampleRate))
-            let started = Date()
-            guard let (text, _) = try? await WhisperEngine.shared.transcribe(
-                floats: window, tier: .fast, language: language,
-                isCancelled: { token.isCancelled }) else { return }
-            Log.d(String(format: "live: pass %.2fs over %.1fs audio",
-                         Date().timeIntervalSince(started),
-                         Double(window.count) / Double(AudioRecorder.sampleRate)))
-            await MainActor.run {
-                guard let self, self.capturing, !token.isCancelled,
-                      !text.isEmpty else { return }
-                self.handlePreview(text)
-            }
+            defer { self?.previewBusy = false }
+            guard let text = await Self.previewPass(pcm: pcm, language: language,
+                                                    token: token) else { return }
+            guard let self, self.capturing, !token.isCancelled,
+                  !text.isEmpty else { return }
+            self.handlePreview(text)
         }
+    }
+
+    /// The decode pass itself, `nonisolated` so it runs on the global executor:
+    /// the sample conversion over megabytes of PCM and the fast-model decode
+    /// must not hitch the UI — exactly where they ran before the migration.
+    private nonisolated static func previewPass(pcm: Data, language: String,
+                                                token: CancelToken) async -> String? {
+        guard await WhisperEngine.shared.isReady(for: .fast) else { return nil }
+        let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+        // Long recordings: preview only the tail — a full re-decode of the
+        // whole buffer every tick grows quadratically.
+        let window = Array(floats.suffix(30 * AudioRecorder.sampleRate))
+        let started = Date()
+        guard let (text, _) = try? await WhisperEngine.shared.transcribe(
+            floats: window, tier: .fast, language: language,
+            isCancelled: { token.isCancelled }) else { return nil }
+        Log.d(String(format: "live: pass %.2fs over %.1fs audio",
+                     Date().timeIntervalSince(started),
+                     Double(window.count) / Double(AudioRecorder.sampleRate)))
+        return text
     }
 
     // MARK: - Live typing
@@ -840,15 +879,15 @@ final class DictationController {
         activeCancel = job.token
         updateDerivedState()
         transcribeTask = Task {
+            // The Task inherits the main actor; process() is nonisolated, so
+            // the heavy work still leaves main and this tail runs back on it.
             await self.process(job)
-            await MainActor.run {
-                self.processing = false
-                self.processNextJob()
-            }
+            self.processing = false
+            self.processNextJob()
         }
     }
 
-    private func process(_ job: Job) async {
+    private nonisolated func process(_ job: Job) async {
         // Sample conversion, per-window RMS and silence trimming are three
         // full passes over up to ~5M samples — kept off the main thread so
         // the UI can't hitch between key release and "Recognizing…".
@@ -912,7 +951,7 @@ final class DictationController {
         }
     }
 
-    private func transcribeLocal(job: Job, floats: [Float]) async {
+    private nonisolated func transcribeLocal(job: Job, floats: [Float]) async {
         let language = job.language
         let token = job.token
         let tier: ModelTier = .fast
@@ -934,8 +973,11 @@ final class DictationController {
                 try await WhisperEngine.shared.prepare(tier: tier) { [weak self] p in
                     // token: Esc already showed "Cancelled" — a late progress
                     // update would flash the download pill over it.
-                    guard !downloaded, !token.isCancelled else { return }
-                    DispatchQueue.main.async { self?.onModelDownload?(p, tier.sizeMB) }
+                    guard let self, !downloaded, !token.isCancelled else { return }
+                    DispatchQueue.main.async {
+                        // Queued on the main queue — the body runs on the main actor.
+                        MainActor.assumeIsolated { self.onModelDownload?(p, tier.sizeMB) }
+                    }
                 }
                 // Hand the pill back to recognition. The download/warm-up state
                 // owns the HUD until told otherwise, and setTranscribeProgress
@@ -952,7 +994,11 @@ final class DictationController {
                 floats: floats, tier: tier, language: language,
                 isCancelled: { token.isCancelled },
                 onProgress: { [weak self] fraction, words in
-                    DispatchQueue.main.async { self?.onTranscribeProgress?(fraction, words) }
+                    guard let self else { return }
+                    DispatchQueue.main.async {
+                        // Queued on the main queue — the body runs on the main actor.
+                        MainActor.assumeIsolated { self.onTranscribeProgress?(fraction, words) }
+                    }
                 }
             )
             // Fillers are cleaned strictly in THIS dictation's language: the

@@ -24,6 +24,10 @@ struct AskConversation: Codable, Identifiable {
 /// Local by design: re-opening a stored answer costs no API call; only new
 /// questions and follow-ups do. With Ask switched off nothing here is shown —
 /// "off means absent" — but the files stay until the feature is used again.
+///
+/// @MainActor: every caller is the answer pane's UI, and the files are small
+/// local JSONs — main-thread reads were the design from day one.
+@MainActor
 final class AskHistoryStore {
     static let shared = AskHistoryStore()
     /// Old conversations beyond this quietly age out.

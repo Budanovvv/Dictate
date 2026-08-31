@@ -265,8 +265,8 @@ struct SettingsView: View {
                 LabeledContent(L("Spoken language")) {
                     LanguagePicker(selection: $language)
                 }
-                .onChange(of: language) {
-                    Settings.shared.language = $0
+                .onChange(of: language) { _, v in
+                    Settings.shared.language = v
                     // Which targets are reachable depends on the source leg.
                     refreshStatuses()
                 }
@@ -282,7 +282,7 @@ struct SettingsView: View {
                     LabeledContent(L("Translate to")) {
                         TranslateTargetPicker(selection: $translateTarget)
                     }
-                    .onChange(of: translateTarget) { Settings.shared.translateTargetCode = $0 }
+                    .onChange(of: translateTarget) { _, v in Settings.shared.translateTargetCode = v }
 
                     // macOS keeps each language pair's data on demand; picking
                     // a language above pops the system's own download sheet —
@@ -404,7 +404,7 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.radioGroup)
                     .labelsHidden()
-                    .onChange(of: insertByTyping) { Settings.shared.insertByTyping = $0 }
+                    .onChange(of: insertByTyping) { _, v in Settings.shared.insertByTyping = v }
                 } label: {
                     rowLabel(L("Insert text by"),
                              L("Pasting is instant but replaces your clipboard for a moment. Typing works in apps that block paste, such as some terminals and remote desktops."))
@@ -514,8 +514,8 @@ struct SettingsView: View {
                 // what retires the capability from ever being offered.
                 LabeledContent {
                     Toggle("", isOn: $noticeCalls).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: noticeCalls) {
-                            Settings.shared.noticeCalls = $0
+                        .onChange(of: noticeCalls) { _, v in
+                            Settings.shared.noticeCalls = v
                             OfferLedger.decided(.noticeCalls)
                         }
                 } label: {
@@ -526,8 +526,8 @@ struct SettingsView: View {
                 }
                 LabeledContent {
                     Toggle("", isOn: $recordCallAudio).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: recordCallAudio) {
-                            Settings.shared.recordCallAudio = $0
+                        .onChange(of: recordCallAudio) { _, v in
+                            Settings.shared.recordCallAudio = v
                             OfferLedger.decided(.recordCallAudio)
                         }
                 } label: {
@@ -539,8 +539,8 @@ struct SettingsView: View {
                 LabeledContent {
                     Toggle("", isOn: $separateVoices).labelsHidden().toggleStyle(.switch)
                         .disabled(!recordCallAudio)
-                        .onChange(of: separateVoices) {
-                            Settings.shared.separateVoices = $0
+                        .onChange(of: separateVoices) { _, v in
+                            Settings.shared.separateVoices = v
                             OfferLedger.decided(.separateVoices)
                         }
                 } label: {
@@ -554,8 +554,8 @@ struct SettingsView: View {
                 .opacity(recordCallAudio ? 1 : 0.5)
                 LabeledContent {
                     Toggle("", isOn: $readMeetings).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: readMeetings) {
-                            Settings.shared.readMeetings = $0
+                        .onChange(of: readMeetings) { _, v in
+                            Settings.shared.readMeetings = v
                             OfferLedger.decided(.readMeetings)
                         }
                 } label: {
@@ -575,7 +575,7 @@ struct SettingsView: View {
                         // checkbox; every other switch in this window is a
                         // switch.
                         .toggleStyle(.switch)
-                        .onChange(of: nameFromCalendar) { on in
+                        .onChange(of: nameFromCalendar) { _, on in
                             guard on else {
                                 Settings.shared.nameMeetingsFromCalendar = false
                                 return
@@ -654,8 +654,8 @@ struct SettingsView: View {
                 // as a different species of control here (see LanguagePicker).
                 LabeledContent {
                     AskProviderPicker(selection: $askProvider)
-                        .onChange(of: askProvider) {
-                            Settings.shared.askProvider = $0
+                        .onChange(of: askProvider) { _, v in
+                            Settings.shared.askProvider = v
                             // A half-typed key for one vendor is not a draft
                             // for the other.
                             keyDraft = ""
@@ -709,7 +709,7 @@ struct SettingsView: View {
                             ("light", L("Light")),
                             ("dark", L("Dark")),
                         ], selection: $appearance)
-                        .onChange(of: appearance) { choice in
+                        .onChange(of: appearance) { _, choice in
                             Settings.shared.appearance = choice
                             switch choice {
                             case "light": NSApp.appearance = NSAppearance(named: .aqua)
@@ -729,14 +729,14 @@ struct SettingsView: View {
 
             Section {
                 Toggle(L("Launch at login"), isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { enable in
+                    .onChange(of: launchAtLogin) { _, enable in
                         do {
                             if enable { try SMAppService.mainApp.register() }
                             else { try SMAppService.mainApp.unregister() }
                         } catch { launchAtLogin = SMAppService.mainApp.status == .enabled }
                     }
                 Toggle(L("Show in Dock"), isOn: $showInDock)
-                    .onChange(of: showInDock) { Settings.shared.showInDock = $0 }
+                    .onChange(of: showInDock) { _, v in Settings.shared.showInDock = v }
             } header: { Text(L("General")) } footer: {
                 Text(L("With this off, Dictate is menu-bar only. Clicking the Dock icon opens Meetings; the menu bar item is always there either way."))
             }
@@ -900,7 +900,7 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
                         .frame(width: 190)
-                        .onChange(of: keyDraft) { _ in keychainSaveFailed = false }
+                        .onChange(of: keyDraft) { keychainSaveFailed = false }
                     Button(L("Save")) {
                         // A failed Keychain write keeps the draft on screen —
                         // clearing the field on failure would eat the pasted
@@ -969,9 +969,6 @@ struct SettingsView: View {
                  LanguageList.endonym(for: translateTarget))
     }
 
-    @ViewBuilder
-    /// A row's name, and under it the one line that explains it — when there is
-    /// one. `nil` leaves the row a single line rather than an empty second one.
     /// Lands on the tab a caller requested (the corner menu's rows, the
     /// screenshot harness) — the request rides UserDefaults and is consumed
     /// exactly once.
@@ -989,6 +986,8 @@ struct SettingsView: View {
         Log.d("corner: settings landed on tab \(wanted)")
     }
 
+    /// A row's name, and under it the one line that explains it — when there is
+    /// one. `nil` leaves the row a single line rather than an empty second one.
     private func rowLabel(_ title: String, _ hint: String?,
                           warn: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {

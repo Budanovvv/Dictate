@@ -94,7 +94,7 @@ enum LocalTextModelFile {
         parts.allSatisfy { part in
             let url = location.appendingPathComponent(part.name)
             let size = (try? FileManager.default
-                .attributesOfItem(atPath: url.path)[.size] as? Int64) as? Int64
+                .attributesOfItem(atPath: url.path)[.size]) as? Int64
             return size == part.bytes
         }
     }

@@ -84,7 +84,11 @@ enum MeetingWAV {
 /// Writes both channels of a live session to disk as they happen. All file
 /// I/O sits on its own serial queue — the tap delivers many small buffers,
 /// and a meeting's main thread has been wedged by disk before.
-final class MeetingAudioDump {
+///
+/// @unchecked Sendable: the serial `queue` IS the lock — every mutable field
+/// (youBytes/themBytes, the handles' file offsets) is touched only from it
+/// after init, and init runs before the first append can be enqueued.
+final class MeetingAudioDump: @unchecked Sendable {
     private let queue = DispatchQueue(label: "dictate.meeting.dump", qos: .utility)
     private let you: FileHandle
     private let them: FileHandle
@@ -187,6 +191,11 @@ final class MeetingAudioDump {
 /// time — half-second pushes, the same order of magnitude the live capture
 /// paths deliver in. The session neither knows nor cares that the audio is
 /// canned; that is the whole design.
+///
+/// Main-actor confined like the session it feeds: the pacing timer targets
+/// the main queue, so onYou/onThem always fired on main — the annotation
+/// just writes that down.
+@MainActor
 final class MeetingReplay {
     var onYou: ((Data, Double) -> Void)?
     var onThem: ((Data, Double) -> Void)?
@@ -235,7 +244,11 @@ final class MeetingReplay {
     func start() {
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + 0.5, repeating: 0.5)
-        t.setEventHandler { [weak self] in self?.push() }
+        t.setEventHandler { [weak self] in
+            guard let self else { return }
+            // The timer source targets the main queue — the main actor.
+            MainActor.assumeIsolated { self.push() }
+        }
         timer = t
         t.resume()
     }
@@ -261,7 +274,8 @@ final class MeetingReplay {
     }
 
     /// The same 0…1 peak the live tap reports alongside its buffers.
-    static func peak(of pcm: Data) -> Double {
+    /// `nonisolated`: pure arithmetic, and the unit tests call it directly.
+    nonisolated static func peak(of pcm: Data) -> Double {
         pcm.withUnsafeBytes { raw -> Double in
             let samples = raw.bindMemory(to: Int16.self)
             var top: Int32 = 0

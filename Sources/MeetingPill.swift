@@ -15,6 +15,7 @@ import SwiftUI
 /// clicks. The HUD is a read-only status light and ignores the mouse entirely;
 /// this one carries Stop, and a recording you cannot stop from the thing that
 /// says you are recording would be a poor trade for the transcript we hid.
+@MainActor
 final class MeetingPill {
     private var panel: NSPanel?
     private let session: MeetingSession
@@ -139,10 +140,12 @@ final class MeetingPill {
             ctx.duration = 0.15
             panel.animator().alphaValue = 0
         } completionHandler: { [weak panel] in
-            // The HUD's race, avoided the same way: a hide that finishes AFTER
-            // a new show would otherwise pull a freshly shown pill off screen.
-            guard let panel, panel.alphaValue == 0 else { return }
-            panel.orderOut(nil)
+            MainActor.assumeIsolated {   // animation completion, main by construction
+                // The HUD's race, avoided the same way: a hide that finishes AFTER
+                // a new show would otherwise pull a freshly shown pill off screen.
+                guard let panel, panel.alphaValue == 0 else { return }
+                panel.orderOut(nil)
+            }
         }
     }
 
@@ -181,12 +184,14 @@ final class MeetingPill {
         moveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification, object: panel, queue: .main
         ) { [weak self] _ in
-            guard let self, !self.positioningProgrammatically,
-                  let origin = self.panel?.frame.origin else { return }
-            Settings.shared.meetingPillOrigin = [origin.x, origin.y]
-            // A hand-placed pill stays where the hand put it: dragging turns
-            // the display-following off until the next recording.
-            self.pinnedByDrag = true
+            MainActor.assumeIsolated {   // queue: .main observer, main by construction
+                guard let self, !self.positioningProgrammatically,
+                      let origin = self.panel?.frame.origin else { return }
+                Settings.shared.meetingPillOrigin = [origin.x, origin.y]
+                // A hand-placed pill stays where the hand put it: dragging turns
+                // the display-following off until the next recording.
+                self.pinnedByDrag = true
+            }
         }
         self.panel = panel
         return panel
@@ -234,6 +239,7 @@ final class MeetingPill {
 /// at all. Small enough to live here because the meeting transcript is the
 /// only window in the app that has an opinion: while it is recording, closing
 /// it means "make it smaller", not "throw it away".
+@MainActor
 final class WindowCloseGuard: NSObject, NSWindowDelegate {
     private let shouldClose: () -> Bool
 

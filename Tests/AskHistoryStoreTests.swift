@@ -1,5 +1,8 @@
 import XCTest
 
+/// @MainActor because AskHistoryStore is (XCTest runs test methods on the
+/// main thread, so this only names what already happens).
+@MainActor
 final class AskHistoryStoreTests: XCTestCase {
     private var dir: URL!
     private var store: AskHistoryStore!

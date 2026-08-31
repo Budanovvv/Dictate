@@ -1,7 +1,10 @@
 import Foundation
 import CoreAudio
 import AudioToolbox
-import AVFoundation
+// @preconcurrency: AVAudioConverter's input block is @Sendable in the SDK,
+// but convert(to:error:withInputFrom:) calls it synchronously on this same
+// thread — the `supplied`/`inBuf` captures never actually cross a thread.
+@preconcurrency import AVFoundation
 
 /// Captures the SYSTEM's audio output — everyone else in a call — through a
 /// global Core Audio process tap (macOS 14.4+), excluding our own process.
@@ -16,8 +19,25 @@ import AVFoundation
 /// cheap peak level for the caller's silence windowing.
 final class MeetingTap {
 
+    /// One-shot latch for the converter's input block (see handle) — the
+    /// house CancelToken shape: @unchecked Sendable with a real NSLock.
+    private final class InputLatch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var supplied = false
+        /// True exactly once, on the first call.
+        func firstCall() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if supplied { return false }
+            supplied = true
+            return true
+        }
+    }
+
     /// (pcm16k, peak 0…1). Called on the tap's IO thread — keep it light.
-    var onBuffer: ((Data, Double) -> Void)?
+    /// @Sendable because the value crosses onto that thread; the setter side
+    /// of the contract is set-before-start (see MeetingSession.start), so
+    /// the property itself is never written while the IO thread reads it.
+    var onBuffer: (@Sendable (Data, Double) -> Void)?
 
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
@@ -147,11 +167,13 @@ final class MeetingTap {
         let ratio = Self.outFormat.sampleRate / tapFormat.sampleRate
         let capacity = AVAudioFrameCount(Double(frames) * ratio) + 16
         guard let out = AVAudioPCMBuffer(pcmFormat: Self.outFormat, frameCapacity: capacity) else { return }
-        var supplied = false
+        // The input block's type is @Sendable in the SDK (even though
+        // convert() drives it synchronously right here), so the one-shot
+        // flag lives behind a lock instead of being a captured var.
+        let latch = InputLatch()
         var err: NSError?
         converter.convert(to: out, error: &err) { _, status in
-            if supplied { status.pointee = .noDataNow; return nil }
-            supplied = true
+            guard latch.firstCall() else { status.pointee = .noDataNow; return nil }
             status.pointee = .haveData
             return inBuf
         }

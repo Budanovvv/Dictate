@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import SwiftUI
 
 /// The menu bar icon and its menu.
+@MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let dictation: DictationController
@@ -67,8 +68,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // top of the menu; the icon only says "look here".
         item.button?.image = FamilyGlyph.menuBarImage(.attention)
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            guard let self else { return }
-            self.updateIcon(for: self.dictation.state)
+            MainActor.assumeIsolated {   // main-queue dispatch, main by construction
+                guard let self else { return }
+                self.updateIcon(for: self.dictation.state)
+            }
         }
     }
 
@@ -129,7 +132,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         stopMeetingPulse()
         drawPulse()
         pulseTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.drawPulse()
+            MainActor.assumeIsolated {   // runloop timer, main by construction
+                self?.drawPulse()
+            }
         }
     }
 
@@ -163,9 +168,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Dots-on-the-line, the one place the dots motif is drawn (identity):
         // the lit dot walks left to right, ~3 redraws a second.
         rippleTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.ripplePhase += 1
-            self.item.button?.image = FamilyGlyph.menuBarImage(.recognizing(phase: self.ripplePhase))
+            MainActor.assumeIsolated {   // runloop timer, main by construction
+                guard let self else { return }
+                self.ripplePhase += 1
+                self.item.button?.image = FamilyGlyph.menuBarImage(.recognizing(phase: self.ripplePhase))
+            }
         }
     }
 
@@ -537,7 +544,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // the git commit count (a Sparkle-only technical value), meaningless to
         // a user. Empty .version drops the "(…)" the standard panel would add.
         DispatchQueue.main.async {
-            NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
+            MainActor.assumeIsolated {   // main-queue dispatch, main by construction
+                NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
+            }
         }
     }
 

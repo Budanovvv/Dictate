@@ -629,10 +629,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // Settings, nothing happens").
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.openSettings"), object: nil, queue: .main
-        ) { [weak self] _ in self?.showSettings() })
+        ) { [weak self] _ in
+            // Main by construction: the observer's queue is .main.
+            MainActor.assumeIsolated { self?.showSettings() }
+        })
         menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.checkUpdates"), object: nil, queue: .main
-        ) { [weak self] _ in self?.manualUpdateCheck() })
+        ) { [weak self] _ in
+            // Main by construction: the observer's queue is .main.
+            MainActor.assumeIsolated { self?.manualUpdateCheck() }
+        })
 
         applyDebugShot()
     }
@@ -780,9 +786,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         Task { @MainActor in
             do {
                 try await WhisperEngine.shared.download(tier: .fast) { [weak self] p in
-                    DispatchQueue.main.async {
-                        guard let self, self.dictation.state == .idle else { return }
-                        self.hud.showDownloading(p, totalMB: ModelTier.fast.sizeMB)
+                    // Re-captured weakly so the Sendable progress closure
+                    // shares no mutable box with this one.
+                    DispatchQueue.main.async { [weak self] in
+                        // Main by construction: dispatched onto .main.
+                        MainActor.assumeIsolated {
+                            guard let self, self.dictation.state == .idle else { return }
+                            self.hud.showDownloading(p, totalMB: ModelTier.fast.sizeMB)
+                        }
                     }
                 }
                 if dictation.state == .idle { hud.hide() }
@@ -895,7 +906,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private func scheduleUpdateRelaunchTimer() {
         guard updateRelaunchTimer == nil else { return }
         updateRelaunchTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            self?.installPendingUpdateIfSafe()
+            // Main by construction: scheduledTimer fires on the main run loop.
+            MainActor.assumeIsolated { self?.installPendingUpdateIfSafe() }
         }
     }
 

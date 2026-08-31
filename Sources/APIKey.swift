@@ -112,23 +112,28 @@ enum APIKey {
     /// held in memory for the life of the process — never written anywhere —
     /// so "Undo" can restore it without the user re-fetching it from the
     /// vendor console.
-    private static var lastRemoved: [AIProvider: String] = [:]
+    ///
+    /// @MainActor because every writer is UI (the Settings key row, the
+    /// connect sheet, the answer pane) — the undo slot never leaves the
+    /// main thread.
+    @MainActor private static var lastRemoved: [AIProvider: String] = [:]
 
     /// Restores the most recently removed key for the provider, if any.
     @discardableResult
-    static func undoRemove(for provider: AIProvider) -> Bool {
+    @MainActor static func undoRemove(for provider: AIProvider) -> Bool {
         guard let key = lastRemoved[provider] else { return false }
         lastRemoved[provider] = nil
         return store(key, for: provider)
     }
 
-    static func canUndoRemove(for provider: AIProvider) -> Bool {
+    @MainActor static func canUndoRemove(for provider: AIProvider) -> Bool {
         lastRemoved[provider] != nil
     }
 
     /// Store a key, or remove it when given nothing.
+    /// @MainActor for the undo slot it fills (see `lastRemoved`).
     @discardableResult
-    static func store(_ key: String?, for provider: AIProvider) -> Bool {
+    @MainActor static func store(_ key: String?, for provider: AIProvider) -> Bool {
         let trimmed = key?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if trimmed.isEmpty, let existing = current(provider) {
             lastRemoved[provider] = existing

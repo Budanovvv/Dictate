@@ -254,8 +254,8 @@ struct MeetingsView: View {
             }
         }
         // The same request arriving at a window that already exists.
-        .onChange(of: navigator.requests) { _ in applyRequest() }
-        .onChange(of: session.isActive) { active in
+        .onChange(of: navigator.requests) { applyRequest() }
+        .onChange(of: session.isActive) { _, active in
             // A session that has just started needs no list to be shown.
             if active { selection = .live }
             // A finished session becomes a file: refresh and follow it.
@@ -272,10 +272,10 @@ struct MeetingsView: View {
         // A summary landed on disk for one of the older meetings: pick it up.
         // Only ever a handful of times, and only while the backfill runs —
         // there is nothing here that ticks.
-        .onChange(of: summaries.written) { _ in reload() }
+        .onChange(of: summaries.written) { reload() }
         // A contents block landed. Same story, and just as rare: only while
         // the backfill runs, and nothing here ticks.
-        .onChange(of: sections.written) { _ in reload() }
+        .onChange(of: sections.written) { reload() }
         .sheet(isPresented: $showConnect) {
             AgentConnectSheet(question: connectQuestion, onConnected: {
                 showConnect = false
@@ -603,7 +603,7 @@ struct MeetingsView: View {
         }
         // Selecting the ask row is what starts the work. Not typing, not a
         // timer, not a guess about what the words meant — a person chose it.
-        .onChange(of: selection) { picked in
+        .onChange(of: selection) { _, picked in
             guard case .answer(let question) = picked else { return }
             guard answer.lastQuestion != question || answer.lastFailure != nil else { return }
             // Appends to the running conversation: the session is the
@@ -1938,27 +1938,29 @@ struct MeetingsView: View {
         reloadGeneration += 1
         let generation = reloadGeneration
         let youLabel = L("You")
-        DispatchQueue.global(qos: .userInitiated).async {
-            let loaded = MeetingArchive.list(youLabel: youLabel)
-            DispatchQueue.main.async {
-                // A reload started later has fresher facts (a rename, a
-                // delete) — an older read arriving after it must not win.
-                guard generation == reloadGeneration else { return }
-                // Keep the instance we already have wherever the file still
-                // says the same thing. This is the whole fix for the reader's
-                // place jumping: a background writer touching ONE meeting used
-                // to replace all 37, and the open transcript — new struct, new
-                // entry identities, a summary above it re-laid out — moved
-                // under whoever was reading it. Now only what actually changed
-                // becomes a new value, and SwiftUI has nothing to redraw for
-                // the rest.
-                let previous = Dictionary(uniqueKeysWithValues: meetings.map { ($0.url, $0) })
-                meetings = loaded.map { fresh in
-                    if let old = previous[fresh.url], old.sameContent(as: fresh) { return old }
-                    return fresh
-                }
-                done()
+        // The main-actor Task keeps `done` (a non-Sendable closure) on the
+        // actor it was written on; only the disk read hops off.
+        Task {
+            let loaded = await Task.detached(priority: .userInitiated) {
+                MeetingArchive.list(youLabel: youLabel)
+            }.value
+            // A reload started later has fresher facts (a rename, a
+            // delete) — an older read arriving after it must not win.
+            guard generation == reloadGeneration else { return }
+            // Keep the instance we already have wherever the file still
+            // says the same thing. This is the whole fix for the reader's
+            // place jumping: a background writer touching ONE meeting used
+            // to replace all 37, and the open transcript — new struct, new
+            // entry identities, a summary above it re-laid out — moved
+            // under whoever was reading it. Now only what actually changed
+            // becomes a new value, and SwiftUI has nothing to redraw for
+            // the rest.
+            let previous = Dictionary(uniqueKeysWithValues: meetings.map { ($0.url, $0) })
+            meetings = loaded.map { fresh in
+                if let old = previous[fresh.url], old.sameContent(as: fresh) { return old }
+                return fresh
             }
+            done()
         }
     }
 
@@ -2551,7 +2553,7 @@ private struct TranscriptPane<MenuItems: View>: View {
         // The transcript is a reading surface — the paper colour, next to the
         // sidebar's material. Two surfaces, told apart by what they are for.
         .background(Color(nsColor: .textBackgroundColor))
-        .onChange(of: openRename) { open in
+        .onChange(of: openRename) { _, open in
             guard open, onRetitle != nil else { return }
             openRename = false
             titleDraft = title
@@ -3010,7 +3012,7 @@ private struct TranscriptPane<MenuItems: View>: View {
                             (OutlineDepth.standard, L("Standard")),
                             (OutlineDepth.more, L("More")),
                         ], selection: $outlineDepth)
-                        .onChange(of: outlineDepth) { _ in growForDepth(outline) }
+                        .onChange(of: outlineDepth) { growForDepth(outline) }
                         if growingOutline {
                             ProgressView().controlSize(.small).scaleEffect(0.6)
                         }
@@ -3273,18 +3275,18 @@ private struct TranscriptPane<MenuItems: View>: View {
                 if !atTop { backToTop(proxy) }
             }
             .overlay(alignment: .bottomTrailing) { copiedBadge }
-            .onChange(of: entries.count) { _ in
+            .onChange(of: entries.count) {
                 guard autoScroll else { return }
                 scrollToNewest(proxy)
             }
-            .onChange(of: live?.livePreview) { _ in
+            .onChange(of: live?.livePreview) {
                 guard autoScroll else { return }
                 scrollToNewest(proxy)
             }
-            .onChange(of: autoScroll) { armed in
+            .onChange(of: autoScroll) { _, armed in
                 if armed { scrollToNewest(proxy) } else { frozenAt = entries.count }
             }
-            .onChange(of: title) { _ in
+            .onChange(of: title) {
                 // A different meeting is a clean slate: nothing is selected,
                 // nothing is being dragged — and the outline folds again.
                 outlineFolded = true
@@ -3321,7 +3323,7 @@ private struct TranscriptPane<MenuItems: View>: View {
             // body, whose `jumpTo` is still the old one. Reading the property
             // logged "jump(nil)" for a selection that plainly carried
             // 10:03:57, and nothing moved (measured 2026-08-14).
-            .onChange(of: jumpTo) { moment in jump(to: moment, proxy) }
+            .onChange(of: jumpTo) { _, moment in jump(to: moment, proxy) }
         }
     }
 
@@ -3906,7 +3908,11 @@ private struct TurnPointer: NSViewRepresentable {
             DispatchQueue.main.async { changed?(nil) }
         }
 
-        deinit { unwatch() }
+        deinit {
+            // Main by construction: an NSView deallocates on the main thread
+            // (AppKit tears its view trees down there).
+            MainActor.assumeIsolated { unwatch() }
+        }
 
         /// Why a tracking area is not enough on its own: this panel is
         /// non-activating and normally NOT the active app's window (the call
@@ -4013,6 +4019,7 @@ private struct TranscriptEventCatcher: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    @MainActor
     final class Coordinator {
         var owner: TranscriptEventCatcher
         weak var view: NSView?
@@ -4027,7 +4034,16 @@ private struct TranscriptEventCatcher: NSViewRepresentable {
             monitor = NSEvent.addLocalMonitorForEvents(
                 matching: [.keyDown, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
             ) { [weak self] event in
-                self?.handle(event) ?? event
+                // Main by construction: local event monitors are delivered on
+                // the main thread with the event stream. `handle` only ever
+                // returns nil (consume) or the same event, so a Bool carries
+                // its answer out (assumeIsolated's result must be Sendable,
+                // which NSEvent is not).
+                let consumed = MainActor.assumeIsolated {
+                    guard let self else { return false }
+                    return self.handle(event) == nil
+                }
+                return consumed ? nil : event
             }
         }
 
@@ -4148,7 +4164,7 @@ private struct TurnView: View, Equatable {
     /// the row that gained the pointer and the one that lost it differ.
     /// (The closures are excluded on purpose — they capture the pane's state
     /// through its storage, so a stale copy still reads the current value.)
-    static func == (a: TurnView, b: TurnView) -> Bool {
+    nonisolated static func == (a: TurnView, b: TurnView) -> Bool {
         a.turn.id == b.turn.id
             && a.turn.text == b.turn.text
             && a.turn.speaker == b.turn.speaker

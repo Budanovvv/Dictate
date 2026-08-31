@@ -63,10 +63,15 @@ final class LocalTextModelDownload: ObservableObject {
         state = .downloading(0)
         task = Task { [weak self] in
             do {
+                // Strong `self` bindings before the MainActor.run hops: a weak
+                // capture is a mutable box, and reading it inside the @Sendable
+                // inner closure is exactly what strict checking flags.
                 try await LocalTextModelFetch.run { [weak self] fraction in
-                    await MainActor.run { self?.state = .downloading(fraction) }
+                    guard let self else { return }
+                    await MainActor.run { self.state = .downloading(fraction) }
                 } verifying: { [weak self] in
-                    await MainActor.run { self?.state = .verifying }
+                    guard let self else { return }
+                    await MainActor.run { self.state = .verifying }
                 }
                 await MainActor.run {
                     self?.state = .ready
@@ -314,6 +319,7 @@ enum LocalTextModelFetch {
     }
 
     private static func fileSize(_ url: URL) -> Int64 {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) as? Int64 ?? 0
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return (attributes?[.size] as? Int64) ?? 0
     }
 }

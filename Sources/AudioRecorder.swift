@@ -1,10 +1,18 @@
 import AudioToolbox
-import AVFoundation
+// @preconcurrency: AVAudioConverter's input block and the AV types are marked
+// Sendable-strict in the SDK; the converter calls its block synchronously on
+// the caller's thread, so the strict annotations only add noise here.
+@preconcurrency import AVFoundation
 import CoreMedia
 
 /// Microphone recording: any input format → 16 kHz mono Int16.
 /// Hard duration limit — 300 seconds.
-final class AudioRecorder {
+///
+/// `@unchecked Sendable` backed by real synchronization, not a wish: every
+/// field shared between main, ioQueue and the tap/session threads sits behind
+/// `lock` (see below), and the engine/session objects are ioQueue-confined.
+/// The annotation states what the locking discipline already guarantees.
+final class AudioRecorder: @unchecked Sendable {
     static let sampleRate = 16000
     static let maxDurationSec = 300
 
@@ -189,8 +197,9 @@ final class AudioRecorder {
             forName: .AVAudioEngineConfigurationChange,
             object: engine, queue: nil
         ) { [weak self] _ in
-            self?.ioQueue.async {
-                guard let self, gen == self.currentGeneration, self.isRecording else { return }
+            guard let self else { return }
+            self.ioQueue.async {
+                guard gen == self.currentGeneration, self.isRecording else { return }
                 // A real device change (AirPods connect, unplug…) STOPS the
                 // engine — that needs a rebuild. But pinning the input at start
                 // also fires this notification without stopping the engine;
@@ -668,14 +677,16 @@ final class AudioRecorder {
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
         guard let out = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
 
-        var supplied = false
+        // The input block is @Sendable in the SDK though the converter calls
+        // it synchronously right here — a locked one-shot latch keeps the
+        // "feed the buffer exactly once" logic out of captured-var territory.
+        let latch = OneShotLatch()
         var err: NSError?
         converter.convert(to: out, error: &err) { _, status in
-            if supplied {
+            guard latch.firstTime() else {
                 status.pointee = .noDataNow
                 return nil
             }
-            supplied = true
             status.pointee = .haveData
             return buffer
         }
@@ -701,9 +712,11 @@ final class AudioRecorder {
             clippedSamples += clipped
             totalSamples += n
         }
-        if let onLevel {
+        if onLevel != nil {
             let level = min(1.0, (sum / Double(n)).squareRoot() * 24)
-            DispatchQueue.main.async { onLevel(level) }
+            // Read the callback on the delivery side (main): capturing the
+            // non-Sendable closure value here would carry it across threads.
+            DispatchQueue.main.async { self.onLevel?(level) }
         }
 
         let bytes = Data(bytes: ch[0], count: Int(out.frameLength) * 2)
@@ -753,6 +766,21 @@ final class AudioRecorder {
         let end = min(floats.count, (endWin + 1) * window)
         guard start < end, end - start < floats.count else { return floats }
         return Array(floats[start..<end])
+    }
+
+    /// One-shot flag for the converter's input block (see append(_:via:)).
+    /// @unchecked Sendable with a real lock inside — same contract as the
+    /// recorder itself.
+    private final class OneShotLatch: @unchecked Sendable {
+        private let lock = NSLock()
+        private var fired = false
+        /// True exactly once, under the lock.
+        func firstTime() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if fired { return false }
+            fired = true
+            return true
+        }
     }
 
     /// Delegate for the fallback AVCaptureSession — a tiny bridge that hands

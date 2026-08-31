@@ -1,5 +1,9 @@
 import Foundation
-import WhisperKit
+// @preconcurrency: WhisperKit predates Sendable annotations — its pipeline
+// object and callback types carry no isolation story of their own. The
+// actor already serializes every load; a loaded pipe is only handed to its
+// own async transcribe, which is how WhisperKit is designed to be driven.
+@preconcurrency import WhisperKit
 
 /// Local transcription on WhisperKit (CoreML/Neural Engine).
 /// Models are downloaded once into Application Support.

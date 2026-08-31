@@ -4,6 +4,10 @@ import XCTest
 /// answer): only ignored HUD cards count, an explicit decline retires
 /// immediately, and a capability the person has decided about by hand is
 /// never offered at all.
+///
+/// @MainActor because OfferLedger is (XCTest runs test methods on the main
+/// thread, so this only names what already happens).
+@MainActor
 final class OfferLedgerTests: XCTestCase {
     var suite: UserDefaults!
     // The gate also reads the capability's own switches, which live in the

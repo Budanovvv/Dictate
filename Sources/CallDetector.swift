@@ -85,7 +85,9 @@ final class CallDetector {
             let platform = (holder && !latched) ? MeetingSession.detectCallApp() : nil
             let holders = (holder && !latched && platform == nil)
                 ? MeetingSession.debugCallHolders() : ""
-            await MainActor.run {
+            // Fresh weak capture: the outer `self` is the detached closure's
+            // mutable box and may not cross into this one.
+            await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.probing = false
                 self.apply(holder: holder, platform: platform, holders: holders)

@@ -5,6 +5,7 @@ import SwiftUI
 /// it (the LetsMove pattern). Translocation means macOS is running a random
 /// read-only copy: TCC grants die with it and the model would re-download on
 /// every launch, so "warn and hope" loses to "offer to fix it in one click".
+@MainActor
 enum AppRelocator {
     static let destination = URL(fileURLWithPath: "/Applications/Dictate.app")
 

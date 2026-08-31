@@ -1,5 +1,18 @@
 import SwiftUI
 
+/// Owns a NotificationCenter block-observer token so the observation dies
+/// with its owner without the owner needing a deinit of its own (a
+/// nonisolated deinit may not touch a main-actor `NSObjectProtocol?`).
+///
+/// WHY @unchecked Sendable: the one stored property is immutable and
+/// `removeObserver` is documented thread-safe — immutability plus a
+/// thread-safe callee are what a lock would otherwise buy.
+private final class NotificationToken: @unchecked Sendable {
+    private let token: any NSObjectProtocol
+    init(_ token: any NSObjectProtocol) { self.token = token }
+    deinit { NotificationCenter.default.removeObserver(token) }
+}
+
 /// One round of the conversation: a question and the answer as it streams in.
 struct AnswerTurn: Identifiable {
     let id = UUID()
@@ -41,21 +54,21 @@ final class MeetingAnswer: ObservableObject {
     /// question is asked. Never persisted: they are an offer, not content.
     @Published private(set) var suggested: [String] = []
 
-    private var progressObserver: NSObjectProtocol?
+    private var progressObserver: NotificationToken?
 
     init() {
-        progressObserver = NotificationCenter.default.addObserver(
+        progressObserver = NotificationToken(NotificationCenter.default.addObserver(
             forName: MeetingAgentTool.progressNotification, object: nil,
             queue: .main) { [weak self] note in
-            guard let self, self.isRunning else { return }
-            self.progress = note.object as? String
-        }
-    }
-
-    deinit {
-        if let progressObserver {
-            NotificationCenter.default.removeObserver(progressObserver)
-        }
+            // Unwrapped out here: the Notification itself is not Sendable
+            // and must not cross into the isolated closure; the String is.
+            let progress = note.object as? String
+            // Main by construction: the observer's queue is .main.
+            MainActor.assumeIsolated {
+                guard let self, self.isRunning else { return }
+                self.progress = progress
+            }
+        })
     }
 
     /// Which stored conversation this session IS. Every finished turn is
@@ -336,7 +349,7 @@ struct ConversationsColumn: View {
         .onAppear(perform: reload)
         // A finished answer persists its conversation — refresh when the
         // stream ends so a first question appears in the list right away.
-        .onChange(of: answer.isRunning) { running in
+        .onChange(of: answer.isRunning) { _, running in
             if !running { reload() }
         }
     }
@@ -540,7 +553,7 @@ struct AnswerPane: View {
                 .id("thread")
             }
             .scrollBounceBehavior(.basedOnSize)
-            .onChange(of: answer.turns.count) { _ in
+            .onChange(of: answer.turns.count) {
                 withAnimation(.easeInOut(duration: DS.reveal)) {
                     proxy.scrollTo("thread", anchor: .bottom)
                 }

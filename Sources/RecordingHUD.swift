@@ -66,6 +66,7 @@ final class LevelReading: ObservableObject {
     @Published var value: Double = 0
 }
 
+@MainActor
 final class RecordingHUD {
     private let model = HUDModel()
     /// Where "Translation data isn't downloaded" sends the user on click. The
@@ -281,7 +282,10 @@ final class RecordingHUD {
     }
 
     private func scheduleHide(after delay: Double) {
-        let work = DispatchWorkItem { [weak self] in self?.hide() }
+        // main-queue dispatch, main by construction
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.hide() }
+        }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
@@ -294,17 +298,19 @@ final class RecordingHUD {
             ctx.duration = 0.18
             panel.animator().alphaValue = 0
         } completionHandler: { [weak self, weak panel] in
-            // A show() may have started while this fade was in flight (rapid
-            // back-to-back dictations) — its completion must not yank the
-            // freshly shown pill off screen. show() sets wantsVisible = true,
-            // so a re-press between hide() and this completion cancels the
-            // order-out. Only order out if nothing asked to be visible since.
-            guard let self, let panel else { return }
-            if self.wantsVisible {
-                Log.d("hud: hide skipped — a new show is in flight")
-            } else {
-                panel.orderOut(nil)
-                Log.d("hud: hidden (ordered out)")
+            MainActor.assumeIsolated {   // animation completion, main by construction
+                // A show() may have started while this fade was in flight (rapid
+                // back-to-back dictations) — its completion must not yank the
+                // freshly shown pill off screen. show() sets wantsVisible = true,
+                // so a re-press between hide() and this completion cancels the
+                // order-out. Only order out if nothing asked to be visible since.
+                guard let self, let panel else { return }
+                if self.wantsVisible {
+                    Log.d("hud: hide skipped — a new show is in flight")
+                } else {
+                    panel.orderOut(nil)
+                    Log.d("hud: hidden (ordered out)")
+                }
             }
         }
     }
@@ -332,7 +338,9 @@ final class RecordingHUD {
     private func startElapsed() {
         stopElapsed()
         elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.model.elapsed += 1
+            MainActor.assumeIsolated {   // runloop timer, main by construction
+                self?.model.elapsed += 1
+            }
         }
     }
 

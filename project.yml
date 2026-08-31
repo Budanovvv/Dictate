@@ -63,6 +63,11 @@ targets:
         # the git commit count — see build.sh. No hand-bumped counter to forget.
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.0"
+        # Strict checking as WARNINGS (Swift 5 mode): the isolation
+        # annotations below are real, and every new violation shows up in
+        # the build log without breaking it. Swift 6 language mode is the
+        # eventual goal; this is the ratchet.
+        SWIFT_STRICT_CONCURRENCY: complete
         # ObjC shim: converts NSException from AVFoundation into NSError
         # (Swift can't catch ObjC exceptions) — see ObjCExceptionCatcher.
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Dictate-Bridging-Header.h

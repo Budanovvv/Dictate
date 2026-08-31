@@ -3,15 +3,40 @@ import AppKit
 import Combine
 import CoreAudio
 
+/// Lock-guarded mirror of `MeetingSession.isActive` for the one reader that
+/// lives off the main actor: Whisper's decode callback polls it mid-window
+/// (the preview's early-stop) from the decode thread. Same shape as the
+/// house CancelToken (DictationController.swift), but settable — a session
+/// starts and stops many times per app run.
+private final class ActiveMirror: @unchecked Sendable {   // NSLock guards flag
+    private let lock = NSLock()
+    private var flag = false
+    var isActive: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+    func set(_ value: Bool) { lock.lock(); flag = value; lock.unlock() }
+}
+
 /// One recorded meeting: two audio channels — You (the microphone, through
 /// the same battle-tested AudioRecorder the dictation uses, so a mic held by
 /// the meeting app in voice processing still records) and Them (everyone
 /// else, through the global process tap) — cut into utterance windows at
 /// natural pauses, transcribed locally, and appended to a live Markdown file
 /// the user can watch grow. Everything stays on this Mac.
+///
+/// Main-actor confined: the control surface (start/stop/rename), the timers
+/// and every @Published property already lived on the main thread by
+/// convention — the annotation makes the compiler hold the line. The heavy
+/// decode work stays off main in `nonisolated` async members
+/// (processWindow/recognize/previewPass), exactly where it ran before; the
+/// static call-app probes are `nonisolated` because the detector's
+/// background probe calls them from off main by design.
+@MainActor
 final class MeetingSession: ObservableObject {
 
-    private(set) var isActive = false
+    private(set) var isActive = false {
+        didSet { activeMirror.set(isActive) }
+    }
+    /// See ActiveMirror above — the decode callback's off-main read.
+    private let activeMirror = ActiveMirror()
     /// The transcript file of the running (or last) session.
     private(set) var fileURL: URL?
     /// Fired on main when the session has fully finished (tail transcribed,
@@ -347,8 +372,13 @@ final class MeetingSession: ObservableObject {
             // onBuffer as soon as the tap runs, and an assignment racing it
             // from the main thread could drop the first buffers (review
             // find, 2026-08-31).
-            tap.onBuffer = { [weak self] pcm, peak in
-                DispatchQueue.main.async { self?.appendThem(pcm, peak: peak) }
+            tap.onBuffer = { @Sendable [weak self] pcm, peak in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    // Hopped from the tap's IO thread via the main queue —
+                    // FIFO, so buffer order survives the crossing.
+                    MainActor.assumeIsolated { self.appendThem(pcm, peak: peak) }
+                }
             }
             do {
                 try tap.start()   // first run triggers the system-audio TCC prompt
@@ -369,14 +399,23 @@ final class MeetingSession: ObservableObject {
             // fires only when it truly gave up (device vanished). One delayed
             // restart attempt — a meeting must not lose its You channel to a
             // transient device hiccup, and must not spin on a permanent one.
-            mic.onRecoveryFailed = { [weak self] _ in
-                guard let self, self.isActive else { return }
-                Log.d("meeting: mic channel failed — retrying in 3s")
-                _ = self.mic.stop()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                    guard let self, self.isActive else { return }
-                    self.youWindowStart = self.now
-                    self.mic.start()
+            mic.onRecoveryFailed = { @Sendable [weak self] _ in
+                guard let self else { return }
+                // Fired via DispatchQueue.main.async in AudioRecorder's
+                // rebuildInputChain — already the main thread.
+                MainActor.assumeIsolated {
+                    guard self.isActive else { return }
+                    Log.d("meeting: mic channel failed — retrying in 3s")
+                    _ = self.mic.stop()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                        guard let self else { return }
+                        // asyncAfter on the main queue — still the main actor.
+                        MainActor.assumeIsolated {
+                            guard self.isActive else { return }
+                            self.youWindowStart = self.now
+                            self.mic.start()
+                        }
+                    }
                 }
             }
             // A dump only ever records a LIVE meeting — dumping a replay
@@ -399,10 +438,14 @@ final class MeetingSession: ObservableObject {
         // The window's equalizer: mic level drives it directly (delivered on
         // main by AudioRecorder); the tap side feeds it from appendThem.
         if replay == nil {
-            mic.onLevel = { [weak self] level in
-                guard let self, self.isActive else { return }
-                self.audioLevel = max(level, self.audioLevel * 0.7)
-                self.youLevel = max(level, self.youLevel * 0.7)
+            mic.onLevel = { @Sendable [weak self] level in
+                guard let self else { return }
+                // AudioRecorder documents onLevel as delivered on main.
+                MainActor.assumeIsolated {
+                    guard self.isActive else { return }
+                    self.audioLevel = max(level, self.audioLevel * 0.7)
+                    self.youLevel = max(level, self.youLevel * 0.7)
+                }
             }
             mic.start()
         }
@@ -410,13 +453,17 @@ final class MeetingSession: ObservableObject {
         // 0.5 s cadence is the window-cut resolution — half the shortest
         // silence gap we cut on.
         tick = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.evaluateWindows()
+            guard let self else { return }
+            // Scheduled from the main actor, so the timer fires on the main runloop.
+            MainActor.assumeIsolated { self.evaluateWindows() }
         }
         Log.d("meeting: session started -> \(fileURL?.lastPathComponent ?? "?")")
         // A recording that fills the disk loses the FILE, not just the tail —
         // watch the volume and stop early enough to keep everything written.
         diskTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.checkDiskSpace()
+            guard let self else { return }
+            // Scheduled from the main actor, so the timer fires on the main runloop.
+            MainActor.assumeIsolated { self.checkDiskSpace() }
         }
         autoStopReason = nil
         lastVoicedAt = Date()
@@ -433,10 +480,14 @@ final class MeetingSession: ObservableObject {
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self, self.isActive else { return }
-            Log.d("meeting: Mac going to sleep — stopping to keep the transcript")
-            self.endedBySleep = true
-            self.stop()
+            guard let self else { return }
+            // Delivered on OperationQueue.main (the queue: .main above).
+            MainActor.assumeIsolated {
+                guard self.isActive else { return }
+                Log.d("meeting: Mac going to sleep — stopping to keep the transcript")
+                self.endedBySleep = true
+                self.stop()
+            }
         }
     }
 
@@ -448,8 +499,12 @@ final class MeetingSession: ObservableObject {
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            DispatchQueue.main.async { self?.noteDeviceChange() }
+        let block: AudioObjectPropertyListenerBlock = { @Sendable [weak self] _, _ in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                // Hopped onto the main queue — the main actor.
+                MainActor.assumeIsolated { self.noteDeviceChange() }
+            }
         }
         deviceListenerBlock = block
         AudioObjectAddPropertyListenerBlock(
@@ -477,7 +532,11 @@ final class MeetingSession: ObservableObject {
             ?? L("Input device changed")
         Log.d("meeting: default input changed -> \(name ?? "?")")
         deviceNoticeClear?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.deviceNotice = nil }
+        let work = DispatchWorkItem { @Sendable [weak self] in
+            guard let self else { return }
+            // Scheduled on the main queue below — the main actor.
+            MainActor.assumeIsolated { self.deviceNotice = nil }
+        }
         deviceNoticeClear = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
     }
@@ -533,12 +592,16 @@ final class MeetingSession: ObservableObject {
     /// platform (nil → the library's "other" bucket). Best-effort by design.
     /// The one list of call apps — the detector's map and the aliveness
     /// test read the same names, so they can never drift apart.
-    private static let callApps: [(fragment: String, name: String)] = [
+    /// The probe family below is `nonisolated`: CallDetector and the
+    /// forgotten-recording check call it from Task.detached — the AX walks
+    /// are synchronous IPC that must never run on (or require) the main
+    /// actor.
+    private nonisolated static let callApps: [(fragment: String, name: String)] = [
         ("zoom", "Zoom"), ("teams", "Microsoft Teams"), ("facetime", "FaceTime"),
         ("webex", "Webex"), ("discord", "Discord"), ("slack", "Slack"),
     ]
 
-    static func detectCallApp() -> String? {
+    nonisolated static func detectCallApp() -> String? {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         for name in names {
             let lower = name.lowercased()
@@ -559,7 +622,7 @@ final class MeetingSession: ObservableObject {
     /// One diagnostic line for the detector's log: who holds the mic, and
     /// what the browsers' window titles actually say — the evidence when a
     /// call was there and the title check could not name it.
-    static func debugCallHolders() -> String {
+    nonisolated static func debugCallHolders() -> String {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         var parts = ["holders: " + names.joined(separator: ", ")]
         for name in names where MeetingPolicy.isBrowser(appNamed: name) {
@@ -575,7 +638,7 @@ final class MeetingSession: ObservableObject {
     /// verified detector above says a call was SEEN; this one only says the
     /// call has not ended (a Meet user reading a doc in another tab must not
     /// read as "call over").
-    static func callHolderPresent() -> Bool {
+    nonisolated static func callHolderPresent() -> Bool {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         return names.contains { name in
             let lower = name.lowercased()
@@ -588,7 +651,7 @@ final class MeetingSession: ObservableObject {
     /// at every step: no running app, no AX consent, no windows — all mean an
     /// empty list, never an error. One walk, shared by the platform check and
     /// the diagnostic dump.
-    private static func browserWindowTitles(appNamed name: String) -> [String] {
+    private nonisolated static func browserWindowTitles(appNamed name: String) -> [String] {
         guard let app = NSWorkspace.shared.runningApplications
             .first(where: { $0.localizedName == name }) else { return [] }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
@@ -608,7 +671,7 @@ final class MeetingSession: ObservableObject {
         }
     }
 
-    private static func browserCallPlatform(appNamed name: String) -> String? {
+    private nonisolated static func browserCallPlatform(appNamed name: String) -> String? {
         for title in browserWindowTitles(appNamed: name) {
             if let hit = MeetingPolicy.callPlatform(inWindowTitle: title) { return hit }
         }
@@ -622,10 +685,12 @@ final class MeetingSession: ObservableObject {
         sourceProbesLeft = 10
         sourceProbeTimer?.invalidate()
         sourceProbeTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, self.isActive, self.sourceProbesLeft > 0 else {
-                    self?.sourceProbeTimer?.invalidate()
-                    self?.sourceProbeTimer = nil
+            guard let self else { return }
+            // Scheduled from the main actor, so the timer fires on the main runloop.
+            MainActor.assumeIsolated {
+                guard self.isActive, self.sourceProbesLeft > 0 else {
+                    self.sourceProbeTimer?.invalidate()
+                    self.sourceProbeTimer = nil
                     return
                 }
                 self.sourceProbesLeft -= 1
@@ -659,9 +724,11 @@ final class MeetingSession: ObservableObject {
             probingCall = true
             let everSeen = platformEverSeen
             Task.detached(priority: .utility) { [weak self] in
-                let aliveNow = Self.callHolderPresent()
-                let platformNow = aliveNow && !everSeen ? Self.detectCallApp() != nil : false
-                await MainActor.run {
+                let aliveNow = MeetingSession.callHolderPresent()
+                let platformNow = aliveNow && !everSeen ? MeetingSession.detectCallApp() != nil : false
+                // Fresh weak capture: the outer `self` is the detached
+                // closure's mutable box and may not cross into this one.
+                await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.probingCall = false
                     guard self.isActive else { return }
@@ -868,27 +935,36 @@ final class MeetingSession: ObservableObject {
         guard pcm.count >= Int(Double(AudioRecorder.sampleRate) * 1.4) else { return }
         let windowStart = useYou ? youWindowStart : themWindowStart
         previewBusy = true
-        Task {
-            defer { DispatchQueue.main.async { self.previewBusy = false } }
-            guard await WhisperEngine.shared.isReady(for: .fast) else { return }
-            let floats = AudioRecorder.floatSamples(fromPCM: pcm)
-            let window = Array(floats.suffix(15 * AudioRecorder.sampleRate))
-            let started = Date()
-            guard let (text, _) = try? await WhisperEngine.shared.transcribe(
-                floats: window, tier: .fast, language: "",
-                isCancelled: { [weak self] in self?.isActive != true }) else { return }
-            Log.d(String(format: "meeting: preview %.2fs over %.1fs audio (%@)",
-                         Date().timeIntervalSince(started),
-                         Double(window.count) / Double(AudioRecorder.sampleRate),
-                         useYou ? "you" : "them"))
-            await MainActor.run {
-                // The window may have been cut while we decoded — the final
-                // entry supersedes this hypothesis.
-                let stillCurrent = useYou ? self.youWindowStart == windowStart
-                                         : self.themWindowStart == windowStart
-                guard self.isActive, stillCurrent, !text.isEmpty else { return }
-                self.livePreview = text
-            }
+        Task { await previewPass(pcm: pcm, useYou: useYou, windowStart: windowStart) }
+    }
+
+    /// The decode itself, `nonisolated` so the float conversion and the wait
+    /// in Whisper's queue stay off the main actor (the DictationController
+    /// previewPass pattern).
+    private nonisolated func previewPass(pcm: Data, useYou: Bool,
+                                         windowStart: TimeInterval) async {
+        defer { Task { @MainActor in self.previewBusy = false } }
+        guard await WhisperEngine.shared.isReady(for: .fast) else { return }
+        let floats = AudioRecorder.floatSamples(fromPCM: pcm)
+        let window = Array(floats.suffix(15 * AudioRecorder.sampleRate))
+        let started = Date()
+        guard let (text, _) = try? await WhisperEngine.shared.transcribe(
+            floats: window, tier: .fast, language: "",
+            // THE named race of the earlier review: this callback runs on
+            // Whisper's decode thread, so it reads the lock-guarded mirror,
+            // never the main-confined isActive.
+            isCancelled: { [weak self] in self?.activeMirror.isActive != true }) else { return }
+        Log.d(String(format: "meeting: preview %.2fs over %.1fs audio (%@)",
+                     Date().timeIntervalSince(started),
+                     Double(window.count) / Double(AudioRecorder.sampleRate),
+                     useYou ? "you" : "them"))
+        await MainActor.run {
+            // The window may have been cut while we decoded — the final
+            // entry supersedes this hypothesis.
+            let stillCurrent = useYou ? self.youWindowStart == windowStart
+                                     : self.themWindowStart == windowStart
+            guard self.isActive, stillCurrent, !text.isEmpty else { return }
+            self.livePreview = text
         }
     }
 
@@ -931,7 +1007,7 @@ final class MeetingSession: ObservableObject {
     // MARK: - Recognition
 
     /// One decoded piece of audio on its way to becoming an entry.
-    private struct Recognized {
+    private struct Recognized: Sendable {
         let start: TimeInterval
         let ordinal: Int?
         let text: String
@@ -962,7 +1038,16 @@ final class MeetingSession: ObservableObject {
         // dictation language (English standup, mixed-language calls), and a
         // pinned wrong language makes Whisper mangle the text.
         let language = ""
-        Task {
+        Task { await processWindow(pcm: pcm, pcmStart: pcmStart, start: start,
+                                   channel: channel, key: key, language: language) }
+    }
+
+    /// The recognition body, `nonisolated` so the float conversion, the VAD
+    /// gate and the waits in the Whisper/diarizer queues run on the global
+    /// executor — exactly where the old unstructured Task ran them.
+    private nonisolated func processWindow(pcm: Data, pcmStart: TimeInterval,
+                                           start: TimeInterval, channel: Channel,
+                                           key: String, language: String) async {
             let floats = AudioRecorder.floatSamples(fromPCM: pcm)
             let rate = Double(AudioRecorder.sampleRate)
             // Substantive-speech gate: a continuous channel's window needs
@@ -1024,10 +1109,11 @@ final class MeetingSession: ObservableObject {
                                                seconds: Double(floats.count) / rate))
                 }
             }
+            let results = produced   // immutable copy for the @Sendable hop
             await MainActor.run {
                 self.inflight.removeValue(forKey: key)
                 self.inflightCount = self.inflight.count
-                for item in produced {
+                for item in results {
                     let speaker: String
                     switch channel {
                     case .you: speaker = L("You")
@@ -1040,7 +1126,6 @@ final class MeetingSession: ObservableObject {
                 self.flushReadyEntries()
                 self.finalizeIfDrained()
             }
-        }
     }
 
     /// One recognition of one contiguous piece of audio: gate, trim, decode,
@@ -1053,9 +1138,11 @@ final class MeetingSession: ObservableObject {
     /// heard in the same audio. Every rejection AND every kept short result
     /// goes to the log with its numbers, so the next real meeting is the
     /// calibration set for the thresholds.
-    private func recognize(_ floats: [Float], stats: (chunks: Int, voiced: Int)?,
-                           language: String, channel: Channel,
-                           tag: String) async -> String? {
+    /// `nonisolated` — always called from processWindow's executor; every
+    /// state touch inside already hops via MainActor.run.
+    private nonisolated func recognize(_ floats: [Float], stats: (chunks: Int, voiced: Int)?,
+                                       language: String, channel: Channel,
+                                       tag: String) async -> String? {
         // Raw VAD evidence, before recognition can reject anything: a voiced
         // window on any channel means somebody is speaking (auto-stop clock).
         if let stats, stats.voiced > 0 {
@@ -1290,11 +1377,15 @@ final class MeetingSession: ObservableObject {
         DispatchQueue.global(qos: .utility).async {
             let meetings = MeetingArchive.list(youLabel: youLabel)
             DispatchQueue.main.async { [weak self] in
-                guard let self, !self.isActive else { return }
-                if Settings.shared.readMeetings {
-                    MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
+                guard let self else { return }
+                // Back on the main queue — the main actor.
+                MainActor.assumeIsolated {
+                    guard !self.isActive else { return }
+                    if Settings.shared.readMeetings {
+                        MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
+                    }
+                    MeetingSections.shared.backfill(meetings) { [weak self] in self?.isActive != true }
                 }
-                MeetingSections.shared.backfill(meetings) { [weak self] in self?.isActive != true }
             }
         }
     }

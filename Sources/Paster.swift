@@ -6,6 +6,11 @@ import CoreGraphics
 /// Saves a full pasteboard snapshot (all data types, not just the string);
 /// rapid consecutive pastes are serialized so the original is never clobbered
 /// by our own text.
+///
+/// Main-actor confined: every caller (DictationController's paste/type paths)
+/// is already on the main actor, and the pendingRestore/restoreWork dance is
+/// exactly the kind of shared mutable state the annotation protects.
+@MainActor
 enum Paster {
     enum Outcome {
         case pasted
@@ -108,11 +113,15 @@ enum Paster {
 
         // Short pause so the pasteboard server applies the change
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            sendCmdV()
+            // Queued on the main queue — the body runs on the main actor.
+            MainActor.assumeIsolated { sendCmdV() }
         }
 
         // Restore the clipboard after the target app has read it
-        let work = DispatchWorkItem { restore() }
+        let work = DispatchWorkItem {
+            // Only ever executed via main.asyncAfter below — main actor.
+            MainActor.assumeIsolated { restore() }
+        }
         restoreWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
         return .pasted

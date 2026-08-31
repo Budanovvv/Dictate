@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -29,17 +30,38 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 }
 
 /// Translation store; ObservableObject so views re-render when the language changes.
-final class Localization: ObservableObject {
+///
+/// WHY @unchecked Sendable: `L()` is called from background contexts too (the
+/// oracles, MeetingArchive), while the picker writes `language` on the main
+/// thread — the lock below is what makes that pair safe, which the compiler
+/// cannot see through on its own.
+final class Localization: ObservableObject, @unchecked Sendable {
     static let shared = Localization()
 
-    @Published private(set) var language: AppLanguage
+    /// Explicit and stored: without any @Published property the protocol's
+    /// reflection-based default would mint a fresh publisher per access, and
+    /// the views' subscriptions would never hear `setLanguage`.
+    let objectWillChange = ObservableObjectPublisher()
+
+    /// Guards `_language` — the only mutable state.
+    private let lock = NSLock()
+    private var _language: AppLanguage
+
+    private(set) var language: AppLanguage {
+        get { lock.withLock { _language } }
+        set { lock.withLock { _language = newValue } }
+    }
 
     private init() {
         let stored = Settings.shared.uiLanguage
-        self.language = AppLanguage(rawValue: stored) ?? .system
+        self._language = AppLanguage(rawValue: stored) ?? .system
     }
 
     func setLanguage(_ lang: AppLanguage) {
+        // Same timing as @Published's willSet had — and setLanguage is only
+        // ever called from the pickers, on the main thread, where SwiftUI
+        // wants this publisher fired.
+        objectWillChange.send()
         language = lang
         Settings.shared.uiLanguage = lang.rawValue
     }

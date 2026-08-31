@@ -58,12 +58,13 @@ enum MeetingCapability: String, CaseIterable {
     /// The one way a SURFACE turns a capability on: the switch flips and
     /// the ledger records a human decision in the same breath — the two
     /// lines were hand-paired at ten call sites before this existed.
-    func turnOnByHand() {
+    /// @MainActor with the ledger it writes; every caller IS a surface.
+    @MainActor func turnOnByHand() {
         isOn = true
         OfferLedger.decided(self)
     }
 
-    static func turnAllOnByHand() {
+    @MainActor static func turnAllOnByHand() {
         allCases.forEach { $0.turnOnByHand() }
     }
 
@@ -126,6 +127,11 @@ enum MeetingCapability: String, CaseIterable {
 /// a capability the person has toggled BY HAND anywhere (Settings, the
 /// first-run pane, a strip's button) is decided, and a decided capability
 /// is not offered again.
+///
+/// @MainActor for the tests' sake: `defaults` is swappable, and a mutable
+/// static needs one home isolation. Every real caller (the Settings pane,
+/// the HUD card, AppDelegate) already lives there.
+@MainActor
 enum OfferLedger {
     /// Swappable so the tests run against their own suite, not the app's.
     static var defaults: UserDefaults = .standard

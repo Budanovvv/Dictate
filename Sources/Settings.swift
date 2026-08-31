@@ -9,7 +9,12 @@ import Foundation
 /// domain of their own (OfferLedger's "offer.*", MeetingStars' star list,
 /// SectionCache), and TRANSIENT MESSAGES that are consumed once and removed
 /// (the debugShot* screenshot harness, settingsOpenTab window routing).
-final class Settings {
+///
+/// WHY @unchecked Sendable: the class's only stored state is the UserDefaults
+/// handle — a `let`, and UserDefaults is documented thread-safe (its lock is
+/// Apple's, just not visible to the compiler). Every property here is computed
+/// straight through it; adding any other stored state voids this argument.
+final class Settings: @unchecked Sendable {
     static let shared = Settings()
     private let d = UserDefaults.standard
 

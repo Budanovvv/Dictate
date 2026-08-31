@@ -624,7 +624,7 @@ enum MeetingSectioner {
     /// is worse than none, because nothing would ever come back to finish it).
     static func sections(for entries: [TranscriptEntry],
                          detail: MeetingPolicy.SectionDetail = Settings.shared.sectionDetail,
-                         progress: @escaping @MainActor () async -> Bool = { true })
+                         progress: @escaping @Sendable @MainActor () async -> Bool = { true })
         async -> [TranscriptSection] {
         let ranges = MeetingArchive.sectionRanges(of: entries, detail: detail)
         guard ranges.count >= 2 else { return [] }

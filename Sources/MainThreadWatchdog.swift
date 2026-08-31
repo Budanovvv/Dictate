@@ -25,7 +25,11 @@ import Foundation
 /// Transcription and audio run off the main thread (Task/async, the recorder's
 /// ioQueue), so the main thread never legitimately blocks for `threshold`
 /// seconds — a trip means a real wedge, not a slow operation.
-final class MainThreadWatchdog {
+///
+/// `@unchecked Sendable` backed by real synchronization: lastBeat/lastTick sit
+/// behind `lock`; timer is written once in start() before the first tick can
+/// race it, and `captured` is confined to the watchdog queue (tick only).
+final class MainThreadWatchdog: @unchecked Sendable {
     static let shared = MainThreadWatchdog()
 
     private let queue = DispatchQueue(label: "com.valentynbudanov.Dictate.watchdog", qos: .utility)
@@ -120,13 +124,17 @@ final class MainThreadWatchdog {
         CFRunLoopPerformBlock(CFRunLoopGetMain(),
                               [RunLoop.Mode.common.rawValue as CFString,
                                RunLoop.Mode.modalPanel.rawValue as CFString] as CFArray) {
-            guard let modal = NSApp.modalWindow else { return }
-            Log.d("watchdog: modal rescue — forcing \"\(modal.title)\" front")
-            // Set, not insert: moveToActiveSpace is documented mutually
-            // exclusive with canJoinAllSpaces, and the window may carry it.
-            modal.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-            modal.level = .modalPanel
-            modal.orderFrontRegardless()
+            // Performed BY the main runloop — this block runs on the main
+            // thread by construction, whatever queue scheduled it.
+            MainActor.assumeIsolated {
+                guard let modal = NSApp.modalWindow else { return }
+                Log.d("watchdog: modal rescue — forcing \"\(modal.title)\" front")
+                // Set, not insert: moveToActiveSpace is documented mutually
+                // exclusive with canJoinAllSpaces, and the window may carry it.
+                modal.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+                modal.level = .modalPanel
+                modal.orderFrontRegardless()
+            }
         }
         CFRunLoopWakeUp(CFRunLoopGetMain())
     }

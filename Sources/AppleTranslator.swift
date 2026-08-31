@@ -1,5 +1,8 @@
 import SwiftUI
-import Translation
+// @preconcurrency: TranslationSession is not Sendable and its async methods
+// are called from the actor that owns the session anyway — the SDK's strict
+// annotations only add noise here.
+@preconcurrency import Translation
 
 /// Why an Apple translation didn't happen. The dictation always falls back to
 /// the native text; `dataMissing` is the only case the user can act on, so it
@@ -23,8 +26,17 @@ enum TranslateError: Error, Equatable {
 /// Used for EVERY translate target, English included: Whisper transcribes the
 /// speech natively, then this hops it into the target language — all on
 /// device, matching the privacy story.
+/// Main-actor confined: pending/lastJobID/configuration were always touched
+/// on the main queue only (every mutation sat in a DispatchQueue.main hop or
+/// the SwiftUI host) — the annotation makes that the rule.
+@MainActor
 final class AppleTranslator: ObservableObject {
-    static let shared = AppleTranslator()
+    /// nonisolated: read from SwiftUI property initializers (nonisolated
+    /// contexts); safe — the class is Sendable via its MainActor isolation.
+    nonisolated static let shared = AppleTranslator()
+
+    /// Touches no main-actor state — lets `shared` above be built nonisolated.
+    nonisolated init() {}
 
     /// Changing (or invalidating) this re-fires the host's translationTask.
     @Published var configuration: TranslationSession.Configuration?
@@ -38,7 +50,7 @@ final class AppleTranslator: ObservableObject {
     /// not trustworthy — seen live reporting .installed with nothing on disk
     /// (the session then dies with "Unable to Translate"). Every check and
     /// every download therefore goes leg by leg.
-    static func legs(target: String, source: String?) -> [(from: String, to: String)] {
+    nonisolated static func legs(target: String, source: String?) -> [(from: String, to: String)] {
         // Auto-detect dictations can reach here without a source language;
         // the system language is the best guess available at that point.
         let src = source ?? Locale.current.language.languageCode?.identifier ?? "en"
@@ -48,7 +60,7 @@ final class AppleTranslator: ObservableObject {
         return [(src, "en"), ("en", target)]
     }
 
-    static func isInstalled(from: String, to: String) async -> Bool {
+    nonisolated static func isInstalled(from: String, to: String) async -> Bool {
         await LanguageAvailability().status(
             from: Locale.Language(identifier: from),
             to: Locale.Language(identifier: to)) == .installed
@@ -62,7 +74,7 @@ final class AppleTranslator: ObservableObject {
     /// macOS falls back to demanding attention — the Dock icon bounces on and
     /// on, and `session.translate` waits for a decision that can never be made.
     /// Settings downloads the data instead (TranslatePrepareView).
-    static func isInstalled(target: String, source: String?) async -> Bool {
+    nonisolated static func isInstalled(target: String, source: String?) async -> Bool {
         for leg in legs(target: target, source: source) {
             if await !isInstalled(from: leg.from, to: leg.to) { return false }
         }
@@ -70,7 +82,7 @@ final class AppleTranslator: ObservableObject {
     }
 
     /// Non-empty code → Locale.Language; "" and nil both mean "unknown".
-    static func language(_ code: String?) -> Locale.Language? {
+    nonisolated static func language(_ code: String?) -> Locale.Language? {
         guard let code, !code.isEmpty else { return nil }
         return Locale.Language(identifier: code)
     }
@@ -80,7 +92,7 @@ final class AppleTranslator: ObservableObject {
     /// Translate" even while availability claimed the pair was installed
     /// (seen live) — so any such target ALWAYS goes source→en→target;
     /// only English endpoints translate in one hop.
-    func translateSmart(_ text: String, to target: String, source: String?) async throws -> String {
+    nonisolated func translateSmart(_ text: String, to target: String, source: String?) async throws -> String {
         if target == "en" || source == "en" {
             return try await translate(text, to: target, source: source)
         }
@@ -92,7 +104,7 @@ final class AppleTranslator: ObservableObject {
     /// Translates text into `target` (BCP-47-ish code, e.g. "es").
     /// `source` — the spoken language when known; nil lets macOS detect it.
     /// One call at a time — dictations are serialized upstream anyway.
-    func translate(_ text: String, to target: String, source: String?) async throws -> String {
+    nonisolated func translate(_ text: String, to target: String, source: String?) async throws -> String {
         if await !Self.isInstalled(target: target, source: source) {
             // A pack that was accepted in Settings can still be finishing its
             // install when the very next dictation arrives (seen live with uk:
@@ -107,33 +119,39 @@ final class AppleTranslator: ObservableObject {
         let targetLanguage = Locale.Language(identifier: target)
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
-                guard self.pending == nil else {
-                    continuation.resume(throwing: TranslateError.busy)
-                    return
-                }
-                self.lastJobID &+= 1
-                let id = self.lastJobID
-                self.pending = (id, text, targetLanguage, continuation)
-                let config = TranslationSession.Configuration(
-                    source: Self.language(source), target: targetLanguage)
-                if self.configuration == config {
-                    // Same language pair — the modifier only re-fires on a
-                    // changed value, so bump this one's version in place.
-                    self.configuration?.invalidate()
-                } else {
-                    self.configuration = config
-                }
-                // Watchdog: if the host task never fires (host window not
-                // realized, framework refuses the pair), fail the dictation
-                // back to native text instead of hanging the pipeline. The id
-                // check keeps a stale watchdog from stealing a LATER
-                // dictation's job — it used to resume whatever continuation
-                // happened to be pending 15 s later.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-                    guard let job = self.pending, job.id == id else { return }
-                    self.pending = nil
-                    Log.d("apple translate: timed out waiting for the session")
-                    job.continuation.resume(throwing: TranslateError.timedOut)
+                // Queued on the main queue — the body runs on the main actor.
+                MainActor.assumeIsolated {
+                    guard self.pending == nil else {
+                        continuation.resume(throwing: TranslateError.busy)
+                        return
+                    }
+                    self.lastJobID &+= 1
+                    let id = self.lastJobID
+                    self.pending = (id, text, targetLanguage, continuation)
+                    let config = TranslationSession.Configuration(
+                        source: Self.language(source), target: targetLanguage)
+                    if self.configuration == config {
+                        // Same language pair — the modifier only re-fires on a
+                        // changed value, so bump this one's version in place.
+                        self.configuration?.invalidate()
+                    } else {
+                        self.configuration = config
+                    }
+                    // Watchdog: if the host task never fires (host window not
+                    // realized, framework refuses the pair), fail the dictation
+                    // back to native text instead of hanging the pipeline. The id
+                    // check keeps a stale watchdog from stealing a LATER
+                    // dictation's job — it used to resume whatever continuation
+                    // happened to be pending 15 s later.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                        // Queued on the main queue — main actor by construction.
+                        MainActor.assumeIsolated {
+                            guard let job = self.pending, job.id == id else { return }
+                            self.pending = nil
+                            Log.d("apple translate: timed out waiting for the session")
+                            job.continuation.resume(throwing: TranslateError.timedOut)
+                        }
+                    }
                 }
             }
         }

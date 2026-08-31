@@ -120,7 +120,7 @@ struct AgentConnectSheet: View {
                     SecureField("", text: $keyDraft, prompt: Text(provider.keyPlaceholder))
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
-                        .onChange(of: keyDraft) { _ in refused = false; savedOffline = false }
+                        .onChange(of: keyDraft) { refused = false; savedOffline = false }
                     if checking {
                         ProgressView().controlSize(.small)
                     } else if savedOffline {

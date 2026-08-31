@@ -122,7 +122,7 @@ struct OnboardingView: View {
         // Only the permissions step's Next button needs the poll (the step
         // view itself has its own timer for the badges).
         .onReceive(timer) { _ in if step == 3 { allGranted = Permissions.allGranted } }
-        .onChange(of: step) { s in
+        .onChange(of: step) { _, s in
             if s == 3 { allGranted = Permissions.allGranted }
             // Once past the model step, load it into memory in the background
             // so the "try it" dictation is instant — no visible warm-up.
@@ -240,40 +240,23 @@ struct OnboardingView: View {
         downloadRate = nil
         Task {
             do {
-                var doneMB = 0.0
                 // Smoothed transfer rate for the caption under the bar — a
                 // 630 MB download with no speed and no ETA reads as stuck on
-                // slow connections.
-                var lastT = ProcessInfo.processInfo.systemUptime
-                var lastMB = 0.0
-                var ema = 0.0
+                // slow connections. The maths lives in a locked box because
+                // the progress closure is Sendable and can land on any queue
+                // (before, the same free variables raced benignly).
+                let meter = DownloadRateMeter()
                 for tier in tiers {
                     try await WhisperEngine.shared.download(tier: tier) { p in
-                        let overall = (doneMB + p * Double(tier.sizeMB)) / totalMB
-                        let mbNow = overall * totalMB
-                        let now = ProcessInfo.processInfo.systemUptime
-                        var rate: String?
-                        if now - lastT >= 1.0 {
-                            let inst = (mbNow - lastMB) / (now - lastT)
-                            ema = ema == 0 ? inst : ema * 0.7 + inst * 0.3
-                            lastT = now
-                            lastMB = mbNow
-                        }
-                        if ema > 0.05 {
-                            let secondsLeft = Int((totalMB - mbNow) / ema)
-                            let eta = secondsLeft >= 90
-                                ? Lf("%d min", (secondsLeft + 30) / 60)
-                                : Lf("%d s", max(secondsLeft, 1))
-                            rate = Lf("%@ MB/s · about %@ left",
-                                      String(format: "%.1f", ema), eta)
-                        }
+                        let (overall, rate) = meter.tick(p: p, tierMB: tier.sizeMB,
+                                                         totalMB: totalMB)
                         DispatchQueue.main.async {
                             modelState = .downloading(overall)
                             downloadedMB = Int(overall * totalMB)
                             if let rate { downloadRate = rate }
                         }
                     }
-                    doneMB += Double(tier.sizeMB)
+                    meter.tierFinished(mb: tier.sizeMB)
                 }
                 await MainActor.run {
                     modelState = .ready
@@ -296,6 +279,51 @@ struct OnboardingView: View {
             forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage ?? .max
         return Int(free / 1_048_576)
+    }
+}
+
+/// The download caption's bookkeeping (overall fraction, EMA-smoothed MB/s,
+/// ETA), shared with WhisperKit's progress callback.
+///
+/// WHY @unchecked Sendable: the callback is `@Sendable` and can fire on any
+/// queue; every field below is only ever touched under `lock`. Same numbers
+/// as the free variables this replaces — those raced benignly, this doesn't.
+private final class DownloadRateMeter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var doneMB = 0.0
+    private var lastT = ProcessInfo.processInfo.systemUptime
+    private var lastMB = 0.0
+    private var ema = 0.0
+
+    /// One progress tick of the tier being fetched: the overall fraction of
+    /// the whole batch, and the caption once the rate is trustworthy.
+    func tick(p: Double, tierMB: Int, totalMB: Double) -> (overall: Double, rate: String?) {
+        lock.lock(); defer { lock.unlock() }
+        let overall = (doneMB + p * Double(tierMB)) / totalMB
+        let mbNow = overall * totalMB
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastT >= 1.0 {
+            let inst = (mbNow - lastMB) / (now - lastT)
+            ema = ema == 0 ? inst : ema * 0.7 + inst * 0.3
+            lastT = now
+            lastMB = mbNow
+        }
+        var rate: String?
+        if ema > 0.05 {
+            let secondsLeft = Int((totalMB - mbNow) / ema)
+            let eta = secondsLeft >= 90
+                ? Lf("%d min", (secondsLeft + 30) / 60)
+                : Lf("%d s", max(secondsLeft, 1))
+            rate = Lf("%@ MB/s · about %@ left",
+                      String(format: "%.1f", ema), eta)
+        }
+        return (overall, rate)
+    }
+
+    /// A tier finished; its megabytes are done for good.
+    func tierFinished(mb: Int) {
+        lock.lock(); defer { lock.unlock() }
+        doneMB += Double(mb)
     }
 }
 
@@ -563,7 +591,7 @@ private struct HotkeyStep: View {
                 formRow(label: L("I speak")) {
                     HStack(spacing: 9) {
                         LanguagePicker(selection: $language)
-                            .onChange(of: language) { Settings.shared.language = $0 }
+                            .onChange(of: language) { _, v in Settings.shared.language = v }
                         Text(L("112 languages · from your system settings"))
                             .font(DS.helpText)
                             .foregroundStyle(.tertiary)
@@ -573,8 +601,8 @@ private struct HotkeyStep: View {
                     Divider()
                     formRow(label: L("Translate to")) {
                         TranslateTargetPicker(selection: $translateTarget)
-                            .onChange(of: translateTarget) {
-                                Settings.shared.translateTargetCode = $0
+                            .onChange(of: translateTarget) { _, v in
+                                Settings.shared.translateTargetCode = v
                             }
                     }
                 }
@@ -928,7 +956,7 @@ private struct TryItStep: View {
                 Toggle("", isOn: $launchAtLogin)
                     .labelsHidden()
                     .toggleStyle(.switch).controlSize(.small)
-                    .onChange(of: launchAtLogin) { on in
+                    .onChange(of: launchAtLogin) { _, on in
                         if on { try? SMAppService.mainApp.register() }
                         else { try? SMAppService.mainApp.unregister() }
                     }

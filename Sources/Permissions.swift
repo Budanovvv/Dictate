@@ -18,13 +18,21 @@ enum Permissions {
         }
     }
 
-    static func requestMicrophone(_ completion: @escaping (Bool) -> Void) {
-        AVCaptureDevice.requestAccess(for: .audio) { ok in
-            DispatchQueue.main.async { completion(ok) }
+    /// The completion is main-actor typed: requestAccess answers on an
+    /// arbitrary queue, and every caller updates UI — the hop lives here
+    /// (the async requestAccess + a MainActor task, so the non-Sendable
+    /// completion never has to cross an isolation boundary).
+    @MainActor
+    static func requestMicrophone(_ completion: @escaping @MainActor (Bool) -> Void) {
+        Task { @MainActor in
+            let ok = await AVCaptureDevice.requestAccess(for: .audio)
+            completion(ok)
         }
     }
 
-    static func requestMicrophoneIfNeeded(_ completion: @escaping (Bool) -> Void) {
+    /// @MainActor: may call `completion` synchronously (granted/denied).
+    @MainActor
+    static func requestMicrophoneIfNeeded(_ completion: @escaping @MainActor (Bool) -> Void) {
         switch microphone {
         case .granted:
             completion(true)
@@ -46,7 +54,10 @@ enum Permissions {
     /// Don't open System Settings ourselves: the dialog's own button does that
     /// and dismisses it; opening manually leaves the dialog hanging on "Deny".
     static func promptAccessibility() {
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        // kAXTrustedCheckOptionPrompt is imported as a mutable global — not
+        // concurrency-safe to reference under strict checking. Its value is
+        // the stable literal key below (same string since 10.9).
+        let opts = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         AXIsProcessTrustedWithOptions(opts)
     }
 
