@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private let callDetector = CallDetector()
     private let callPrompt = CallPrompt()
     private var settingsWindow: NSWindow?
+    /// Corner-menu notification tokens — alive for the app's lifetime.
+    private var menuObservers: [any NSObjectProtocol] = []
     /// Invisible 1×1 panel hosting the Apple Translation session (the
     /// framework only works through a SwiftUI view — see AppleTranslator).
     private var translatorHostPanel: NSPanel?
@@ -606,15 +608,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         translatorHostPanel = panel
 
         // The meetings window's corner menu (design): its rows arrive here.
-        NotificationCenter.default.addObserver(
+        // The block-API observers RETURN a token that must be kept alive —
+        // discarded, the observation dies on the spot, and every corner-menu
+        // row posted into silence (owner's field report 2026-08-31: "click
+        // Settings, nothing happens").
+        menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.openSettings"), object: nil, queue: .main
-        ) { [weak self] _ in self?.showSettings() }
-        NotificationCenter.default.addObserver(
+        ) { [weak self] _ in self?.showSettings() })
+        menuObservers.append(NotificationCenter.default.addObserver(
             forName: .init("dictate.checkUpdates"), object: nil, queue: .main
         ) { [weak self] _ in
             NSApp.activate(ignoringOtherApps: true)
             self?.updater.checkForUpdates(nil)
-        }
+        })
 
         applyDebugShot()
     }

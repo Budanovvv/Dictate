@@ -165,18 +165,14 @@ struct SettingsView: View {
         .onAppear {
             textModel.refresh()
             refreshStatuses()
-            // Screenshot harness (design pass): land on a named tab.
-            if let wanted = UserDefaults.standard.string(forKey: "debugShotTab")
-                ?? UserDefaults.standard.string(forKey: "settingsOpenTab") {
-                UserDefaults.standard.removeObject(forKey: "debugShotTab")
-                UserDefaults.standard.removeObject(forKey: "settingsOpenTab")
-                switch wanted {
-                case "languages": tab = .languages
-                case "meetings": tab = .meetings
-                case "general": tab = .general
-                default: tab = .keys
-                }
-            }
+            applyRequestedTab()
+        }
+        // The corner menu can ask for a tab while this window already
+        // exists (it is cached for the app's lifetime) — onAppear alone
+        // only serves the first opening.
+        .onReceive(NotificationCenter.default.publisher(
+            for: .init("dictate.openSettings")).receive(on: RunLoop.main)) { _ in
+            applyRequestedTab()
         }
         .onDisappear {
             captureMain.cancel()
@@ -939,6 +935,22 @@ struct SettingsView: View {
     @ViewBuilder
     /// A row's name, and under it the one line that explains it — when there is
     /// one. `nil` leaves the row a single line rather than an empty second one.
+    /// Lands on the tab a caller requested (the corner menu's rows, the
+    /// screenshot harness) — the request rides UserDefaults and is consumed
+    /// exactly once.
+    private func applyRequestedTab() {
+        guard let wanted = UserDefaults.standard.string(forKey: "debugShotTab")
+            ?? UserDefaults.standard.string(forKey: "settingsOpenTab") else { return }
+        UserDefaults.standard.removeObject(forKey: "debugShotTab")
+        UserDefaults.standard.removeObject(forKey: "settingsOpenTab")
+        switch wanted {
+        case "languages": tab = .languages
+        case "meetings": tab = .meetings
+        case "general": tab = .general
+        default: tab = .keys
+        }
+    }
+
     private func rowLabel(_ title: String, _ hint: String?,
                           warn: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 2) {

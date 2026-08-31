@@ -213,6 +213,20 @@ struct MeetingsView: View {
             }
             // Screenshot harness (design pass): select the newest meeting
             // once the archive has loaded.
+            if UserDefaults.standard.string(forKey: "debugShotMeetings") == "cornergo" {
+                UserDefaults.standard.removeObject(forKey: "debugShotMeetings")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    Log.d("debugShot: corner row action — Storage & models")
+                    openSettingsWindow(tab: "meetings")
+                }
+            }
+            if UserDefaults.standard.string(forKey: "debugShotMeetings") == "corner" {
+                UserDefaults.standard.removeObject(forKey: "debugShotMeetings")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    settingsMenuOpen = true
+                    Log.d("debugShot: corner menu forced open, state=\(settingsMenuOpen)")
+                }
+            }
             if UserDefaults.standard.string(forKey: "debugShotMeetings") == "firstrun" {
                 UserDefaults.standard.removeObject(forKey: "debugShotMeetings")
                 forceFirstRun = true
