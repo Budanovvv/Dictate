@@ -1812,30 +1812,57 @@ struct MeetingsView: View {
     /// transcript, came back with neither. A model that is running and produced
     /// nothing here declined here. The backfill has to be finished before that
     /// reasoning holds, or the answer is simply "not its turn yet".
-    /// The bare-transcript banner (design FirstRun: bare) for a meeting that
-    /// has no summary because reading is off. Turning it on redoes the
-    /// reading for this transcript — the backfill picks it up first thing.
+    /// The absence strip for a recording made in a reduced mode — what it
+    /// lacks and why, permanently (design section 9: reduced output carries
+    /// its absence in place; this strip is also the staged onboarding, per
+    /// the designer's Q5 answer — the first finished recording a person
+    /// opens explains the next capability itself, no new surface).
     private func bareNotice(for meeting: ArchivedMeeting) -> AnyView? {
-        guard !Settings.shared.readMeetings,
-              meeting.summary == nil, meeting.sections.isEmpty,
-              !meeting.entries.isEmpty else { return nil }
-        let micOnly = !Settings.shared.recordCallAudio
-            && !meeting.entries.contains { !$0.isYou }
-        return AnyView(CapabilityAbsenceStrip(
-            micOnly: micOnly,
-            writingOnce: writingOnce == meeting.url,
-            writeOnce: { writeOneSummary(for: meeting) },
-            turnOn: {
-                MeetingCapability.readMeetings.isOn = true
-                OfferLedger.decided(.readMeetings)
-                if micOnly {
+        guard !meeting.entries.isEmpty else { return nil }
+        let micOnly = !meeting.entries.contains { !$0.isYou }
+        let unread = !Settings.shared.readMeetings
+            && meeting.summary == nil && meeting.sections.isEmpty
+        if unread {
+            let bothOff = micOnly && !Settings.shared.recordCallAudio
+            return AnyView(CapabilityAbsenceStrip(
+                sentence: bothOff ? MeetingCapability.absenceMicOnly
+                                  : MeetingCapability.absenceNoSummary,
+                sub: bothOff ? MeetingCapability.absenceMicOnlySub
+                             : MeetingCapability.absenceNoSummarySub,
+                writingOnce: writingOnce == meeting.url,
+                writeOnce: { writeOneSummary(for: meeting) },
+                turnOnLabel: bothOff ? L("Turn both on") : L("Turn it on"),
+                turnOn: {
+                    MeetingCapability.readMeetings.isOn = true
+                    OfferLedger.decided(.readMeetings)
+                    if bothOff {
+                        MeetingCapability.recordCallAudio.isOn = true
+                        MeetingCapability.separateVoices.isOn = true
+                        OfferLedger.decided(.recordCallAudio)
+                        OfferLedger.decided(.separateVoices)
+                    }
+                    backfillSummaries()
+                }))
+        }
+        // A summarized CALL that still holds only one side: the reading is
+        // done, but the transcript must never look complete when it is not
+        // (design invariant — a mic-only single-block transcript must never
+        // look like the finished thing). Only for recordings that provably
+        // were calls: a dictated note has no "other side" to miss.
+        if micOnly, meeting.source != nil {
+            let audioOff = !Settings.shared.recordCallAudio
+            return AnyView(CapabilityAbsenceStrip(
+                sentence: L("This is your microphone only — the other side of the call was not recorded and cannot be recovered."),
+                sub: audioOff ? L("Turning both on covers the calls that come next.") : nil,
+                turnOnLabel: audioOff ? L("Turn both on") : nil,
+                turnOn: {
                     MeetingCapability.recordCallAudio.isOn = true
                     MeetingCapability.separateVoices.isOn = true
                     OfferLedger.decided(.recordCallAudio)
                     OfferLedger.decided(.separateVoices)
-                }
-                backfillSummaries()
-            }))
+                }))
+        }
+        return nil
     }
 
     /// The one-time sample (design section 9): a summary for THIS
@@ -2181,11 +2208,17 @@ struct SidebarMaterial: View {
 /// switches off (the one-time sample); "Turn on" changes the future — and
 /// the sub-line says plainly that the unrecorded side cannot be recovered.
 private struct CapabilityAbsenceStrip: View {
-    let micOnly: Bool
+    let sentence: String
+    let sub: String?
     /// A one-time summary is being written for this transcript right now.
-    let writingOnce: Bool
-    let writeOnce: () -> Void
-    let turnOn: () -> Void
+    var writingOnce = false
+    /// nil hides the one-time sample (a summarized meeting has nothing to
+    /// sample).
+    var writeOnce: (() -> Void)? = nil
+    /// nil hides the way forward — an absence with every switch already on
+    /// is the permanent kind, and offers nothing.
+    var turnOnLabel: String? = nil
+    var turnOn: () -> Void = {}
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
@@ -2194,32 +2227,35 @@ private struct CapabilityAbsenceStrip: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 5) {
-                Text(micOnly ? MeetingCapability.absenceMicOnly
-                             : MeetingCapability.absenceNoSummary)
+                Text(sentence)
                     .font(.system(size: 12, weight: .medium))
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(micOnly ? MeetingCapability.absenceMicOnlySub
-                             : MeetingCapability.absenceNoSummarySub)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
-                    if writingOnce {
-                        ProgressView().controlSize(.small)
-                        Text(L("Writing…"))
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Button(L("Write one, this once"), action: writeOnce)
-                            .buttonStyle(.dsSmall)
-                    }
-                    Button(micOnly ? L("Turn both on") : L("Turn it on"),
-                           action: turnOn)
-                        .buttonStyle(.dsSmall)
+                if let sub {
+                    Text(sub)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, 2)
+                if writeOnce != nil || turnOnLabel != nil {
+                    HStack(spacing: 8) {
+                        if writingOnce {
+                            ProgressView().controlSize(.small)
+                            Text(L("Writing…"))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.secondary)
+                        } else if let writeOnce {
+                            Button(L("Write one, this once"), action: writeOnce)
+                                .buttonStyle(.dsSmall)
+                        }
+                        if let turnOnLabel {
+                            Button(turnOnLabel, action: turnOn)
+                                .buttonStyle(.dsSmall)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

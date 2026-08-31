@@ -101,6 +101,8 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Здесь только ваш микрофон — вторая сторона звонка не записывалась, и её не восстановить.",
+        "Turning both on covers the calls that come next.": "Если включить оба, следующие звонки будут записаны полностью.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ отклонил запрос по биллингу. Пополните счёт у провайдера или отключите агента в настройках.",
         "Agent": "Агент",
         "Ask your agent": "Спросить агента",
@@ -568,6 +570,8 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Тут лише ваш мікрофон — друга сторона дзвінка не записувалась, і її не відновити.",
+        "Turning both on covers the calls that come next.": "Якщо увімкнути обидва, наступні дзвінки буде записано повністю.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ відхилив запит через білінг. Поповніть рахунок у провайдера або відключіть агента в налаштуваннях.",
         "Agent": "Агент",
         "Ask your agent": "Запитати агента",
@@ -1026,6 +1030,8 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Esto es solo su micrófono: la otra parte de la llamada no se grabó y no se puede recuperar.",
+        "Turning both on covers the calls that come next.": "Al activar ambos, las próximas llamadas quedan cubiertas.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ rechazó la solicitud por motivos de facturación. Añada crédito en su cuenta del proveedor o desconecte el agente en Ajustes.",
         "Agent": "Agente",
         "Ask your agent": "Preguntar al agente",
@@ -1493,6 +1499,8 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Isto é só o seu microfone — o outro lado da chamada não foi gravado e não pode ser recuperado.",
+        "Turning both on covers the calls that come next.": "Ao ativar ambos, as próximas chamadas ficam cobertas.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ recusou a solicitação por motivos de cobrança. Adicione crédito na conta do provedor ou desconecte o agente nos Ajustes.",
         "Agent": "Agente",
         "Ask your agent": "Perguntar ao agente",
@@ -1960,6 +1968,8 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Ceci n'est que votre micro — l'autre partie de l'appel n'a pas été enregistrée et ne peut pas être récupérée.",
+        "Turning both on covers the calls that come next.": "En activant les deux, les prochains appels seront couverts.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ a refusé la requête pour des raisons de facturation. Ajoutez du crédit chez votre fournisseur ou déconnectez l'agent dans Réglages.",
         "Agent": "Agent",
         "Ask your agent": "Demander à l'agent",
@@ -2427,6 +2437,8 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Das ist nur Ihr Mikrofon — die Gegenseite des Anrufs wurde nicht aufgenommen und ist nicht wiederherstellbar.",
+        "Turning both on covers the calls that come next.": "Beide eingeschaltet decken die nächsten Anrufe ab.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ hat die Anfrage aus Abrechnungsgründen abgelehnt. Laden Sie Guthaben beim Anbieter auf oder trennen Sie den Agenten in den Einstellungen.",
         "Agent": "Agent",
         "Ask your agent": "Agenten fragen",
@@ -2894,6 +2906,8 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "这里只有你的麦克风——通话对方没有被录下，无法找回。",
+        "Turning both on covers the calls that come next.": "两项都开启后，之后的通话会被完整记录。",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ 因计费原因拒绝了请求。请在服务商账户中充值，或在设置中断开代理。",
         "Agent": "代理",
         "Ask your agent": "询问代理",
@@ -3361,6 +3375,8 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "これはあなたのマイクのみです — 通話の相手側は録音されておらず、取り戻せません。",
+        "Turning both on covers the calls that come next.": "両方オンにすると、次の通話からはすべて記録されます。",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ が課金上の理由でリクエストを拒否しました。プロバイダのアカウントに残高を追加するか、設定でエージェントを切断してください。",
         "Agent": "エージェント",
         "Ask your agent": "エージェントに聞く",
@@ -3828,6 +3844,8 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "여기에는 내 마이크만 담겨 있습니다 — 통화 상대방은 녹음되지 않았고 되돌릴 수 없습니다.",
+        "Turning both on covers the calls that come next.": "둘 다 켜면 다음 통화부터는 모두 담깁니다.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@가 결제 문제로 요청을 거부했습니다. 제공자 계정에 크레딧을 추가하거나 설정에서 에이전트 연결을 해제하세요.",
         "Agent": "에이전트",
         "Ask your agent": "에이전트에게 묻기",
@@ -4295,6 +4313,8 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Đây chỉ là micrô của bạn — phía bên kia của cuộc gọi không được ghi âm và không thể khôi phục.",
+        "Turning both on covers the calls that come next.": "Bật cả hai sẽ bao trọn các cuộc gọi tiếp theo.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "%@ đã từ chối yêu cầu vì lý do thanh toán. Nạp thêm tín dụng vào tài khoản nhà cung cấp, hoặc ngắt kết nối tác nhân trong Cài đặt.",
         "Agent": "Tác nhân",
         "Ask your agent": "Hỏi tác nhân",
@@ -4762,6 +4782,8 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Mikropono mo lang ito — ang kabilang panig ng tawag ay hindi na-record at hindi na maibabalik.",
+        "Turning both on covers the calls that come next.": "Kapag binuksan pareho, sakop na ang mga susunod na tawag.",
         "%@ refused the request for billing reasons. Add credit in your provider account, or disconnect the agent in Settings.": "Tinanggihan ng %@ ang request dahil sa billing. Magdagdag ng credit sa provider account mo, o idiskonekta ang agent sa Settings.",
         "Agent": "Agent",
         "Ask your agent": "Tanungin ang agent",
