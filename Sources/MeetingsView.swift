@@ -1369,14 +1369,16 @@ struct MeetingsView: View {
                            onRetitle: nil,
                            openRename: .constant(false),
                            jumpTo: nil,
-                           headerLeading: paneToggles(.meeting)) {
-                // A meeting in progress has no file yet — but the text on
-                // screen is exactly as copyable as an archived one, and taking
-                // the transcript out mid-call is what the owner reaches for.
-                Button(L("Copy transcript")) {
-                    TranscriptCopy.put(TranscriptCopy.transcript(session.displayEntries))
-                }
-            }
+                           headerLeading: paneToggles(.meeting),
+                           // A meeting in progress has no file yet — but the
+                           // text on screen is exactly as copyable as an
+                           // archived one, and taking the transcript out
+                           // mid-call is what the owner reaches for.
+                           menuActions: [
+                               TranscriptMenuAction(title: L("Copy transcript")) {
+                                   TranscriptCopy.put(TranscriptCopy.transcript(session.displayEntries))
+                               }
+                           ])
         case .archived(let url), .moment(let url, _):
             if let meeting = meetings.first(where: { $0.url == url }) {
                 TranscriptPane(entries: meeting.entries,
@@ -1447,26 +1449,31 @@ struct MeetingsView: View {
                                    starRevision += 1
                                    reload()
                                },
-                               onExport: { exportTranscript(meeting) }) {
-                    Button(MeetingStars.isStarred(meeting.started)
-                           ? L("Unstar meeting") : L("Star meeting")) {
-                        MeetingStars.toggle(meeting.started)
-                        starRevision += 1
-                        reload()
-                    }
-                    Button(L("Rename meeting…")) { renamingFromMenu = true }
-                    Button(L("Copy transcript")) {
-                        TranscriptCopy.put(TranscriptCopy.transcript(meeting.entries))
-                    }
-                    Button(L("Export transcript…")) { exportTranscript(meeting) }
-                    Button(L("Show in Finder")) {
-                        NSWorkspace.shared.activateFileViewerSelecting([meeting.url])
-                    }
-                    Divider()
-                    Button(L("Delete"), role: .destructive) {
-                        deleteMeeting(meeting)
-                    }
-                }
+                               onExport: { exportTranscript(meeting) },
+                               menuActions: [
+                                   TranscriptMenuAction(title: MeetingStars.isStarred(meeting.started)
+                                                        ? L("Unstar meeting") : L("Star meeting")) {
+                                       MeetingStars.toggle(meeting.started)
+                                       starRevision += 1
+                                       reload()
+                                   },
+                                   TranscriptMenuAction(title: L("Rename meeting…")) {
+                                       renamingFromMenu = true
+                                   },
+                                   TranscriptMenuAction(title: L("Copy transcript")) {
+                                       TranscriptCopy.put(TranscriptCopy.transcript(meeting.entries))
+                                   },
+                                   TranscriptMenuAction(title: L("Export transcript…")) {
+                                       exportTranscript(meeting)
+                                   },
+                                   TranscriptMenuAction(title: L("Show in Finder")) {
+                                       NSWorkspace.shared.activateFileViewerSelecting([meeting.url])
+                                   },
+                                   TranscriptMenuAction(title: L("Delete"), destructive: true,
+                                                        dividerBefore: true) {
+                                       deleteMeeting(meeting)
+                                   }
+                               ])
             } else {
                 placeholder
             }
@@ -2350,7 +2357,77 @@ private let turnSpace = "dictate.transcript.turns"
 /// named once in their own colour. A live session adds the recording header
 /// and the status strip; an archived one is the same view without them, so
 /// nothing about a finished meeting looks like a different app.
-private struct TranscriptPane<MenuItems: View>: View {
+/// One entry of the transcript's ⋯ menu.
+struct TranscriptMenuAction {
+    let title: String
+    var destructive = false
+    var dividerBefore = false
+    let perform: () -> Void
+}
+
+/// A button that pops a hand-built NSMenu under itself. Exists because
+/// SwiftUI's Menu will not drop while the app is not frontmost, and clicks
+/// in a non-activating panel never make it frontmost — NSMenu's own
+/// tracking has no such requirement.
+private struct AnchoredMenuButton<Label: View>: View {
+    let actions: [TranscriptMenuAction]
+    @ViewBuilder let label: () -> Label
+
+    /// A stable box for the anchor NSView — @State keeps the same instance
+    /// across re-renders while the representable fills it in.
+    @State private var anchor = MenuAnchor.Holder()
+
+    var body: some View {
+        Button {
+            guard let view = anchor.view else { return }
+            let menu = NSMenu()
+            for action in actions {
+                if action.dividerBefore { menu.addItem(.separator()) }
+                menu.addItem(ClosureMenuItem(action))
+            }
+            // Non-flipped coordinates: the view spans y ∈ [0, h], so "just
+            // below the button" is a little under zero.
+            menu.popUp(positioning: nil,
+                       at: NSPoint(x: view.bounds.minX, y: -4),
+                       in: view)
+        } label: { label() }
+        .buttonStyle(.plain)
+        .background(MenuAnchor(holder: anchor))
+    }
+}
+
+/// The invisible NSView the menu is positioned against.
+private struct MenuAnchor: NSViewRepresentable {
+    final class Holder { weak var view: NSView? }
+    let holder: Holder
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        holder.view = view
+        return view
+    }
+    func updateNSView(_ view: NSView, context: Context) { holder.view = view }
+}
+
+/// An NSMenuItem that carries its own closure — no shared target object,
+/// no representedObject plumbing.
+private final class ClosureMenuItem: NSMenuItem {
+    private let perform: () -> Void
+    init(_ action: TranscriptMenuAction) {
+        perform = action.perform
+        super.init(title: action.title, action: #selector(run), keyEquivalent: "")
+        target = self
+        if action.destructive {
+            // The red SwiftUI's .destructive role used to paint.
+            attributedTitle = NSAttributedString(
+                string: action.title,
+                attributes: [.foregroundColor: NSColor.systemRed])
+        }
+    }
+    required init(coder: NSCoder) { fatalError("unused") }
+    @objc private func run() { perform() }
+}
+
+private struct TranscriptPane: View {
     let entries: [TranscriptEntry]
     let title: String
     let subtitle: String?
@@ -2429,9 +2506,10 @@ private struct TranscriptPane<MenuItems: View>: View {
     var starred: Bool = false
     var onStar: (() -> Void)? = nil
     var onExport: (() -> Void)? = nil
-    /// What the ⋯ menu offers for this transcript. Passed as items rather than
-    /// as a whole menu so both call sites get the identical button.
-    @ViewBuilder let menuItems: () -> MenuItems
+    /// What the ⋯ menu offers for this transcript. Plain data rather than a
+    /// @ViewBuilder because the menu is presented as an NSMenu (see
+    /// menuButton); both call sites still get the identical button.
+    let menuActions: [TranscriptMenuAction]
 
     @ObservedObject private var loc = Localization.shared
     /// Whether the contents are open. Per pane rather than remembered: a
@@ -2870,14 +2948,14 @@ private struct TranscriptPane<MenuItems: View>: View {
     }
 
     private var menuButton: some View {
-        Menu {
-            menuItems()
-        } label: {
+        // A hand-built NSMenu, not SwiftUI's Menu: Menu refuses to drop
+        // while the app is not frontmost, and in this non-activating panel
+        // the app almost never is — since 3.2 ("Settings never activates
+        // the app") the ⋯ was three dots that did nothing. NSMenu tracks
+        // without activation; the status-bar menu is the in-house proof.
+        AnchoredMenuButton(actions: menuActions) {
             ChromeGlyph(icon: "ellipsis", hovering: menuHovering)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
         .foregroundStyle(.secondary)
         .fixedSize()
         .onHover { menuHovering = $0 }
