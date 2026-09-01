@@ -30,7 +30,10 @@ enum MeetingCapability: String, CaseIterable {
         case .recordCallAudio:
             return L("Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.")
         case .separateVoices:
-            return L("Turns one block of text into named turns, so you can see who committed to what. Names are yours to set and can be changed after the fact.")
+            // The imprecision is said HERE, before the first meeting —
+            // an expectation set up front reads as honesty, the same
+            // sentence after a disappointment reads as an excuse.
+            return L("Turns one block of text into named turns, so you can see who committed to what. The split is by sound and can be imprecise — names are yours to set and can be changed after the fact.")
         case .readMeetings:
             return L("This is what writes the summary and the outline, and what gives your agent something to answer from. Off, you get the raw transcript — no summary, no outline, and no agent. Nothing is sent anywhere either way.")
         }

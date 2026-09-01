@@ -2454,6 +2454,12 @@ private struct TranscriptPane<MenuItems: View>: View {
     enum OutlineDepth: Int, CaseIterable { case fewer = 1, standard = 2, more = 3 }
     @State private var retitling = false
     @State private var titleDraft = ""
+    /// The one-time voice explainer, mirrored from Settings so OK removes
+    /// the card in place instead of on the next open.
+    @State private var voiceTipDismissed = Settings.shared.voiceTipDismissed
+    /// The ⓘ popover next to the Voices header — the same words, kept
+    /// reachable after the card is gone.
+    @State private var voiceInfoShown = false
     /// Which participant's rename popover is open — one at a time, by name.
     /// Turns and speaker colours, derived once per change of `entries`.
     @State private var cache = TurnCache()
@@ -2506,6 +2512,23 @@ private struct TranscriptPane<MenuItems: View>: View {
                 archivedHead
             } else {
                 header
+                Divider()
+            }
+            // The one-time explainer for a multi-voice call (design decision
+            // 2026-09-01): the split is by sound and over-counts on purpose
+            // rather than silently — said once, in the first transcript where
+            // it can be seen, then retired. The ⓘ by the Voices header keeps
+            // the same words reachable forever. Never during a live call:
+            // education can wait until somebody is reading, not talking.
+            if live == nil, !voiceTipDismissed, autoVoices >= 2 {
+                CapabilityAbsenceStrip(
+                    sentence: L("Voices are told apart by sound — one person can show up as two."),
+                    sub: L("Click a name to rename a voice — the same name merges two. Summaries and answers rely on what was said, not who said it."),
+                    turnOnLabel: L("OK"),
+                    turnOn: {
+                        Settings.shared.voiceTipDismissed = true
+                        voiceTipDismissed = true
+                    })
                 Divider()
             }
             if let notice {
@@ -2628,11 +2651,24 @@ private struct TranscriptPane<MenuItems: View>: View {
             }
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(L("Voices"))
-                        .font(DS.sectionLabel)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                        .kerning(0.3)
+                    HStack(spacing: 4) {
+                        Text(L("Voices"))
+                            .font(DS.sectionLabel)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .kerning(0.3)
+                        if autoVoices > 0 {
+                            Button { voiceInfoShown = true } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help(L("About voice separation"))
+                            .popover(isPresented: $voiceInfoShown,
+                                     arrowEdge: .bottom) { voiceInfoPopover }
+                        }
+                    }
                     FlowRow(spacing: 6) {
                         ForEach(speakingShares, id: \.name) { share in
                             VoiceChip(name: share.name, isYou: share.isYou,
@@ -2770,6 +2806,36 @@ private struct TranscriptPane<MenuItems: View>: View {
         }
         return order.map { (name: $0, isYou: isYou[$0] ?? false,
                             minutes: max(1, (seconds[$0] ?? 0) / 60)) }
+    }
+
+    /// Call-side voices still wearing automatic labels — what gates the
+    /// one-time explainer card (two or more: the split itself is visible)
+    /// and the ⓘ next to the Voices header (any: there is something the
+    /// words explain). A fully renamed cast has engaged with the mechanism
+    /// and needs neither.
+    private var autoVoices: Int {
+        speakingShares.filter { VoiceChip.isAutoLabel($0.name, isYou: $0.isYou) }
+            .count
+    }
+
+    /// The ⓘ's words: the card's two lines, plus the one promise the card
+    /// does not make. "Improves over time" is as specific as a shipping app
+    /// can honestly be about work that is not done.
+    private var voiceInfoPopover: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("Voices are told apart by sound — one person can show up as two."))
+                .font(.system(size: 12, weight: .medium))
+            Text(L("Click a name to rename a voice — the same name merges two. Summaries and answers rely on what was said, not who said it."))
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+            Text(L("Voice separation improves over time."))
+                .font(.system(size: 11.5))
+                .foregroundStyle(.tertiary)
+        }
+        .lineSpacing(2)
+        .frame(width: 260, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(12)
     }
 
 
@@ -3698,6 +3764,15 @@ private struct SpeakerRenamePopover: View {
             // identified person — the rename applies to this voice's turns
             // and the label must not borrow more certainty than that.
             Text(L("Voices are matched by sound — the name applies only to this voice's turns."))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true)
+            // The repair the split voice needs, said where the repair
+            // happens: merging already works by construction (a rename only
+            // rewrites labels, and equal labels coalesce), it was just
+            // never said anywhere.
+            Text(L("Give two voices the same name to merge them."))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .frame(width: width)
@@ -4885,14 +4960,17 @@ private struct VoiceChip: View {
     @State private var draft = ""
 
     /// An automatic label rather than a chosen name — in any UI language the
-    /// file may have been written in.
-    private var unnamed: Bool {
+    /// file may have been written in. Shared with the pane's voice-tip
+    /// gating: both must agree on what counts as "not yet named".
+    static func isAutoLabel(_ name: String, isYou: Bool) -> Bool {
         if isYou { return false }
         if name == "Them" || name == "Call audio" { return true }
         return name.range(of: #"· (voice|голос|голос) \d+$"#,
                           options: .regularExpression) != nil
             || name.range(of: #"voice \d+$"#, options: .regularExpression) != nil
     }
+
+    private var unnamed: Bool { Self.isAutoLabel(name, isYou: isYou) }
 
     var body: some View {
         Button {

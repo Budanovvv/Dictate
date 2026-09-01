@@ -237,6 +237,14 @@ final class Settings: @unchecked Sendable {
         set { d.set(newValue, forKey: "translateTipCount") }
     }
 
+    /// The one-time card over a multi-voice transcript — how voices are told
+    /// apart and how to fix them. OK retires it for good; the ⓘ in the
+    /// Voices header keeps the same words reachable afterwards.
+    var voiceTipDismissed: Bool {
+        get { d.bool(forKey: "voiceTipDismissed") }
+        set { d.set(newValue, forKey: "voiceTipDismissed") }
+    }
+
     /// Live transcription preview in the HUD while recording (turbo passes
     /// over the growing buffer). Always on — it is what makes the HUD feel
     /// alive. Hidden escape hatch, no UI: only `defaults write … livePreview
