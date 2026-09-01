@@ -16,13 +16,13 @@ Dictate does four things, and does them all on your Mac. No cloud, no account, n
 
 ## The four things
 
-**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 112 languages, great with accents, fast enough to show live text while you're still speaking.
+**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 112 languages, great with accents, fast enough to show live text while you're still speaking. A word is typed only once two consecutive decodes agree on it — nothing you see is ever taken back.
 
 **2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated on this Mac, like everything else.
 
-**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
+**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Both sides of the call come through macOS's native system-audio tap — no virtual audio drivers to install. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
 
-**4 · An agent that knows your meetings (Ask).** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and the recordings themselves never leave your Mac.
+**4 · An agent that knows your meetings (Ask).** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and what it sends are transcript excerpts — your audio never leaves this Mac.
 
 ## The details
 
