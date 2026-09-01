@@ -865,6 +865,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
         guard manualUpdateProbe else { return }
         manualUpdateProbe = false
+        // With an update staged, "no update found" means "already downloaded"
+        // — saying "you're up to date, X is newest" while X+1 sits on disk
+        // waiting to install would be a lie about the exact thing asked.
+        if let staged = statusController.stagedUpdateVersion {
+            DispatchQueue.main.async {
+                Log.d("updates: manual probe — v\(staged) already staged")
+                UpdateNotice.show(Lf("Update %@ installs at the next quiet moment", staged))
+            }
+            return
+        }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         DispatchQueue.main.async {
             Log.d("updates: manual probe — up to date")
@@ -909,6 +919,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             guard let self else { return }
             Log.d("update: v\(item.displayVersionString) staged — waiting for an idle moment to relaunch")
             self.pendingUpdateInstall = immediateInstallHandler
+            // Say so in the menu: the newer version already sits on disk
+            // while every surface still describes the old process — the gap
+            // that read as "About shows the wrong version".
+            self.statusController.stagedUpdateVersion = item.displayVersionString
             self.scheduleUpdateRelaunchTimer()
         }
         return true

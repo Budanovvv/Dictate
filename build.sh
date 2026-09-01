@@ -98,16 +98,26 @@ EXTRA=()
 # grow — the commit count on main does. Falls back to 0 outside a git checkout.
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
 
+# The build's full identity, stamped NOW rather than at release time: the
+# count alone cannot tell a dirty-tree build from the commit it sits on
+# (2026-09-01: a dev build with eight edited files carried the exact
+# identity of the published 3.2 — About had no way to tell them apart).
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+DIRTY=""
+[ -n "$(git status --porcelain 2>/dev/null)" ] && DIRTY="·dirty"
+BUILD_STAMP="${BUILD_NUMBER}·${GIT_SHA}${DIRTY}"
+
 # Drop the previous artifact FIRST: with it in place, a failed xcodebuild would
 # leave a perfectly signed stale app behind and the checks below would bless it
 # — release.sh could then ship an old binary under a new version number.
 rm -rf "$APP"
 
-echo "==> xcodebuild (Release), build ${BUILD_NUMBER}"
+echo "==> xcodebuild (Release), build ${BUILD_STAMP}"
 set +o pipefail   # grep exiting 1 on "no matching lines" must not kill the build output filter
 xcodebuild -project Dictate.xcodeproj -scheme Dictate -configuration Release \
     -destination 'platform=macOS' -derivedDataPath "$DD" \
-    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" ${PERSONAL_FLAGS[@]+"${PERSONAL_FLAGS[@]}"} \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+    DICTATE_BUILD_STAMP="$BUILD_STAMP" ${PERSONAL_FLAGS[@]+"${PERSONAL_FLAGS[@]}"} \
     build ${EXTRA[@]+"${EXTRA[@]}"} \
     | grep -E "error:|BUILD SUCCEEDED|BUILD FAILED"
 XC=${PIPESTATUS[0]}

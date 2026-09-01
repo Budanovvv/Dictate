@@ -58,9 +58,17 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.valentynbudanov.Dictate
         PRODUCT_NAME: Dictate
-        MARKETING_VERSION: "3.2"
+        # Bumped RIGHT AFTER each release (release.sh --publish does it
+        # itself), so every dev-cycle build names the version it is BECOMING,
+        # not the release it came from — About used to call the whole 3.2
+        # cycle "3.1" (versioning postmortem, 2026-09-01).
+        MARKETING_VERSION: "3.2.1"
         # CFBundleVersion (what Sparkle compares) is injected at build time from
         # the git commit count — see build.sh. No hand-bumped counter to forget.
+        # The stamp (commit count · short SHA · dirty marker) makes any two
+        # binaries distinguishable in About; "xcode" marks a GUI build that
+        # bypassed build.sh.
+        DICTATE_BUILD_STAMP: "xcode"
         INFOPLIST_FILE: Sources/Info.plist
         SWIFT_VERSION: "5.0"
         # Strict checking as WARNINGS (Swift 5 mode): the isolation

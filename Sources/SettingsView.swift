@@ -83,6 +83,13 @@ struct SettingsView: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
 
+    /// The build's full identity, stamped by build.sh: commit count · short
+    /// SHA · dirty marker ("205·fed7def·dirty"). The marketing version alone
+    /// cannot tell two builds of one cycle apart — this can, at a glance.
+    static var buildStamp: String {
+        Bundle.main.object(forInfoDictionaryKey: "DictateBuildStamp") as? String ?? ""
+    }
+
     /// Sparkle's own record of the last automatic check, formatted for a
     /// sentence. nil until the first check has ever run.
     static var lastUpdateCheck: String? {
@@ -778,6 +785,11 @@ struct SettingsView: View {
                 LabeledContent(L("Version")) {
                     HStack(spacing: 6) {
                         Text(Self.appVersion)
+                        if !Self.buildStamp.isEmpty {
+                            Text("(\(Self.buildStamp))")
+                                .font(.system(size: 11).monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
                         Text("·").foregroundStyle(.tertiary)
                         Button(L("Check for updates")) { onCheckForUpdates() }
                             .buttonStyle(.dsSmall)

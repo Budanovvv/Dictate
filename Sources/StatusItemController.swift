@@ -22,6 +22,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let pillHidden: () -> Bool
     private let showPill: () -> Void
     private var lastError: String?
+    /// A silently downloaded update, staged and waiting for the idle
+    /// relaunch. Set by AppDelegate; shown as a quiet menu line, because a
+    /// newer version already ON DISK while About names the old process is
+    /// exactly the invisibility that read as "my version is wrong"
+    /// (versioning postmortem, 2026-09-01).
+    var stagedUpdateVersion: String?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
@@ -352,6 +358,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings.target = self
         menu.addItem(settings)
 
+        if let staged = stagedUpdateVersion {
+            menu.addItem(Self.label(Lf("Update %@ installs at the next quiet moment", staged)))
+        }
+
         let about = NSMenuItem(title: L("About Dictate"), action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
@@ -540,12 +550,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             string: "\nMade by Valentyn Budanov",
             attributes: [.font: NSFont.systemFont(ofSize: 11)]
         ))
-        // Show "Version 2.2.0" without the parenthetical build number: it's now
-        // the git commit count (a Sparkle-only technical value), meaningless to
-        // a user. Empty .version drops the "(…)" the standard panel would add.
+        // The parenthetical is the build stamp (count·SHA·dirty, build.sh) —
+        // the one line that tells any two binaries of a cycle apart. Hiding
+        // it entirely was how a dev build and the published release became
+        // indistinguishable (versioning postmortem, 2026-09-01); an empty
+        // stamp still drops the "(…)".
+        let stamp = Bundle.main.object(forInfoDictionaryKey: "DictateBuildStamp") as? String ?? ""
         DispatchQueue.main.async {
             MainActor.assumeIsolated {   // main-queue dispatch, main by construction
-                NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: ""])
+                NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: stamp])
             }
         }
     }

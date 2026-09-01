@@ -244,8 +244,26 @@ if [ "${1:-}" = "--publish" ]; then
         echo "     Fix the dictate-notary profile / network and re-run ./release.sh --publish"
         exit 1
     fi
+    # A published binary must be reproducible from a commit — a dirty tree
+    # ships changes no commit records, and the build stamp would say so
+    # ("·dirty") on every user's About forever.
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "  ❌ refusing to publish from a dirty tree — commit (or stash) first."
+        exit 1
+    fi
     TAG="v$VERSION"
     ASSETS=("$DMG" "$UPDATE_DMG" "$OUT/appcast.xml")
+
+    # v$VERSION already fully published means the post-publish bump below
+    # was reverted or dodged: without it, every dev build of the NEXT cycle
+    # would wear this release's name (the 2026-09-01 versioning postmortem).
+    # Interrupted publishes converge fine — they are drafts, not published.
+    if gh api "/repos/$REPO/releases/tags/$TAG" --jq .draft 2>/dev/null | grep -q false; then
+        echo "  ❌ $TAG is already published. The cycle after a release opens with a"
+        echo "     version bump (this script does it itself after publishing) — bump"
+        echo "     MARKETING_VERSION in project.yml and re-run."
+        exit 1
+    fi
 
     git tag -f "$TAG" && git push -f origin "$TAG"
 
@@ -315,6 +333,21 @@ if [ "${1:-}" = "--publish" ]; then
     fi
     echo "  ✅ published and marked latest: https://github.com/$REPO/releases/tag/$TAG"
     echo "  ⚠️  Sparkle will only see the update once the releases repository is public"
+
+    # Open the next cycle NOW, as the last step of publishing: every build
+    # from here on names the version it is becoming, not the release it came
+    # from (About called the whole 3.2 cycle "3.1" — postmortem 2026-09-01).
+    # The next patch number is a placeholder; growing it into a minor later
+    # is one edit of project.yml.
+    NEXT=$(echo "$VERSION" | awk -F. '{ if (NF < 3) print $0 ".1"; else { $NF++; print $1 "." $2 "." $3 } }' OFS=.)
+    sed -i '' "s/MARKETING_VERSION: \"$VERSION\"/MARKETING_VERSION: \"$NEXT\"/" project.yml
+    if grep -q "MARKETING_VERSION: \"$NEXT\"" project.yml; then
+        git add project.yml
+        git commit -m "Open the $NEXT cycle" -m "Bumped right after publishing $VERSION so every dev build names the version it is becoming — not the release it came from." >/dev/null
+        echo "  ✅ next cycle opened: project.yml now says $NEXT (committed; push when ready)"
+    else
+        echo "  ⚠️  could not bump MARKETING_VERSION in project.yml — bump it by hand to keep About honest"
+    fi
 else
     echo
     echo "Artifacts in $OUT/. To publish: ./release.sh --publish"

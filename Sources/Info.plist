@@ -10,6 +10,11 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
+    <!-- Build identity stamped at build time (build.sh): commit count,
+         short SHA, dirty marker. Shown in About and Settings so any two
+         binaries are distinguishable at a glance. -->
+    <key>DictateBuildStamp</key>
+    <string>$(DICTATE_BUILD_STAMP)</string>
     <key>CFBundleName</key>
     <string>Dictate</string>
     <key>CFBundleDisplayName</key>
