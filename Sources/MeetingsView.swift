@@ -3314,12 +3314,20 @@ private struct TranscriptPane: View {
         return parts.joined(separator: " · ")
     }
 
-    /// The cuts on hand: the cache's plus whatever cut the file itself holds
-    /// (the current one, under its level when known — standard otherwise).
+    /// The cuts on hand: the cache's plus whatever cut the file itself holds.
+    /// The file's block goes under its TRUE level — the recut the person just
+    /// made, or the cached cut with the same timestamps, or the preferred
+    /// setting last. Assuming "standard" here once overwrote the real standard
+    /// cut with a coarse block and collapsed the outline into one dead level
+    /// (2026-09-01: three levels, zero moments, a mute depth control).
     private var effectiveCuts: [MeetingPolicy.SectionDetail: [TranscriptSection]] {
         var out = cuts
         if !overviewSections.isEmpty {
-            out[recutLevel ?? .standard] = overviewSections
+            let times = overviewSections.map(\.time)
+            let level = recutLevel
+                ?? cuts.first(where: { $0.value.map(\.time) == times })?.key
+                ?? Settings.shared.sectionDetail
+            out[level] = overviewSections
         }
         return out
     }

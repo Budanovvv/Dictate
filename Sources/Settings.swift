@@ -175,7 +175,13 @@ final class Settings: @unchecked Sendable {
     /// somebody choose the count buys more than any better boundary-finder
     /// would. Defaults to the middle, which is where it has always been.
     var sectionDetail: MeetingPolicy.SectionDetail {
-        get { MeetingPolicy.SectionDetail(rawValue: d.integer(forKey: "sectionDetail")) ?? .standard }
+        // An absent key must not read as rawValue 0: that is .coarse since the
+        // Fewer level took the 0 slot, and every archive silently got the
+        // sparsest contents block instead of the promised middle (2026-09-01).
+        get {
+            guard d.object(forKey: "sectionDetail") != nil else { return .standard }
+            return MeetingPolicy.SectionDetail(rawValue: d.integer(forKey: "sectionDetail")) ?? .standard
+        }
         set { d.set(newValue.rawValue, forKey: "sectionDetail") }
     }
 
