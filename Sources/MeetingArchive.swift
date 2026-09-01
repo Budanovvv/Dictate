@@ -266,17 +266,26 @@ enum MeetingArchive {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         guard lines.count >= 3, lines[0].hasPrefix("# "),
-              lines[1].hasPrefix("_"), lines[1].hasSuffix("_"), lines[1].count > 2,
-              isSummaryLine(lines[2]) else { return nil }
-        return lines[2]
+              lines[1].hasPrefix("_"), lines[1].hasSuffix("_"), lines[1].count > 2
+        else { return nil }
+        // The head may carry markdown-invisible metadata between the date
+        // and the summary (<!-- source: Google Meet -->) — invisible in a
+        // Markdown reader, so invisible here too. Found live 2026-09-01:
+        // the first file with a source line showed the comment AS its
+        // summary, in the card and above the transcript.
+        guard let candidate = lines.dropFirst(2).first(where: { !$0.hasPrefix("<!--") }),
+              isSummaryLine(candidate) else { return nil }
+        return candidate
     }
 
-    /// A line that is neither an entry, nor a heading, nor the italic date —
-    /// which, in the third position of one of our files, is the summary.
+    /// A line that is neither an entry, nor a heading, nor the italic date,
+    /// nor a metadata comment — which, in the head of one of our files, is
+    /// the summary.
     private static func isSummaryLine(_ raw: String) -> Bool {
         let line = raw.trimmingCharacters(in: .whitespaces)
         return !line.isEmpty && !line.hasPrefix("**[")
             && !line.hasPrefix("#") && !line.hasPrefix("_")
+            && !line.hasPrefix("<!--")
     }
 
     /// Writes the summary under the date line, replacing one already there.
@@ -296,7 +305,15 @@ enum MeetingArchive {
               }),
               lines[date].hasPrefix("_"), lines[date].hasSuffix("_")
         else { return markdown }
-        if let next = lines[(date + 1)...].firstIndex(where: {
+        // Metadata comments written at creation sit directly under the date
+        // (<!-- source: … -->); the summary hangs under the whole head, so
+        // they are stepped over, not written into.
+        var head = date
+        while head + 1 < lines.count,
+              lines[head + 1].trimmingCharacters(in: .whitespaces).hasPrefix("<!--") {
+            head += 1
+        }
+        if let next = lines[(head + 1)...].firstIndex(where: {
             !$0.trimmingCharacters(in: .whitespaces).isEmpty
         }), isSummaryLine(lines[next]) {
             lines[next] = clean
@@ -304,12 +321,12 @@ enum MeetingArchive {
         }
         // A blank line either side, so the summary is its own paragraph in a
         // Markdown reader instead of running on from the date.
-        let blankFollows = date + 1 < lines.count
-            && lines[date + 1].trimmingCharacters(in: .whitespaces).isEmpty
+        let blankFollows = head + 1 < lines.count
+            && lines[head + 1].trimmingCharacters(in: .whitespaces).isEmpty
         if blankFollows {
-            lines.insert(contentsOf: [clean, ""], at: date + 2)
+            lines.insert(contentsOf: [clean, ""], at: head + 2)
         } else {
-            lines.insert(contentsOf: ["", clean, ""], at: date + 1)
+            lines.insert(contentsOf: ["", clean, ""], at: head + 1)
         }
         return lines.joined(separator: "\n")
     }

@@ -165,6 +165,61 @@ final class MeetingSummaryFileTests: XCTestCase {
         XCTAssertNil(MeetingArchive.parseSummary(markdown: titled))
     }
 
+    /// The head may carry a metadata comment between the date and the
+    /// summary. Found live 2026-09-01: the first transcript ever written
+    /// with a source line showed the comment AS its summary — in the card
+    /// and above the transcript.
+    func testSourceCommentIsNotTheSummary() {
+        let sourced = """
+        # Release planning
+        _August 10, 2026 at 9:17 AM_
+        <!-- source: Google Meet -->
+        \(summary)
+
+        **[09:17:52] You:** Обсудим релиз.
+
+        """
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: sourced), summary)
+        XCTAssertEqual(MeetingArchive.parseSource(markdown: sourced), "Google Meet")
+    }
+
+    /// A freshly recorded call carries its source from creation; the summary
+    /// written at the end must land under the comment, not inside it — and
+    /// neither may evict the other.
+    func testSummaryLandsUnderTheSourceComment() {
+        let sourced = """
+        # Release planning
+        _August 10, 2026 at 9:17 AM_
+        <!-- source: Zoom -->
+
+        **[09:17:52] You:** Обсудим релиз.
+
+        """
+        let written = MeetingArchive.applying(summary: summary, to: sourced)
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: written), summary)
+        XCTAssertEqual(MeetingArchive.parseSource(markdown: written), "Zoom")
+        XCTAssertEqual(MeetingArchive.parse(markdown: written, youLabel: "You").count, 1)
+        let replaced = MeetingArchive.applying(summary: "Another sentence entirely.",
+                                               to: written)
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: replaced),
+                       "Another sentence entirely.")
+        XCTAssertFalse(replaced.contains("notarization"))
+    }
+
+    /// A sourced transcript with no summary still has none — the comment
+    /// must not be promoted to one by the skipping logic either.
+    func testSourcedTranscriptWithoutSummaryHasNone() {
+        let sourced = """
+        # Release planning
+        _August 10, 2026 at 9:17 AM_
+        <!-- source: Zoom -->
+
+        **[09:17:52] You:** Обсудим релиз.
+
+        """
+        XCTAssertNil(MeetingArchive.parseSummary(markdown: sourced))
+    }
+
     /// An unnamed transcript has no italic date line to hang a summary under,
     /// so there is nowhere to put one — and nothing is written.
     func testUnnamedTranscriptIsLeftAlone() {
