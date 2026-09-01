@@ -127,6 +127,12 @@ final class MeetingSession: ObservableObject {
     /// file when the transcript finishes (parseSource reads the head only).
     private var sourceProbeTimer: Timer?
     private var sourceProbesLeft = 0
+    /// The platform the detection card verified and showed ("Google Meet"),
+    /// handed in at start. Outranks every re-detection: the session-side
+    /// checks run mid-call (main-thread AX under a busy browser, titles
+    /// only from active tabs) and measurably never won — 0 sources written
+    /// across the first 21 recorded calls.
+    private var promptPlatform: String?
     private var lateSource: String?
     private var headerHadSource = false
     /// Core Audio listener on the default input device while recording.
@@ -309,9 +315,10 @@ final class MeetingSession: ObservableObject {
     /// background-tab call never sets platformEverSeen and the forgotten-
     /// recording rule falls back to the slow dead-air path (weak-case
     /// review, 2026-08-29).
-    func start(fromCallPrompt: Bool = false) throws {
+    func start(fromCallPrompt: Bool = false, platform: String? = nil) throws {
         guard !isActive else { return }
         sessionStart = Date()
+        promptPlatform = platform
         themPCM = Data()
         pending = []
         inflight = [:]
@@ -700,6 +707,9 @@ final class MeetingSession: ObservableObject {
                     self.sourceProbeTimer?.invalidate()
                     self.sourceProbeTimer = nil
                 } else if self.sourceProbesLeft == 0 {
+                    // Silence here cost a diagnosis once (2026-09-01): ten
+                    // misses looked identical to the probe never running.
+                    Log.d("meeting: call source never found (10 probes)")
                     self.sourceProbeTimer?.invalidate()
                     self.sourceProbeTimer = nil
                 }
@@ -1497,11 +1507,12 @@ final class MeetingSession: ObservableObject {
         let url = dir.appendingPathComponent(
             MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: scheduledTitle))
         // Which platform the call ran on — the sidebar's Sources group. The
-        // calendar's conference link names it best; failing that, whichever
-        // known call app holds the microphone right now. Written ONLY at
-        // creation, as a markdown-invisible comment: existing transcripts are
-        // never rewritten for this (they read back as "other").
-        let source = scheduled?.platform ?? Self.detectCallApp()
+        // detection card's verified name wins outright; then the calendar's
+        // conference link; then whichever known call app holds the microphone
+        // right now. Written ONLY at creation, as a markdown-invisible
+        // comment: existing transcripts are never rewritten for this (they
+        // read back as "other").
+        let source = promptPlatform ?? scheduled?.platform ?? Self.detectCallApp()
         headerHadSource = source != nil
         lateSource = nil
         if source == nil { startSourceProbe() }

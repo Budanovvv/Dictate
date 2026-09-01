@@ -319,11 +319,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// kept separate on purpose: it seeds the auto-stop's "a call platform
     /// was here" flag, and a menu start may be no call at all — seeding it
     /// there would let the dead-air stop kill a dictated note 90 s into its
-    /// first pause.
-    private func startMeetingSession(asPill: Bool = false, fromCallPrompt: Bool = false) {
+    /// first pause. `platform` is the card's verified name ("Google Meet")
+    /// handed through whole: the session used to re-detect it from scratch
+    /// and lost that race every single time — 0 of 21 recorded calls ever
+    /// got a source, all filed under "Other browser calls" while the card
+    /// had named the platform out loud two seconds earlier.
+    private func startMeetingSession(asPill: Bool = false, fromCallPrompt: Bool = false,
+                                     platform: String? = nil) {
         callPrompt.hide()
         do {
-            try meeting.start(fromCallPrompt: fromCallPrompt)
+            try meeting.start(fromCallPrompt: fromCallPrompt, platform: platform)
             statusController.applyState(dictation.state)   // show the red mark
             // The pill only when there is no window already on screen: with
             // the portal open, recording lands in it — a pill OVER an open
@@ -352,7 +357,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if Settings.shared.noticeCalls {
             Log.d("call: prompting")
             callPrompt.show(platform: platform, style: .prompt) { [weak self] in
-                self?.startMeetingSession(asPill: true, fromCallPrompt: true)
+                self?.startMeetingSession(asPill: true, fromCallPrompt: true,
+                                          platform: platform)
             }
             return
         }
@@ -364,7 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // the silent degradation section 9 forbids.
             MeetingCapability.recordCallAudio.turnOnByHand()
             MeetingCapability.separateVoices.turnOnByHand()
-            self?.startMeetingSession(asPill: true, fromCallPrompt: true)
+            self?.startMeetingSession(asPill: true, fromCallPrompt: true,
+                                      platform: platform)
         }
     }
 
