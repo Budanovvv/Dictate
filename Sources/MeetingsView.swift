@@ -1685,9 +1685,12 @@ struct MeetingsView: View {
     private var sourcesPresent: [(name: String, count: Int)] {
         var counts: [String: Int] = [:]
         for meeting in meetings { counts[meeting.source ?? Self.otherSourcesBucket, default: 0] += 1 }
+        // Tie-break by name: counts land here from a dictionary, and during a
+        // live call the sidebar recomputes on every transcript rewrite — an
+        // unordered tie made Meet and Zoom visibly swap places.
         var out = counts.filter { $0.key != Self.otherSourcesBucket }
             .map { (name: $0.key, count: $0.value) }
-            .sorted { $0.count > $1.count }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
         if let other = counts[Self.otherSourcesBucket] {
             out.append((name: Self.otherSourcesBucket, count: other))
         }
