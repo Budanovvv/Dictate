@@ -172,6 +172,18 @@ enum MeetingArchive {
         return labels
     }()
 
+    /// Every word Dictate has ever written for the collective call side — the
+    /// entries whose window the diarizer found no voice in. The same
+    /// eleven-language reasoning as `youLabels`: the file keeps the word that
+    /// was current when it was written.
+    static let themLabels: Set<String> = {
+        var labels: Set<String> = ["Them"]
+        for language in AppLanguage.allCases where language != .system {
+            labels.insert(Localization.shared.string("Them", in: language))
+        }
+        return labels
+    }()
+
     /// Entry lines look like `**[13:56:28] You:** text`; anything else is
     /// either the title, the summary, or a continuation of the previous
     /// entry's text (a transcription can contain line breaks).

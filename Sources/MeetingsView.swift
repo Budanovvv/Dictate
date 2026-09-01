@@ -1029,6 +1029,27 @@ struct MeetingsView: View {
         }
     }
 
+    /// A rename that leaves the whole call side answering to a single name
+    /// pulls the collective "Them" lines along with it — the archive twin of
+    /// the live session's fold (MeetingSpeakerPolicy.collectiveFoldTarget).
+    /// `meeting.entries` still shows the file as it was BEFORE the rename,
+    /// which is exactly what lets this judge the outcome without re-reading.
+    private func foldCollective(after old: String, to new: String,
+                                in meeting: ArchivedMeeting, at url: URL) {
+        let clean = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !MeetingArchive.youLabels.contains(old) else { return }
+        let callSide = meeting.entries.filter { !$0.isYou }
+            .map { $0.speaker == old ? clean : $0.speaker }
+        let collective = Set(callSide).intersection(MeetingArchive.themLabels)
+        let voices = callSide.filter { !MeetingArchive.themLabels.contains($0) }
+        guard !collective.isEmpty,
+              let target = MeetingSpeakerPolicy.collectiveFoldTarget(
+                  renamedTo: clean, voiceNames: voices) else { return }
+        for label in collective.sorted() {
+            MeetingArchive.rename(speaker: label, to: target, in: url)
+        }
+    }
+
     /// The platform marker dots of the Sources group (design): Meet blue,
     /// Zoom teal, everything else violet.
     private static func sourceDot(_ name: String) -> Color {
@@ -1397,6 +1418,8 @@ struct MeetingsView: View {
                                },
                                onRename: { old, new in
                                    MeetingArchive.rename(speaker: old, to: new, in: url)
+                                   foldCollective(after: old, to: new,
+                                                  in: meeting, at: url)
                                    reload()
                                },
                                onRetitle: { newTitle in

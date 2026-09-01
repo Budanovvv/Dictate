@@ -440,6 +440,18 @@ final class DuetVerdictTests: XCTestCase {
             ceiling: 0.70) { _, _ in 0.60 })
     }
 
+    func testRenamedDominantStillHosts() {
+        // 2026-09-01 13:33, the Anya call: the owner named the DOMINANT voice
+        // mid-call and the old both-unrenamed guard silently disarmed the
+        // whole rule. A name on the dominant says nothing about the minor —
+        // the 08-28 merge shape must still merge when only the host is named.
+        let verdict = MeetingSpeakerPolicy.duetVerdict(
+            voices: [voice(1, entries: 70, seconds: 711, renamed: true),
+                     voice(2, entries: 5, seconds: 24)],
+            ceiling: 0.70) { _, _ in 0.837 }
+        XCTAssertEqual(verdict?.outcome, .merge(into: 1, distance: 0.837))
+    }
+
     func testMicroMinorIsTheOtherRulesCase() {
         // ≤2 entries and ≤10 s belongs to the micro rule; the duet rule
         // stands down so no voice is ever judged twice.
@@ -455,5 +467,43 @@ final class DuetVerdictTests: XCTestCase {
                      voice(2, entries: 5, seconds: 24)],
             ceiling: 0.70) { _, _ in nil }
         XCTAssertEqual(verdict?.outcome, .keepUnmeasured)
+    }
+}
+
+// The collective fold — after a manual rename leaves the whole call side
+// answering to one name, the "Them" lines follow it. Shapes are the owner's
+// 2026-09-01 sessions, where the fold was performed by hand twice in a day.
+final class CollectiveFoldTests: XCTestCase {
+
+    func testOneNameFolds() {
+        // The Anya call after both voices were renamed into her.
+        XCTAssertEqual(MeetingSpeakerPolicy.collectiveFoldTarget(
+            renamedTo: "Anya", voiceNames: ["Anya", "Anya"]), "Anya")
+    }
+
+    func testSingleVoiceCallFolds() {
+        // A 1:1 where the diarizer produced one cluster: naming it is the
+        // owner declaring the call side, and Them can only be that person.
+        XCTAssertEqual(MeetingSpeakerPolicy.collectiveFoldTarget(
+            renamedTo: "Steve", voiceNames: ["Steve"]), "Steve")
+    }
+
+    func testSecondNameBlocks() {
+        // The morning call mid-cleanup: voice 1 is Steve, voice 2 still
+        // numbered — the call side has not collapsed yet.
+        XCTAssertNil(MeetingSpeakerPolicy.collectiveFoldTarget(
+            renamedTo: "Steve", voiceNames: ["Steve", "Call · voice 2"]))
+    }
+
+    func testNoVoicesNothingToFold() {
+        // Only collective lines exist: renaming Them itself is the ordinary
+        // rename, not a fold — there is nobody to have collapsed into.
+        XCTAssertNil(MeetingSpeakerPolicy.collectiveFoldTarget(
+            renamedTo: "Anya", voiceNames: []))
+    }
+
+    func testEmptyNameNeverFolds() {
+        XCTAssertNil(MeetingSpeakerPolicy.collectiveFoldTarget(
+            renamedTo: "", voiceNames: [""]))
     }
 }

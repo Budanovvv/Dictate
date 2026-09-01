@@ -148,7 +148,12 @@ enum MeetingSpeakerPolicy {
     ///
     /// Conditions are conjunctive, and each one keeps a real call from the
     /// logs out of harm's way:
-    /// * exactly two unrenamed voices spoke — with three or more, the small
+    /// * exactly two voices spoke, and the MINOR one carries no hand-given
+    ///   name — a name on the minor declares a real person and is never
+    ///   overruled. A name on the DOMINANT blocks nothing (2026-09-01, the
+    ///   Anya call: naming her mid-call silently disarmed this rule) — it
+    ///   says nothing about the minor, and it makes the dominant a better
+    ///   host, not a forbidden one. With three or more voices, the small
     ///   ones are usually people (guests who mostly listen);
     /// * the minor holds ≤ 10% of the dominant's seconds — the 08-28 09:12
     ///   call split 274 s / 113 s (41%), possibly two real people: untouched;
@@ -167,10 +172,11 @@ enum MeetingSpeakerPolicy {
     static func duetVerdict(voices: [Voice], ceiling: Double,
                             distance: (Int, Int) -> Double?) -> Verdict? {
         let spoke = voices.filter { $0.entries > 0 }
-        guard spoke.count == 2, spoke.allSatisfy({ !$0.renamed }) else { return nil }
+        guard spoke.count == 2 else { return nil }
         let sorted = spoke.sorted { $0.seconds > $1.seconds }
         let dominant = sorted[0], minor = sorted[1]
-        guard !isMicro(minor),
+        guard !minor.renamed,
+              !isMicro(minor),
               minor.seconds <= duetMaxSeconds,
               minor.seconds <= dominant.seconds * duetShare else { return nil }
         guard let d = distance(minor.ordinal, dominant.ordinal), d.isFinite else {
@@ -181,6 +187,31 @@ enum MeetingSpeakerPolicy {
                        outcome: d <= bar
                            ? .merge(into: dominant.ordinal, distance: d)
                            : .keepTooFar(nearest: dominant.ordinal, distance: d))
+    }
+
+    // MARK: - Collective fold after a manual merge
+
+    /// A rename just made every numbered voice of the call side answer to one
+    /// name — the owner has declared the call 1:1, and the collective "Them"
+    /// lines (windows the diarizer heard no voice in) can only be that same
+    /// person: the transcript already claims nobody else was there. Folding
+    /// them in turns the owner's three cleanup renames (both voices, then
+    /// Them) into one — done by hand twice on 2026-09-01 alone.
+    ///
+    /// - Parameters:
+    ///   - new: the name the manual rename just gave.
+    ///   - voiceNames: the resolved label of every numbered voice with entries,
+    ///     AFTER the rename. Collective labels are not in this list — they have
+    ///     no voice behind them.
+    /// - Returns: the name the collective lines should take, or nil when the
+    ///   call side has not collapsed into one person. An empty voice list is
+    ///   nil by design: with no numbered voice at all there is nobody to have
+    ///   collapsed into, and renaming "Them" itself is the ordinary path.
+    static func collectiveFoldTarget(renamedTo new: String,
+                                     voiceNames: [String]) -> String? {
+        guard !new.isEmpty, !voiceNames.isEmpty,
+              voiceNames.allSatisfy({ $0 == new }) else { return nil }
+        return new
     }
 
     // MARK: - Lexical label inheritance

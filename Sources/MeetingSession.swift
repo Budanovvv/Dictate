@@ -101,16 +101,29 @@ final class MeetingSession: ObservableObject {
         speakerNames[old] = clean
         // Anything already mapped INTO the old name follows it along.
         for (source, current) in speakerNames where current == old { speakerNames[source] = clean }
+        // The rename may have collapsed the call side into one person — then
+        // the collective Them lines are that person too, the written ones and
+        // every one still to come (MeetingSpeakerPolicy.collectiveFoldTarget).
+        var relabel = [old]
+        let them = L("Them")
+        if old != them, old != L("You"), speakerNames[them] != clean,
+           MeetingSpeakerPolicy.collectiveFoldTarget(
+               renamedTo: clean,
+               voiceNames: statOrdinalEntries.keys.map { currentLabel($0) }) != nil {
+            speakerNames[them] = clean
+            relabel.append(them)
+            Log.d("meeting: collective \"\(them)\" follows \"\(clean)\" — the call side has one name")
+        }
         displayEntries = displayEntries.map {
-            $0.speaker == old
+            relabel.contains($0.speaker)
                 ? TranscriptEntry(id: $0.id, time: $0.time, speaker: clean,
-                                  text: $0.text, isYou: $0.isYou)
+                                  text: $0.text, isYou: $0.isYou, absorbed: $0.absorbed)
                 : $0
         }
         guard let url = fileURL else { return }
         try? fileHandle?.close()
         fileHandle = nil
-        MeetingArchive.rename(speaker: old, to: clean, in: url)
+        for label in relabel { MeetingArchive.rename(speaker: label, to: clean, in: url) }
         fileHandle = try? FileHandle(forWritingTo: url)
         _ = try? fileHandle?.seekToEnd()
     }
