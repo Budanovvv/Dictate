@@ -6,7 +6,7 @@
 
 <p align="center"><b>Hold a key, speak, let go. Everything happens on this Mac.</b></p>
 
-<p align="center">Dictation and translation that work offline. Meetings that structure themselves.<br>An agent that knows them all. Zero dollars.</p>
+<p align="center">Dictation and translation that work offline. Meetings that structure themselves,<br>and an agent that answers from them.</p>
 
 ### [⬇︎ Download the latest release](https://github.com/Budanovvv/Dictate/releases/latest)
 
@@ -16,11 +16,11 @@ Dictate does four things, and does them all on your Mac. No cloud, no account, n
 
 ## The four things
 
-**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 112 languages, great with accents, fast enough to show live text while you're still speaking. A word is typed only once two consecutive decodes agree on it — nothing you see is ever taken back.
+**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 112 languages, great with accents, fast enough to show live text while you're still speaking. A word is typed only once two consecutive decodes agree on it.
 
-**2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated on this Mac, like everything else.
+**2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated locally, like everything else.
 
-**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline of the moments that mattered. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Both sides of the call come through macOS's native system-audio tap — no virtual audio drivers to install. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it leaves this Mac.
+**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline that jumps you to the moment in the transcript. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Both sides of the call come through macOS's native system-audio tap — no virtual audio drivers to install. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it is uploaded anywhere.
 
 **4 · An agent that knows your meetings (Ask).** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and what it sends are transcript excerpts — your audio never leaves this Mac.
 
@@ -28,11 +28,11 @@ Dictate does four things, and does them all on your Mac. No cloud, no account, n
 
 - **Private by architecture** — the microphone listens only during a dictation or a recording you started; recognition never touches the network. The one-time model download (~626 MB) is the only time Dictate needs the internet.
 - **Speaks your language** — the interface is available in English, Español, Português, Français, Deutsch, 中文, 日本語, 한국어, Tiếng Việt, Filipino, Українська, and Русский.
-- **Honest utility** — no settings maze, no account, no subscription. Auto-updates via Sparkle, cryptographically signed.
+- **Honest utility** — no settings maze, no account. Auto-updates via Sparkle, cryptographically signed.
 
 ## Why it's free
 
-Local dictation on a Mac is a solved problem now: Whisper runs on the Neural Engine, the model is free, and Apple hands you Core ML for nothing. Building the one I wanted took days, not a company — so charging $5–15/month for something your own Mac already does felt wrong. The technology got cheap; the price tags didn't. Dictate just removes the price tag.
+Local dictation on a Mac is a solved problem now: Whisper runs on the Neural Engine, the model is free, and Apple hands you Core ML for nothing. Building the one I wanted took days, not a company — so charging $5–15/month for something your own Mac already does felt wrong.
 
 It's free and open source under GPL-3.0: a local app has no servers to pay for, and I'd rather you read the code than take my word on privacy. No accounts, no "Pro" tier. Dictation and transcription have no cloud path — ever; the one optional feature that asks a model about your archive uses your own API key and is off until you turn it on.
 
