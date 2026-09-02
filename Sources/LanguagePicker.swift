@@ -81,7 +81,7 @@ struct PopupRow: View {
 
 // MARK: - Choosers
 
-/// Dictation-language chooser for ~112 Whisper languages. A flat 112-row list
+/// Dictation-language chooser for ~100 Whisper languages. A flat 100-row list
 /// fails every large-list UX guideline, so this one popover has search.
 /// Research-backed choices (NN/g, Smashing, flagsarenotlanguages):
 ///   • endonyms (native names) as the primary label — users scan for their own script;

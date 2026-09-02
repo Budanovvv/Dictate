@@ -412,7 +412,7 @@ private struct ModelStep: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L("On-device recognition"))
                         .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
-                    Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
+                    Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 100 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
                         .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -438,7 +438,7 @@ private struct ModelStep: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L("On-device recognition"))
                 .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
-            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 112 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
+            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 100 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
                 .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -592,7 +592,7 @@ private struct HotkeyStep: View {
                     HStack(spacing: 9) {
                         LanguagePicker(selection: $language)
                             .onChange(of: language) { _, v in Settings.shared.language = v }
-                        Text(L("112 languages · from your system settings"))
+                        Text(L("100 languages · from your system settings"))
                             .font(DS.helpText)
                             .foregroundStyle(.tertiary)
                     }

@@ -267,7 +267,7 @@ struct SettingsView: View {
             // — Language: what you speak, what it turns into, and only then
             // the language of this window itself —
             Section {
-                // Same searchable picker as onboarding — a flat 112-row Picker
+                // Same searchable picker as onboarding — a flat 100-row Picker
                 // fails every large-list UX guideline (see LanguagePicker).
                 LabeledContent(L("Spoken language")) {
                     LanguagePicker(selection: $language)
