@@ -223,6 +223,13 @@ echo "  ✅ appcast.xml (EdDSA signature from Keychain)"
 mv "$BRANDED_TMP" "$DMG"
 echo "  ✅ branded installer ready: $DMG"
 
+# Stable-named copy for the website's evergreen download URL
+# (releases/latest/download/Dictate.dmg). Staged in $DD, not $OUT, so the next
+# run's generate_appcast scan never mistakes it for an update entry.
+STABLE_DMG="$DD/Dictate.dmg"
+cp "$DMG" "$STABLE_DMG"
+echo "  ✅ stable-named copy: Dictate.dmg (evergreen latest/download URL)"
+
 # 6. Publishing
 #
 # Written to CONVERGE rather than to run once. A publish is four network calls
@@ -252,7 +259,7 @@ if [ "${1:-}" = "--publish" ]; then
         exit 1
     fi
     TAG="v$VERSION"
-    ASSETS=("$DMG" "$UPDATE_DMG" "$OUT/appcast.xml")
+    ASSETS=("$DMG" "$UPDATE_DMG" "$STABLE_DMG" "$OUT/appcast.xml")
 
     # v$VERSION already fully published means the post-publish bump below
     # was reverted or dodged: without it, every dev build of the NEXT cycle
