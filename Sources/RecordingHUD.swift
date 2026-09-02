@@ -412,11 +412,40 @@ final class RecordingHUD {
 
     private func position(_ panel: NSPanel) {
         let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        let screen = Self.focusedWindowScreen()
+            ?? NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSScreen.main
         guard let screen else { return }
         let f = screen.visibleFrame
         let size = panel.frame.size
         panel.setFrameOrigin(NSPoint(x: f.midX - size.width / 2, y: f.minY + 110))
+    }
+
+    /// Screen of the frontmost app's front window — where the dictated text is
+    /// about to land. The mouse is only a fallback: parked on another monitor,
+    /// it dragged the pill to the wrong display (owner's report 2026-09-02 —
+    /// typing into PyCharm on one screen, cursor resting over Chrome on the
+    /// other). A WindowServer list query, not AX into the target app: nothing
+    /// here can block show() on a busy or lazily built accessibility tree.
+    private static func focusedWindowScreen() -> NSScreen? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let info = CGWindowListCopyWindowInfo(
+                  [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+              ) as? [[String: Any]],
+              // The list is front-to-back; layer 0 keeps real windows and
+              // skips the app's own status items, tooltips and popovers.
+              let win = info.first(where: {
+                  $0[kCGWindowOwnerPID as String] as? pid_t == pid
+                      && $0[kCGWindowLayer as String] as? Int == 0
+              }),
+              let dict = win[kCGWindowBounds as String] as? NSDictionary,
+              let bounds = CGRect(dictionaryRepresentation: dict),
+              let primary = NSScreen.screens.first
+        else { return nil }
+        // CG bounds use a top-left origin on the primary screen, AppKit a
+        // bottom-left one — flip the window's center, then find its screen.
+        let center = NSPoint(x: bounds.midX, y: primary.frame.maxY - bounds.midY)
+        return NSScreen.screens.first { $0.frame.contains(center) }
     }
 }
 
