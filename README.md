@@ -16,13 +16,13 @@ Dictate does four things, and does them all on your Mac. No cloud, no account, n
 
 ## The four things
 
-**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 112 languages, great with accents, fast enough to show live text while you're still speaking. A word is typed only once two consecutive decodes agree on it.
+**1 · Dictation that works offline.** Hold a key you never use (right ⌥ by default), speak, let go — your words are typed where your cursor is, in any app: Slack, Mail, your editor, your terminal. Whisper **large-v3-turbo** runs on your Neural Engine via Core ML: 100 languages, great with accents, fast enough to show live text while you're still speaking. A word is typed only once two consecutive decodes agree on it.
 
-**2 · Translation that works offline.** Hold the second key and speak your own language — it comes out in English, or another language you pick. Translated locally, like everything else.
+**2 · Translation that works offline.** Hold the second key and speak your own language: it comes out in English, or another language you pick. Translated locally by Apple's on-device framework.
 
-**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline that jumps you to the moment in the transcript. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Both sides of the call come through macOS's native system-audio tap — no virtual audio drivers to install. Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it is uploaded anywhere.
+**3 · Meetings, recorded and structured.** Dictate notices when a call starts — Zoom, Teams, Google Meet in a browser tab — and offers to record it: one click, never automatic. What you get is more than a transcript. Who spoke, told apart by voice. A title and a one-line summary, written by a local model. A clickable outline that jumps you to the moment in the transcript. Tags, stars, the platform the call ran on — and search across every spoken word, title, summary and outline line. Both sides of the call come through macOS's native system-audio tap (no virtual audio drivers to install). Every file is plain Markdown in `~/Documents/Dictate Meetings`, and none of it is uploaded anywhere.
 
-**4 · An agent that knows your meetings (Ask).** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that ever talks to a server, it uses your key, and what it sends are transcript excerpts — your audio never leaves this Mac.
+**4 · An agent that knows your meetings (Ask).** *(optional)* Connect Claude or ChatGPT with your own API key and ask questions across everything you've recorded — the agent searches and reads your archive, and every answer quotes the passages it came from, one click from the moment it was said. Off by default: this is the only feature that sends your content off this Mac — it uses your key, and what it sends are transcript excerpts; your audio never leaves.
 
 ## The details
 
@@ -44,14 +44,14 @@ There are other good free, open dictation apps too — [Handy](https://github.co
 2. Open it and drag **Dictate** into **Applications**.
 3. Launch. Dictate walks you through the rest: a one-time model download, picking your key, and two macOS permissions.
 
-**Requirements:** macOS 15+, **Apple Silicon** (Intel Macs run it too — it's a universal binary — but recognition is much slower without a Neural Engine), ~1.2 GB of free disk space for the speech model.
+**Requirements:** macOS 15+, **Apple Silicon** (Intel Macs run it too — it's a universal binary — but recognition is much slower without a Neural Engine), ~1.2 GB of free disk space for the speech model (a ~626 MB download).
 
 ### About the two permissions
 
 - **Microphone** — records your voice only while a dictation you started is running. Never in the background.
 - **Accessibility** — used for exactly two things: hearing your dictation key and typing the recognized text for you. Nothing else. Dictate doesn't read your screen and doesn't log your typing — and since the code is open, you don't have to take that on faith.
 
-*(Why not the Mac App Store? Sandboxing forbids the system-wide key listening and text insertion Dictate is built on — the same reason apps like Raycast and Rectangle ship directly.)*
+*(Why not the Mac App Store? Sandboxing forbids the system-wide key listening and text insertion Dictate is built on. The same reason apps like Raycast and Rectangle ship directly.)*
 
 ## Build from source
 
