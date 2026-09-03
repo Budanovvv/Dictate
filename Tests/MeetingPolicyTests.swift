@@ -417,6 +417,27 @@ final class CallPlatformTitleTests: XCTestCase {
         XCTAssertNil(MeetingPolicy.callPlatform(inWindowTitle: "Meet the team — Careers"))
     }
 
+    /// Native call apps are matched on the mic holder's display name; a
+    /// messenger is flagged for voice notes so the detector waits it out,
+    /// a dedicated call app is not. Owner's Telegram calls read as "other"
+    /// until Telegram was on the list (2026-09-03).
+    func testCallAppByMicHolderName() {
+        XCTAssertEqual(MeetingPolicy.callApp(named: "zoom.us"),
+                       MeetingPolicy.CallApp(name: "Zoom", voiceNotes: false))
+        XCTAssertEqual(MeetingPolicy.callApp(named: "Microsoft Teams")?.name, "Microsoft Teams")
+        XCTAssertEqual(MeetingPolicy.callApp(named: "Telegram"),
+                       MeetingPolicy.CallApp(name: "Telegram", voiceNotes: true))
+        XCTAssertEqual(MeetingPolicy.callApp(named: "WhatsApp")?.voiceNotes, true)
+        XCTAssertEqual(MeetingPolicy.callApp(named: "Signal")?.name, "Signal")
+        XCTAssertEqual(MeetingPolicy.callApp(named: "Viber")?.name, "Viber")
+        // A platform's own display name resolves to itself — the detector
+        // asks about the name it was handed.
+        XCTAssertEqual(MeetingPolicy.callApp(named: "Telegram")?.name, "Telegram")
+        XCTAssertNil(MeetingPolicy.callApp(named: "Google Chrome"))
+        XCTAssertNil(MeetingPolicy.callApp(named: "Google Meet"))
+        XCTAssertNil(MeetingPolicy.callApp(named: "corespeechd"))
+    }
+
     func testMeetTitledByMeetingNameIsMeet() {
         // A live call's tab carries the meeting NAME, not the room code
         // (owner's call, 2026-08-29) — any "Meet – …" prefix is Meet.

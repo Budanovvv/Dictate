@@ -567,6 +567,46 @@ enum MeetingPolicy {
 
     // MARK: - Call platform from a browser window title
 
+    /// A native app whose hold on the microphone reads as a call.
+    struct CallApp: Equatable {
+        /// The platform's display name — the detection card, the transcript's
+        /// source line and the sidebar's Sources group all show it.
+        let name: String
+        /// Messengers take the mic for a VOICE NOTE too — a few seconds that
+        /// are nobody's call. The detector waits those out (owner's choice,
+        /// 2026-09-03: a delayed card over no card, since a Telegram call is
+        /// as much a call as a Meet one).
+        let voiceNotes: Bool
+    }
+
+    /// The one list of native call apps — the detector's map, the aliveness
+    /// test and the source line all read it, so they can never drift apart.
+    /// Matched as a fragment of the mic holder's display name ("zoom.us",
+    /// "Microsoft Teams"), lowercased.
+    private static let callApps: [(fragment: String, app: CallApp)] = [
+        ("zoom", CallApp(name: "Zoom", voiceNotes: false)),
+        ("teams", CallApp(name: "Microsoft Teams", voiceNotes: false)),
+        ("facetime", CallApp(name: "FaceTime", voiceNotes: false)),
+        ("webex", CallApp(name: "Webex", voiceNotes: false)),
+        ("discord", CallApp(name: "Discord", voiceNotes: false)),
+        ("slack", CallApp(name: "Slack", voiceNotes: false)),
+        // Messengers: the owner's calls run on Telegram, and every one of
+        // them read as "other" (2026-09-03) — the mic holder is plainly
+        // named, it just was not on the list.
+        ("telegram", CallApp(name: "Telegram", voiceNotes: true)),
+        ("whatsapp", CallApp(name: "WhatsApp", voiceNotes: true)),
+        ("signal", CallApp(name: "Signal", voiceNotes: true)),
+        ("viber", CallApp(name: "Viber", voiceNotes: true)),
+    ]
+
+    /// The call app behind a microphone holder's display name, if any. A
+    /// platform's own display name resolves to itself ("Telegram" contains
+    /// "telegram"), so the detector can ask about a name it was handed.
+    static func callApp(named appName: String) -> CallApp? {
+        let lower = appName.lowercased()
+        return callApps.first { lower.contains($0.fragment) }?.app
+    }
+
     /// Names the platform a browser call is running on from the browser's own
     /// window title — the only place a web call announces itself (owner's
     /// report 2026-08-29: every Meet call read as "other", because Meet is a

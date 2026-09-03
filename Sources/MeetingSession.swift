@@ -608,24 +608,17 @@ final class MeetingSession: ObservableObject {
     }
 
     /// Which known call app holds the microphone right now — "Zoom",
-    /// "FaceTime"… Browsers hold it for every web call alike, so they name no
-    /// platform (nil → the library's "other" bucket). Best-effort by design.
-    /// The one list of call apps — the detector's map and the aliveness
-    /// test read the same names, so they can never drift apart.
+    /// "FaceTime", "Telegram"… (the table is MeetingPolicy.callApps).
+    /// Browsers hold it for every web call alike, so they name no platform
+    /// (nil → the library's "other" bucket). Best-effort by design.
     /// The probe family below is `nonisolated`: CallDetector and the
     /// forgotten-recording check call it from Task.detached — the AX walks
     /// are synchronous IPC that must never run on (or require) the main
     /// actor.
-    private nonisolated static let callApps: [(fragment: String, name: String)] = [
-        ("zoom", "Zoom"), ("teams", "Microsoft Teams"), ("facetime", "FaceTime"),
-        ("webex", "Webex"), ("discord", "Discord"), ("slack", "Slack"),
-    ]
-
     nonisolated static func detectCallApp() -> String? {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         for name in names {
-            let lower = name.lowercased()
-            if let hit = callApps.first(where: { lower.contains($0.fragment) }) { return hit.name }
+            if let hit = MeetingPolicy.callApp(named: name) { return hit.name }
         }
         // A browser holding the mic is a web call — Meet above all, which
         // never appears as an app. The browser's window titles name the
@@ -661,9 +654,7 @@ final class MeetingSession: ObservableObject {
     nonisolated static func callHolderPresent() -> Bool {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         return names.contains { name in
-            let lower = name.lowercased()
-            return callApps.contains { lower.contains($0.fragment) }
-                || MeetingPolicy.isBrowser(appNamed: name)
+            MeetingPolicy.callApp(named: name) != nil || MeetingPolicy.isBrowser(appNamed: name)
         }
     }
 

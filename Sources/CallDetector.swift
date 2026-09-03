@@ -34,8 +34,10 @@ final class CallDetector {
     private var probing = false
     private var inCall = false
     private var quietTicks = 0
-    /// Ticks a browser has held the mic without a title naming the call.
-    private var unidentifiedTicks = 0
+    /// Ticks the mic has been held by something that is not yet a call for
+    /// sure: a browser with no title naming the call, or a messenger that
+    /// records voice notes with the same microphone.
+    private var patienceTicks = 0
     /// When the prompt last fired. A short belt against an episode that
     /// flaps straight through the 20 s patience — NOT a rate limit on real
     /// calls: five minutes here suppressed the owner's genuinely new call
@@ -54,7 +56,7 @@ final class CallDetector {
         timer = nil
         inCall = false
         quietTicks = 0
-        unidentifiedTicks = 0
+        patienceTicks = 0
     }
 
     private func fire(_ platform: String?) {
@@ -70,7 +72,7 @@ final class CallDetector {
     private func tick() {
         // While we record, the platform is "in a call" by definition —
         // stay latched so the end of the recording is not a fresh call.
-        if isRecording() { inCall = true; quietTicks = 0; unidentifiedTicks = 0; return }
+        if isRecording() { inCall = true; quietTicks = 0; patienceTicks = 0; return }
         // The probe walks HAL mic holders and browser AX titles —
         // synchronous IPC a beachballing browser can stall for seconds. Off
         // the main thread (review, 2026-08-31), one probe in flight at a
@@ -98,33 +100,41 @@ final class CallDetector {
     /// The tick's verdict, applied with the detector's state — main-actor,
     /// after the background probe.
     private func apply(holder: Bool, platform: String?, holders: String) {
-        if isRecording() { inCall = true; quietTicks = 0; unidentifiedTicks = 0; return }
+        if isRecording() { inCall = true; quietTicks = 0; patienceTicks = 0; return }
         if holder {
             if quietTicks > 0 { Log.d("call: holder back after \(quietTicks * 4)s") }
             quietTicks = 0
             guard !inCall else { return }
-            if let platform {
+            let voiceNotes = platform.map { MeetingPolicy.callApp(named: $0)?.voiceNotes ?? false } ?? false
+            if let platform, !voiceNotes {
                 inCall = true
-                unidentifiedTicks = 0
+                patienceTicks = 0
                 fire(platform)
                 return
             }
-            // A browser is on the mic but no window title names the call —
-            // the Meet tab is in the background (a window's AX title is its
-            // ACTIVE tab's, owner's live repro 2026-08-29). Twelve seconds
-            // of that is a call in all but name: prompt namelessly rather
-            // than stay silent through the meeting.
-            unidentifiedTicks += 1
-            if unidentifiedTicks == 1 {
-                Log.d("call: unidentified holder — \(holders)")
+            // Not a sure call yet. Either a browser is on the mic but no
+            // window title names the call — the Meet tab is in the
+            // background (a window's AX title is its ACTIVE tab's, owner's
+            // live repro 2026-08-29) — or a messenger holds it, which is
+            // just as likely a voice note being recorded. Twelve seconds of
+            // either is a call in all but name: prompt (namelessly for the
+            // browser) rather than stay silent through the meeting. A voice
+            // note shorter than that releases the mic and resets the count.
+            patienceTicks += 1
+            if patienceTicks == 1 {
+                if let platform {
+                    Log.d("call: \(platform) on mic — waiting out a possible voice note")
+                } else {
+                    Log.d("call: unidentified holder — \(holders)")
+                }
             }
-            if unidentifiedTicks >= 3 {
+            if patienceTicks >= 3 {
                 inCall = true
-                unidentifiedTicks = 0
-                fire(nil)
+                patienceTicks = 0
+                fire(platform)
             }
         } else {
-            unidentifiedTicks = 0
+            patienceTicks = 0
             if inCall {
                 quietTicks += 1
                 if quietTicks == 1 { Log.d("call: holder quiet") }
