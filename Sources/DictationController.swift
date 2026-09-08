@@ -216,6 +216,18 @@ final class DictationController {
 
     private static let soundStart = NSSound(contentsOfFile: "/System/Library/Sounds/Pop.aiff", byReference: true)
     private static let soundStop = NSSound(contentsOfFile: "/System/Library/Sounds/Purr.aiff", byReference: true)
+    /// The cues play off the main thread. NSSound.play() returns only once the
+    /// output device's IO is running, and on Bluetooth headphones whose A2DP
+    /// stream had gone idle that is 0.3–1.4 s (live log 2026-09-08: nearly
+    /// every press waited ~0.5 s before the pill appeared and the recorder
+    /// even started). A serial queue keeps the two NSSound objects on one
+    /// thread; a cue that comes late is a cue, a press that starts late is
+    /// lost speech.
+    private static let soundQueue = DispatchQueue(label: "com.dictate.sounds", qos: .userInteractive)
+    private static func play(_ sound: NSSound?) {
+        guard let sound else { return }
+        soundQueue.async { sound.play() }
+    }
 
     /// Starts the global hotkey capture. Returns false if the tap couldn't be created.
     @discardableResult
@@ -419,7 +431,21 @@ final class DictationController {
         capturing = true
         updateDerivedState()
         startKeyStateWatchdog(key: code)
-        Self.soundStart?.play()
+        // The mic first, the cue second: nothing on the main thread between
+        // the press and recorder.start() may wait on hardware.
+        if hotChain {
+            // The rolled-over chain never stopped delivering — the new capture
+            // is already recording into the freshly cleared buffer.
+            Log.d("audio: rolled-over capture rides the hot chain")
+        } else {
+            // start() returns immediately: it hands the blocking input
+            // bring-up (which can take seconds on a cold/Bluetooth mic) to a
+            // background queue, so the pill renders and the UI stays
+            // responsive. It never fails synchronously — the recorder retries
+            // a not-yet-ready device and reports via onRecoveryFailed.
+            recorder.start()
+        }
+        Self.play(Self.soundStart)
         // Wake the target app's accessibility tree now, while the user speaks:
         // Chromium/Electron/WebKit build it lazily and otherwise expose no
         // focused element at paste time, sending dictation to a manual ⌘V even
@@ -434,18 +460,6 @@ final class DictationController {
         // Load the model while the user is speaking, so it's warm by the
         // time they release — hides the one-time warm-up behind the speech.
         preloadModel()
-        if hotChain {
-            // The rolled-over chain never stopped delivering — the new capture
-            // is already recording into the freshly cleared buffer.
-            Log.d("audio: rolled-over capture rides the hot chain")
-        } else {
-            // start() returns immediately now: it hands the blocking input
-            // bring-up (which can take seconds on a cold/Bluetooth mic) to a
-            // background queue, so the pill renders and the UI stays
-            // responsive. It never fails synchronously — the recorder retries
-            // a not-yet-ready device and reports via onRecoveryFailed.
-            recorder.start()
-        }
         startLivePreview()
     }
 
@@ -810,7 +824,7 @@ final class DictationController {
         let micForeign = recorder.sawForeignFormat
         let micBusyApp = recorder.busyAppName
         let (pcm, duration) = rollover ? recorder.rollover() : recorder.stop()
-        Self.soundStop?.play()
+        Self.play(Self.soundStop)
         // App that was frontmost at the RELEASE — the intended paste target.
         // Captured at release, not press, so "hold key, click into the target
         // field, speak" stays legal. Snapshotted into the job: the user may be

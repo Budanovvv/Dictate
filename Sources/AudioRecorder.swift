@@ -1,3 +1,4 @@
+import AppKit   // NSWorkspace.didWakeNotification
 import AudioToolbox
 // @preconcurrency: AVAudioConverter's input block and the AV types are marked
 // Sendable-strict in the SDK; the converter calls its block synchronously on
@@ -17,6 +18,24 @@ final class AudioRecorder: @unchecked Sendable {
     static let maxDurationSec = 300
 
     private var engine = AVAudioEngine()
+    /// ioQueue-confined. The engine is KEPT between recordings and rebuilt
+    /// only when it is suspect: at first use, after system sleep, or after an
+    /// attach on it failed. A fresh AVAudioEngine's input node instantiates
+    /// against the system default-device aggregate — with AirPods as the
+    /// default input that means a Bluetooth A2DP→HFP profile switch, undone
+    /// ~100 ms later when we pin the built-in mic. Doing that per recording
+    /// made the headphones flip modes on every press and, on a bad day,
+    /// parked engine.start() for ~4 s while coreaudiod thrashed eSCO (live
+    /// log 2026-09-08 10:59 and 11:24 — both 4.0 s, one lost release).
+    private var engineStale = true
+    /// ioQueue-confined: one rescue swap per recording, so a genuinely dead
+    /// device can't make us recreate the engine on every 0.3 s retry.
+    private var engineSwappedThisRecording = false
+    /// ioQueue-confined: device the kept engine was last pinned to. A pin to
+    /// a DIFFERENT device needs engine.reset() so the input node re-pulls the
+    /// new device's format (see attachInput).
+    private var lastPinnedDeviceID: AudioDeviceID?
+    private var wakeObserver: NSObjectProtocol?
     /// Serial queue for all engine work. Bringing the input up (installTap,
     /// engine.start) can block for seconds on a cold or Bluetooth mic; keeping
     /// it off the main thread is what stops the UI from freezing on press.
@@ -35,6 +54,24 @@ final class AudioRecorder: @unchecked Sendable {
     private func withLock<T>(_ body: () -> T) -> T {
         lock.lock(); defer { lock.unlock() }
         return body()
+    }
+
+    init() {
+        // Sleep leaves a kept engine with a stale HAL connection (garbage input
+        // format, or a valid-looking one whose installTap throws). Mark it
+        // for replacement at the next start; the attach-failure path below
+        // is the second net for anything this notification misses.
+        wakeObserver = NotificationCenter.default.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.ioQueue.async { self.engineStale = true }
+        }
+    }
+
+    deinit {
+        if let wakeObserver { NotificationCenter.default.removeObserver(wakeObserver) }
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
     }
 
     private var samples = Data()
@@ -159,14 +196,17 @@ final class AudioRecorder: @unchecked Sendable {
         // Bring the input up off the main thread — engine.start()/installTap
         // block for seconds on a cold/Bluetooth mic and used to freeze the UI.
         // State and HUD stay on main; only the blocking HAL work runs here.
-        // Fresh engine per recording — sleep between recordings leaves a stale
-        // HAL connection. But ONLY at start: recreating the engine during a
-        // recording closes and reopens the Bluetooth input, restarting the HFP
-        // negotiation, which fires another config change — the device never
-        // settles (AirPods regression of 2026-07-09).
+        // The engine is reused while it is healthy (see engineStale): a fresh
+        // one per recording used to cost a Bluetooth profile flip on every
+        // press. It is replaced only between recordings — recreating it
+        // during one closes and reopens the Bluetooth input, restarting the
+        // HFP negotiation, which fires another config change and the device
+        // never settles (AirPods regression of 2026-07-09).
         ioQueue.async { [weak self] in
-            self?.swapEngine(generation: gen)
-            self?.rebuildInputChain(generation: gen)
+            guard let self else { return }
+            self.engineSwappedThisRecording = false
+            if self.engineStale { self.swapEngine(generation: gen, reason: "stale") }
+            self.rebuildInputChain(generation: gen)
         }
     }
 
@@ -174,7 +214,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// start()). A long-lived engine keeps a stale HAL connection across
     /// sleep and then reports garbage input formats (sampleRate 0, or a dead
     /// format that makes installTap throw).
-    private func swapEngine(generation gen: Int) {
+    private func swapEngine(generation gen: Int, reason: String) {
         // A quick tap released before this queued block ran means the swap
         // belongs to a recording that is already over. Skipping it matters:
         // ioQueue is serial, and a stale swap's HAL teardown+creation (slow on
@@ -187,19 +227,26 @@ final class AudioRecorder: @unchecked Sendable {
             Log.d("audio: skipped stale engine swap")
             return
         }
+        Log.d("audio: fresh engine (\(reason))")
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         engine = AVAudioEngine()
+        engineStale = false
+        lastPinnedDeviceID = nil
         // queue: nil → the block runs on whatever thread posts the change;
         // hop onto ioQueue so it's serialized with the rest of the engine work.
+        // The observer lives as long as the engine does — across recordings.
+        // A change that lands between recordings is ignored here (nothing to
+        // rebuild); the next start re-pins and re-attaches anyway.
         configObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine, queue: nil
         ) { [weak self] _ in
             guard let self else { return }
             self.ioQueue.async {
-                guard gen == self.currentGeneration, self.isRecording else { return }
+                guard self.isRecording else { return }
+                let gen = self.currentGeneration
                 // A real device change (AirPods connect, unplug…) STOPS the
                 // engine — that needs a rebuild. But pinning the input at start
                 // also fires this notification without stopping the engine;
@@ -271,11 +318,13 @@ final class AudioRecorder: @unchecked Sendable {
         // 24 kHz format attached cleanly on the initial, un-cached device). The
         // engine is already stopped here (rebuildInputChain), so a reset after
         // the switch is cheap and makes the input node re-pull the new device's
-        // format before the tap. Only the override path re-pins a *different*
-        // device; the normal path matches what the fresh engine already saw.
-        if override != nil {
+        // format before the tap. The kept engine makes this the general rule:
+        // reset whenever the pin moved to a different device (mic setting
+        // changed between recordings, fresh engine, busy-mic override).
+        if override != nil || pinnedID != lastPinnedDeviceID {
             engine.reset()
         }
+        lastPinnedDeviceID = pinnedID
 
         // Another app holding the mic in a voice-processing session (Google
         // Meet, Zoom, FaceTime, ChatGPT voice, a Safari tab…) changes what the
@@ -413,6 +462,18 @@ final class AudioRecorder: @unchecked Sendable {
             // No retry can ever succeed (the generation is gone) — don't
             // occupy the serial queue the next press is waiting on.
             if Self.isStaleAttach(error) { rebuilding = false; return }
+            // The kept engine may be the problem (a HAL connection that went
+            // stale without a wake notification, a pinned USB mic that was
+            // unplugged): replace it once and retry at once, before the timed
+            // retries below. The old per-recording fresh engine did this
+            // unconditionally; now it happens only when there is a failure
+            // to explain.
+            if !engineSwappedThisRecording, attempt < 15 {
+                engineSwappedThisRecording = true
+                swapEngine(generation: gen, reason: "attach failed")
+                rebuildInputChain(attempt: attempt + 1, generation: gen, override: override)
+                return
+            }
         }
 
         guard attempt < 15 else {
@@ -567,12 +628,12 @@ final class AudioRecorder: @unchecked Sendable {
         Log.d("audio: stop captured=\(pcm.count)B (\(String(format: "%.2f", duration))s) foreign=\(sawForeignFormat)")
         // Tear the engine down off the main thread — engine.stop() can block,
         // and it must run on the same queue as every other engine access.
+        // The engine itself (and its config observer) stays for the next
+        // recording — see engineStale. Stopping it releases the mic; the pin to
+        // the chosen input device survives, so the next start doesn't touch
+        // the system default (Bluetooth) input at all.
         ioQueue.async { [weak self] in
             guard let self else { return }
-            if let o = self.configObserver {
-                NotificationCenter.default.removeObserver(o)
-                self.configObserver = nil
-            }
             self.engine.inputNode.removeTap(onBus: 0)
             self.engine.stop()
             self.stopCaptureSession()
