@@ -105,8 +105,25 @@ struct SettingsView: View {
     /// The design's four destinations (t6): a source list, not one long form —
     /// a sidebar row just gets wider when a locale runs long, where a tab
     /// label is the first thing long translations break.
-    private enum Tab: CaseIterable { case keys, languages, meetings, general }
+    // This Mac is the fifth: what the machine is, what that lets the app do
+    // and why, and what the app keeps on its disk — the read-only rows that
+    // used to sit under General, plus the ones the 8 GB MacBook taught us
+    // to write (2026-09-13). Its own row so the meeting model is findable by
+    // NAME in the sidebar, which is the shortest path to removing it.
+    private enum Tab: CaseIterable { case keys, languages, meetings, general, thisMac }
     @State private var tab: Tab = .keys
+    /// The removal dialog for the meeting model.
+    @State private var confirmRemoveModel = false
+    /// The removal dialog for the debug audio dumps.
+    @State private var confirmRemoveDumps = false
+    /// What the app keeps on disk, measured off the main thread when This
+    /// Mac is shown (the archive may be in iCloud).
+    @State private var storage: MachineStorage?
+    /// "Copied" for a moment after the diagnostics button.
+    @State private var diagnosticsCopied = false
+    /// Which engine reads meetings right now — recomputed when the model
+    /// row changes, not on every redraw (it asks the disk).
+    @State private var engineStatus = MeetingTextEngines.status
 
     private func tabTitle(_ tab: Tab) -> String {
         switch tab {
@@ -114,6 +131,7 @@ struct SettingsView: View {
         case .languages: return L("Languages")
         case .meetings: return L("Meetings")
         case .general: return L("General")
+        case .thisMac: return L("This Mac")
         }
     }
 
@@ -123,6 +141,7 @@ struct SettingsView: View {
         case .languages: return "globe"
         case .meetings: return "video"
         case .general: return "gearshape"
+        case .thisMac: return "desktopcomputer"
         }
     }
 
@@ -174,6 +193,36 @@ struct SettingsView: View {
             textModel.refresh()
             refreshStatuses()
             applyRequestedTab()
+        }
+        .onChange(of: textModel.state) { engineStatus = MeetingTextEngines.status }
+        .onChange(of: tab) { _, now in if now == .thisMac { measureStorage() } }
+        // The meeting model's removal, confirmed: destructive, and not
+        // undoable short of downloading 2.5 GB again — the one place in this
+        // window where a switch would have been the wrong control (a switch
+        // that pops a dialog and snaps back is the calendar-banner problem
+        // all over again).
+        .confirmationDialog(L("Remove the meeting model?"), isPresented: $confirmRemoveModel,
+                            titleVisibility: .visible) {
+            Button(L("Remove"), role: .destructive) {
+                textModel.remove()
+                engineStatus = MeetingTextEngines.status
+                measureStorage()
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(TextModelRowCopy.removalBody(appleIntelligence: MeetingTextEngines.appleIntelligence,
+                                              readMeetings: readMeetings,
+                                              sizeText: LocalTextModelFile.sizeText))
+        }
+        .confirmationDialog(L("Remove the debug audio dumps?"), isPresented: $confirmRemoveDumps,
+                            titleVisibility: .visible) {
+            Button(L("Remove"), role: .destructive) {
+                try? FileManager.default.removeItem(at: MachineStorage.replayDirectory)
+                measureStorage()
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L("These are recordings kept only for debugging. Nothing else is affected."))
         }
         // The corner menu can ask for a tab while this window already
         // exists (it is cached for the app's lifetime) — onAppear alone
@@ -258,7 +307,8 @@ struct SettingsView: View {
         case .keys: Form { keysSection }.formStyle(.grouped)
         case .languages: Form { languagesSection }.formStyle(.grouped)
         case .meetings: Form { meetingsSection }.formStyle(.grouped)
-        case .general: Form { generalSection; statusSection }.formStyle(.grouped)
+        case .general: Form { generalSection }.formStyle(.grouped)
+        case .thisMac: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
         }
     }
 
@@ -566,8 +616,15 @@ struct SettingsView: View {
                             OfferLedger.decided(.readMeetings)
                         }
                 } label: {
+                    // The switch is shown on every Mac, engine or none: the
+                    // agent depends on it too, and a Mac with no engine
+                    // still has the agent. What it says underneath is WHICH
+                    // engine reads — or why none can (design lens, 2026-09-13).
                     rowLabel(MeetingCapability.readMeetings.name,
-                             MeetingCapability.readMeetings.adds)
+                             MeetingCapability.readMeetings.adds,
+                             note: TextModelRowCopy.engineLine(
+                                status: engineStatus,
+                                canDownload: textModel.state == .absent || textModel.state.isFailed))
                 }
 
                 // The calendar row carries its own permission. Turning it on is
@@ -629,17 +686,17 @@ struct SettingsView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(DS.warn.opacity(0.08)))
                 }
 
-                // The downloadable text model. The row is absent entirely on a
-                // Mac that cannot run it (see LocalTextModelFile.isSupported):
-                // a greyed-out row invites the question "why not?", and the
-                // honest answer is a hardware fact the user cannot change.
-                // Named by what the user gets, not by what it is — nobody has
-                // ever wanted a "text model"; they want their meetings to have
-                // names.
-                // The download row is the machinery of the switch above —
-                // with reading off it answers a question nobody asked, so it
-                // appears only once the decision is made.
-                if textModel.state != .unsupported, readMeetings {
+                // The downloadable meeting model. Named by what the user
+                // gets, not by what it is — nobody has ever wanted a "text
+                // model"; they want their meetings to have names.
+                //
+                // The row is absent on a Mac that has nothing to offer AND
+                // nothing on disk (`unsupported`: no helper, or too little
+                // memory) — the why lives on This Mac. But a model that IS on
+                // disk is shown whatever the switch above says: the row used
+                // to vanish with reading off, and 2.5 GB vanished with it,
+                // with no way left to remove them (owner, 2026-09-13).
+                if textModel.state != .unsupported, readMeetings || textModel.state != .absent {
                     LabeledContent {
                         textModelControl
                     } label: {
@@ -690,12 +747,9 @@ struct SettingsView: View {
                     Text(askFooter)
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    // Hardware honesty, only on the Macs it concerns.
-                    ForEach(meetingsCaveats, id: \.self) { caveat in
-                        Text(caveat)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    // The hardware caveats used to repeat here; they live on
+                    // This Mac now, once, next to the machine they describe,
+                    // and in the offer at the moment of the decision.
                 }
             }
     }
@@ -822,18 +876,26 @@ struct SettingsView: View {
 
     /// The line under the model row's name. Every row in the section carries
     /// one — a row without it broke the section's rhythm — and this one earns
-    /// its place: before the download it states the price of switching on
-    /// (once, this many gigabytes), after a failure it says what happened,
-    /// and otherwise it says what the thing writes and where.
+    /// its place: before the download it states the price (once, this many
+    /// gigabytes), after a failure it says what happened, installed it says
+    /// so WITH the size, and on a Mac that may not run it, why not.
     private var textModelHint: String {
+        TextModelRowCopy.rowHint(state: textModelRowState,
+                                 memoryGB: MachineProfile.current.memoryGB,
+                                 appleIntelligence: MeetingTextEngines.appleIntelligence,
+                                 readMeetings: readMeetings,
+                                 sizeText: LocalTextModelFile.sizeText,
+                                 paused: textModel.paused)
+    }
+
+    private var textModelRowState: TextModelRowCopy.RowState {
         switch textModel.state {
-        case .absent:
-            return Lf("One-time %@ download, then everything runs on this Mac.",
-                      LocalTextModelFile.sizeText)
-        case .failed:
-            return L("Download failed. Check your connection and retry.")
-        default:
-            return L("Names, a one-line summary and a table of contents, written on this Mac.")
+        case .unsupported, .absent: return .absent
+        case .downloading: return .downloading
+        case .verifying: return .verifying
+        case .ready: return .ready
+        case .installedNotRunnable: return .installedNotRunnable
+        case .failed: return .failed
         }
     }
 
@@ -854,20 +916,197 @@ struct SettingsView: View {
                   provider.vendorName)
     }
 
-    /// The hardware caveats under the Meetings section — the same honesty the
-    /// offer in the meetings window gives, shown only on the Macs they concern
-    /// (no Metal path: 13.9 s per passage measured against 1.1 s; tight
-    /// memory: the model's working set is felt system-wide).
-    private var meetingsCaveats: [String] {
-        guard textModel.state != .unsupported else { return [] }
-        var out: [String] = []
-        if LocalTextModelFile.runsOnCPU {
-            out.append(L("On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting."))
+    // MARK: - This Mac
+
+    /// The machine, and the three verdicts it yields: what recognition runs
+    /// on, what reads meetings (or why nothing does), and whether the agent
+    /// is on. The one place where every "why" is answered together.
+    @ViewBuilder
+    private var thisMacSection: some View {
+        let profile = MachineProfile.current
+        let verdict = LocalTextModelFile.verdict(on: profile,
+                                                 appleIntelligence: MeetingTextEngines.appleIntelligence)
+        Section {
+            LabeledContent(L("Mac")) {
+                Text(profile.headline)
+                    .foregroundStyle(.secondary)
+            }
+            // The three verdicts are whole sentences that name their subject
+            // ("Recognition runs on…", "Meeting reading: …", "Agent: …"), so
+            // they stand as rows of their own — a label beside them repeated
+            // the first word of every line.
+            Text(TextModelRowCopy.recognitionLine(appleSilicon: profile.isAppleSilicon))
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(TextModelRowCopy.readingLines(status: engineStatus, verdict: verdict,
+                                                            sizeText: LocalTextModelFile.sizeText)
+                                .enumerated()), id: \.offset) { index, line in
+                    Text(line)
+                        .font(index == 0 ? .body : .caption)
+                        .foregroundStyle(index == 0 ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Text(TextModelRowCopy.agentLine(productName: askProvider?.productName))
+                .fixedSize(horizontal: false, vertical: true)
+            LabeledContent {
+                Button(diagnosticsCopied ? L("Copied") : L("Copy diagnostics")) { copyDiagnostics() }
+                    .buttonStyle(.dsSmall)
+                    .controlSize(.small)
+            } label: {
+                rowLabel(L("Diagnostics"),
+                         L("Mac, macOS, version and which features are on. No transcripts, no keys."))
+            }
+        } header: { Text(L("This Mac")) }
+    }
+
+    /// What the app keeps on disk, each with its size and — where removing
+    /// it is a sane thing to do — a button. The speech model is required;
+    /// the meeting model is the one people come here to remove.
+    @ViewBuilder
+    private var storageSection: some View {
+        Section {
+            LabeledContent {
+                Text(storage.map { MachineProfile.fileSizeText($0.speechModelBytes) } ?? "…")
+                    .foregroundStyle(.secondary).monospacedDigit()
+            } label: {
+                rowLabel(L("Speech model"), L("Required for dictation."))
+            }
+            LabeledContent {
+                meetingModelStorageControl
+            } label: {
+                rowLabel(L("Meeting model"), meetingModelStorageHint)
+            }
+            if let storage, storage.speakerModelBytes > 0 {
+                LabeledContent {
+                    Text(MachineProfile.fileSizeText(storage.speakerModelBytes))
+                        .foregroundStyle(.secondary).monospacedDigit()
+                } label: {
+                    rowLabel(L("Speaker models"), L("Tell the voices on a call apart."))
+                }
+            }
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(storage.map { MachineProfile.fileSizeText($0.meetingArchiveBytes) } ?? "…")
+                        .foregroundStyle(.secondary).monospacedDigit()
+                    Button(L("Show in Finder")) {
+                        NSWorkspace.shared.activateFileViewerSelecting([MeetingArchive.directory])
+                    }
+                    .buttonStyle(.dsSmall)
+                    .controlSize(.small)
+                }
+            } label: {
+                rowLabel(L("Meeting archive"), L("Your transcripts, as Markdown files you own."))
+            }
+            // Only while the hidden debug default is on and there is
+            // something to show — a row for an instrument nobody turned on
+            // would legalize it under a name nobody understands.
+            if UserDefaults.standard.bool(forKey: MeetingReplayDefaults.dumpKey),
+               let storage, storage.debugDumpBytes > 0 {
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        Text(MachineProfile.fileSizeText(storage.debugDumpBytes))
+                            .foregroundStyle(.secondary).monospacedDigit()
+                        Button(L("Remove…")) { confirmRemoveDumps = true }
+                            .buttonStyle(.dsSmall)
+                            .controlSize(.small)
+                    }
+                } label: {
+                    rowLabel(L("Debug audio dumps"), L("Raw call audio kept for debugging only."))
+                }
+            }
+        } header: { Text(L("Storage")) }
+    }
+
+    private var meetingModelStorageHint: String {
+        switch textModel.state {
+        case .ready, .installedNotRunnable:
+            return TextModelRowCopy.rowHint(state: textModelRowState,
+                                            memoryGB: MachineProfile.current.memoryGB,
+                                            appleIntelligence: MeetingTextEngines.appleIntelligence,
+                                            readMeetings: readMeetings,
+                                            sizeText: LocalTextModelFile.sizeText,
+                                            paused: nil)
+        case .downloading, .verifying:
+            return L("Downloading…")
+        case .absent, .failed:
+            return Lf("Not installed. A one-time %@ download writes titles, summaries and a table of contents.",
+                      LocalTextModelFile.sizeText)
+        case .unsupported:
+            let verdict = LocalTextModelFile.verdict(on: MachineProfile.current,
+                                                     appleIntelligence: MeetingTextEngines.appleIntelligence)
+            if case .unavailable(let reason, _) = verdict { return reason }
+            return L("Not available on this Mac.")
         }
-        if LocalTextModelFile.isMemoryTight {
-            out.append(L("It holds about 4.7 GB of memory while it writes, which this Mac will feel."))
+    }
+
+    @ViewBuilder
+    private var meetingModelStorageControl: some View {
+        switch textModel.state {
+        case .ready, .installedNotRunnable:
+            HStack(spacing: 8) {
+                Text(storage.map { MachineProfile.fileSizeText($0.meetingModelBytes) } ?? LocalTextModelFile.sizeText)
+                    .foregroundStyle(.secondary).monospacedDigit()
+                Button(L("Remove…")) { confirmRemoveModel = true }
+                    .buttonStyle(.dsSmall)
+                    .controlSize(.small)
+            }
+        case .absent, .failed:
+            Button(Lf("Download %@", LocalTextModelFile.sizeText)) { textModel.start() }
+                .buttonStyle(.dsSmall)
+                .controlSize(.small)
+        case .downloading(let fraction):
+            HStack(spacing: 8) {
+                ProgressView(value: fraction).frame(width: 70)
+                Text("\(Int(fraction * 100))%")
+                    .font(DS.timestamp).foregroundStyle(.secondary)
+            }
+        case .verifying:
+            ProgressView().controlSize(.small)
+        case .unsupported:
+            Text("—").foregroundStyle(.tertiary)
         }
-        return out
+    }
+
+    /// Off the main thread: the archive may be in iCloud, and even an
+    /// enumerator that opens nothing lists slowly there.
+    private func measureStorage() {
+        let archive = MeetingArchive.directory
+        DispatchQueue.global(qos: .utility).async {
+            let measured = MachineStorage.measure(archive: archive)
+            DispatchQueue.main.async { storage = measured }
+        }
+    }
+
+    /// The facts a support conversation needs and nothing it does not: the
+    /// Mac, the OS, the build, and which features are on. No transcripts, no
+    /// keys — the hint under the button promises that, and this is the
+    /// promise kept.
+    private func copyDiagnostics() {
+        let profile = MachineProfile.current
+        let verdict = LocalTextModelFile.verdict(on: profile,
+                                                 appleIntelligence: MeetingTextEngines.appleIntelligence)
+        var lines = [
+            "Dictate \(Self.appVersion) (\(Self.buildStamp))",
+            profile.logLine,
+            "memory headroom now: \(MachineProfile.memoryText(MachineProfile.memoryHeadroom())), pressure level \(MachineProfile.memoryPressureLevel())",
+            "recognition: \(profile.hasNeuralEngine ? "Neural Engine" : "CPU")",
+            "meeting model: \(textModel.state), verdict \(verdict)",
+            "apple intelligence: \(MeetingTextEngines.appleIntelligence)",
+            "helper plan: \(LocalTextModelFile.currentPlan)",
+            "reads meetings: \(readMeetings), notices calls: \(noticeCalls), records audio: \(recordCallAudio), separates voices: \(separateVoices)",
+            "agent: \(askProvider?.productName ?? "off")",
+            "microphone: \(micGranted), accessibility: \(axGranted)",
+            "log: ~/Library/Logs/Dictate/dictate.log",
+        ]
+        if let storage {
+            lines.append("storage: speech \(MachineProfile.fileSizeText(storage.speechModelBytes)), meeting model \(MachineProfile.fileSizeText(storage.meetingModelBytes)), archive \(MachineProfile.fileSizeText(storage.meetingArchiveBytes))")
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
+        diagnosticsCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { diagnosticsCopied = false }
     }
 
     /// The user's own key for the chosen provider.
@@ -939,14 +1178,13 @@ struct SettingsView: View {
         }
     }
 
-    /// The right-hand side of the text-model row: a switch, like every other
-    /// on/off decision in this window. The badge-plus-button pair it replaced
-    /// made the row a management console among switches — three rows, three
-    /// species of control, and the section read as a jumble. On → download
-    /// (the subtitle has already named the price), off → remove; the download
-    /// itself is the one transient state that shows machinery, because a
-    /// multi-gigabyte fetch behind a silent switch is indistinguishable from
-    /// a hang.
+    /// The right-hand side of the model row. Buttons, not a switch — and that
+    /// is a reversal. The switch made the row look like every other decision
+    /// in this window, but "off" DELETED 2.5 GB, silently: a switch is for
+    /// "use it or not", a button with an ellipsis is for "keep it on disk or
+    /// not". The download itself is the one transient state that shows
+    /// machinery, because a multi-gigabyte fetch behind a quiet control is
+    /// indistinguishable from a hang.
     @ViewBuilder
     private var textModelControl: some View {
         switch textModel.state {
@@ -963,12 +1201,24 @@ struct SettingsView: View {
             }
         case .verifying:
             ProgressView().controlSize(.small)
-        case .absent, .failed, .ready:
-            Toggle("", isOn: Binding(
-                get: { textModel.state == .ready },
-                set: { $0 ? textModel.start() : textModel.remove() }))
-                .labelsHidden()
-                .toggleStyle(.switch)
+        case .absent:
+            Button(Lf("Download %@", LocalTextModelFile.sizeText)) { textModel.start() }
+                .buttonStyle(.dsSmall)
+                .controlSize(.small)
+        case .failed:
+            Button(L("Retry")) { textModel.start() }
+                .buttonStyle(.dsSmall)
+                .controlSize(.small)
+        case .ready:
+            // Managing the file — its size, removing it — is This Mac's job;
+            // this row only points there.
+            Button(L("Manage…")) { tab = .thisMac }
+                .buttonStyle(.dsSmall)
+                .controlSize(.small)
+        case .installedNotRunnable:
+            Button(L("Remove…")) { confirmRemoveModel = true }
+                .buttonStyle(.dsSmall)
+                .controlSize(.small)
         }
     }
 
@@ -993,6 +1243,7 @@ struct SettingsView: View {
         case "languages": tab = .languages
         case "meetings": tab = .meetings
         case "general": tab = .general
+        case "thismac": tab = .thisMac
         default: tab = .keys
         }
         Log.d("corner: settings landed on tab \(wanted)")
@@ -1001,7 +1252,7 @@ struct SettingsView: View {
     /// A row's name, and under it the one line that explains it — when there is
     /// one. `nil` leaves the row a single line rather than an empty second one.
     private func rowLabel(_ title: String, _ hint: String?,
-                          warn: Bool = false) -> some View {
+                          warn: Bool = false, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
             if let hint {
@@ -1009,6 +1260,14 @@ struct SettingsView: View {
                     .foregroundStyle(warn ? AnyShapeStyle(DS.warn)
                                           : AnyShapeStyle(.secondary))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            // A second caption, set apart: a fact about THIS Mac under the
+            // general explanation (which engine reads meetings here).
+            if let note {
+                Text(note).font(.caption)
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 1)
             }
         }
     }

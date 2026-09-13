@@ -60,10 +60,9 @@ enum LocalTextModelFile {
     /// reports, and Finder counts in decimal. A button reading 2.33 GB beside a
     /// file Get Info calls 2.5 GB understates the disk cost — a small lie in the
     /// direction that matters. The internal notes and the measurements use the
-    /// binary figure; the interface uses the user's.
-    static var sizeText: String {
-        String(format: "%.1f GB", Double(totalBytes) / 1_000_000_000)
-    }
+    /// binary figure; the interface uses the user's. Locale-aware: the Russian
+    /// interface writes "2,5 ГБ", not "2.5 GB".
+    static var sizeText: String { MachineProfile.fileSizeText(totalBytes) }
 
     static var directory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -99,7 +98,15 @@ enum LocalTextModelFile {
         }
     }
 
+    /// Deletes the model from disk — AFTER the helper has let go of it.
+    ///
+    /// The helper memory-maps the weights. Unlinking a mapped file frees no
+    /// disk until the last map closes, which used to be the idle timeout
+    /// minutes later: a person who clicked Remove to get 2.5 GB back got
+    /// nothing back, and the backfill in progress kept generating from a file
+    /// that no longer had a name.
     static func remove() {
+        LlamaServer.shared.shutdown()
         try? FileManager.default.removeItem(at: location)
         try? FileManager.default.removeItem(at: staging)
         Log.d("text model: removed")
@@ -107,14 +114,14 @@ enum LocalTextModelFile {
 
     /// The helper that runs the model, inside our own bundle.
     ///
-    /// This is also the hardware gate, and it is deliberately a QUESTION ABOUT
-    /// THE BINARY rather than about the architecture. The helper ships
-    /// universal (arm64 + x86_64), so an Intel Mac runs the x86_64 slice on the
-    /// CPU: slower, but working — which is the claim this project already makes
-    /// about Intel elsewhere, and Intel is precisely the audience with no
-    /// alternative, since those Macs are frozen on macOS 15 while Apple's model
-    /// needs 26. A build that did not embed the helper answers nil here, and
-    /// then there is no local engine and nothing offers a download.
+    /// Deliberately a QUESTION ABOUT THE BINARY rather than about the
+    /// architecture. The helper ships universal (arm64 + x86_64), so an Intel
+    /// Mac runs the x86_64 slice on the CPU: slower, but working — which is the
+    /// claim this project already makes about Intel elsewhere, and Intel is
+    /// precisely the audience with no alternative, since those Macs are frozen
+    /// on macOS 15 while Apple's model needs 26. A build that did not embed the
+    /// helper answers nil here, and then there is no local engine and nothing
+    /// offers a download.
     static var helper: URL? {
         let candidates = [
             Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/llama-server"),
@@ -125,41 +132,54 @@ enum LocalTextModelFile {
 
     static var isSupported: Bool { helper != nil }
 
-    /// How much memory this Mac must have before the download is OFFERED at
-    /// all.
+    // MARK: - The memory gate
+
+    /// How much memory this Mac must have before the model is offered — or,
+    /// once installed, RUN.
     ///
-    /// Measured: the helper holds 4.7 GB resident while generating (one slot;
-    /// four slots cost 7.6 GB, which is why there is one). Below 8 GB that is
-    /// most of the machine and then some — the download would be a trap, so
-    /// there is no card and no Settings row. Honest absence, the same
-    /// treatment a Mac with no helper binary gets.
-    static let memoryFloor: Int64 = 8 << 30
+    /// 16 GiB, and the history of the number is the reason it is not lower.
+    /// It was 8, on the argument that 8 GB is the base configuration of every
+    /// entry-level Mac and refusing them all decides for people who would
+    /// accept the cost. Then the owner's MacBook M2 with 8 GB ran the model
+    /// once (2026-09-13): the weights alone are 2.3 GiB, the context cache
+    /// another 1–2, macOS wants 3 — and the machine did not slow down, it
+    /// stopped, and had to be force-rebooted. That is not a cost a sentence
+    /// of copy can state; it is a trap. Every 8 GB Mac reports exactly 8 GiB,
+    /// so `>=` here is the whole difference between offering and not.
+    static let memoryFloor: Int64 = 16 << 30
 
-    /// Where 4.7 GB is a guest rather than an eviction. Between the floor and
-    /// this the offer still stands — 8 GB is the base configuration of every
-    /// entry-level Mac, and refusing all of them outright decides for people
-    /// who would happily accept the cost — but the cost is stated in the same
-    /// breath, with the number in front of them.
-    static let comfortableMemory: Int64 = 16 << 30
+    /// Where the helper's working set stops being felt. Between the floor and
+    /// this the model runs with a smaller context cache (see `helperPlan`)
+    /// and the cost is stated in the offer; from here up it runs at full size
+    /// and nothing needs saying.
+    static let comfortableMemory: Int64 = 32 << 30
 
-    private static var physicalMemory: Int64 {
-        Int64(ProcessInfo.processInfo.physicalMemory)
-    }
-
-    static var hasEnoughMemory: Bool { physicalMemory >= memoryFloor }
+    static func hasEnoughMemory(_ memory: Int64) -> Bool { memory >= memoryFloor }
 
     /// Enough to run it, not enough to run it unnoticed — the tier that gets
     /// the extra clause of copy.
-    static var isMemoryTight: Bool {
-        physicalMemory >= memoryFloor && physicalMemory < comfortableMemory
+    static func isMemoryTight(_ memory: Int64) -> Bool {
+        memory >= memoryFloor && memory < comfortableMemory
     }
 
+    /// Whether this build can run the model on this Mac: the helper is here
+    /// AND the memory is. A model that is somehow installed on a Mac below
+    /// the floor (a migration from a bigger Mac, or a floor raised by an
+    /// update, which is exactly what 3.2.6 did) is NOT run — it is shown, with
+    /// the reason and a Remove button, so nobody's 2.5 GB is stranded and
+    /// nobody's Mac is frozen.
+    static func isRunnable(memory: Int64, supported: Bool) -> Bool {
+        supported && hasEnoughMemory(memory)
+    }
+
+    static var hasEnoughMemory: Bool { hasEnoughMemory(MachineProfile.current.memoryBytes) }
+    static var isMemoryTight: Bool { isMemoryTight(MachineProfile.current.memoryBytes) }
+    static var isRunnable: Bool { isRunnable(memory: MachineProfile.current.memoryBytes,
+                                             supported: isSupported) }
+
     /// Whether this Mac may be offered the download: it can run it, and it can
-    /// afford to. Separate from `isSupported`, which stays a question about
-    /// the BINARY — the engine still uses a model that is somehow already
-    /// installed, so nobody's 2.5 GB is stranded by a rule added after the
-    /// fact.
-    static var isOffered: Bool { isSupported && hasEnoughMemory }
+    /// afford to.
+    static var isOffered: Bool { isRunnable }
 
     /// Apple Silicon or not — asked of the hardware rather than of the build,
     /// because the app ships universal and the answer is a PROMISE about
@@ -167,15 +187,129 @@ enum LocalTextModelFile {
     /// Intel, where there is no Metal path and the helper runs on the CPU.
     /// That is roughly three minutes of background work for a fifty-minute
     /// meeting, and a user who is not told will report it as a hang.
-    static let isAppleSilicon: Bool = {
-        var value: Int32 = 0
-        var size = MemoryLayout<Int32>.size
-        return sysctlbyname("hw.optional.arm64", &value, &size, nil, 0) == 0 && value == 1
-    }()
+    static var isAppleSilicon: Bool { MachineProfile.current.isAppleSilicon }
 
     /// Whether generation here runs on the CPU — the case the copy has to warn
     /// about.
     static var runsOnCPU: Bool { !isAppleSilicon }
+
+    // MARK: - How the helper is run on this Mac
+
+    enum KVCacheType: String, Sendable { case f16, q8_0 }
+
+    /// The helper's configuration, derived from the machine rather than fixed:
+    /// the context size, how the context cache is stored, how long an idle
+    /// helper keeps its weights resident, and how much of a meeting the brief
+    /// may read.
+    struct HelperPlan: Sendable, Equatable {
+        let contextSize: Int
+        let kvCache: KVCacheType
+        let flashAttention: Bool
+        let idleTimeout: TimeInterval
+        /// Characters of transcript the brief reads; see `LocalTextEngine.briefLimit`.
+        let briefLimit: Int
+
+        /// Bytes of context cache per token for Qwen3-4B: 36 layers × 8 KV
+        /// heads × 128 dims × 2 (K and V) = 73 728 values — 2 bytes each as
+        /// f16, 1.0625 as q8_0 (32 values in a 34-byte block).
+        var kvBytesPerToken: Int64 {
+            switch kvCache {
+            case .f16: return 147_456
+            case .q8_0: return 78_336
+            }
+        }
+
+        var kvCacheBytes: Int64 { Int64(contextSize) * kvBytesPerToken }
+
+        /// What the helper holds while generating: the weights (memory-mapped,
+        /// but resident once read), the context cache, and roughly 0.4 GiB of
+        /// compute buffers (the 152k-token logits alone are 311 MB). At 16k
+        /// f16 this comes to 5 GiB, against 4.7 GB measured — the same number
+        /// in decimal.
+        var expectedResidentBytes: Int64 {
+            LocalTextModelFile.totalBytes + kvCacheBytes + (2 << 28)
+        }
+
+        /// What must be free before the helper is started: its working set,
+        /// and a gigabyte so the rest of the Mac does not pay for it.
+        var neededHeadroomBytes: Int64 {
+            expectedResidentBytes + (1 << 30) + (1 << 29)
+        }
+    }
+
+    /// The plan for a machine.
+    ///
+    /// Below 32 GiB the context cache is quantised (q8_0) instead of halved:
+    /// a 16 384-token window at q8_0 costs what an 8 192 one costs at f16, and
+    /// keeps the whole-transcript brief — the reason the model is worth its
+    /// download — intact. Intel gets a smaller window and a smaller brief
+    /// outright: the prompt runs on the CPU there at 13.9 s per passage, and
+    /// a brief over a whole hour would be five minutes of fan noise reported
+    /// as a hang.
+    static func helperPlan(for profile: MachineProfile) -> HelperPlan {
+        if !profile.isAppleSilicon {
+            return HelperPlan(contextSize: 8192, kvCache: .f16, flashAttention: false,
+                              idleTimeout: 60, briefLimit: 18_000)
+        }
+        if profile.memoryBytes < comfortableMemory {
+            return HelperPlan(contextSize: 16384, kvCache: .q8_0, flashAttention: true,
+                              idleTimeout: 60, briefLimit: 45_000)
+        }
+        return HelperPlan(contextSize: 16384, kvCache: .f16, flashAttention: false,
+                          idleTimeout: 180, briefLimit: 45_000)
+    }
+
+    static var currentPlan: HelperPlan { helperPlan(for: MachineProfile.current) }
+
+    /// "It holds about 3.9 GB of memory while it writes" — the number in the
+    /// tight-memory sentence, from the plan rather than typed in.
+    static var expectedResidentText: String {
+        MachineProfile.memoryText(currentPlan.expectedResidentBytes)
+    }
+
+    // MARK: - The verdict
+
+    /// Whether this Mac can run the meeting model, and what that costs —
+    /// one answer, rendered by every surface.
+    static func verdict(on profile: MachineProfile, supported: Bool = isSupported,
+                        appleIntelligence: AppleIntelligenceState) -> HardwareVerdict {
+        guard supported else {
+            return .unavailable(reason: L("This build of Dictate does not include the meeting model."),
+                                instead: insteadText(appleIntelligence))
+        }
+        guard hasEnoughMemory(profile.memoryBytes) else {
+            return .unavailable(
+                reason: Lf("The meeting model needs 16 GB of memory; this Mac has %d.", profile.memoryGB),
+                instead: insteadText(appleIntelligence))
+        }
+        if !profile.isAppleSilicon {
+            return .availableWithCost(L("On this Mac it runs on the CPU: about three minutes of background work for a 50-minute meeting."))
+        }
+        if isMemoryTight(profile.memoryBytes) {
+            let plan = helperPlan(for: profile)
+            return .availableWithCost(
+                Lf("It holds about %@ of memory while it writes, which this Mac will feel.",
+                   MachineProfile.memoryText(plan.expectedResidentBytes)))
+        }
+        return .available
+    }
+
+    /// What reads meetings when the model cannot — the second half of every
+    /// "not available" sentence.
+    static func insteadText(_ state: AppleIntelligenceState) -> String {
+        switch state {
+        case .on:
+            return L("Titles and summaries come from Apple Intelligence instead.")
+        case .notEnabled:
+            return L("Turn on Apple Intelligence in System Settings › Apple Intelligence & Siri, or add a key for the agent.")
+        case .notReady:
+            return L("macOS is still setting up Apple Intelligence — check back later, or add a key for the agent.")
+        case .notEligible:
+            return L("Apple Intelligence isn't available on this Mac in this region or language. The agent with your own key still works.")
+        case .unavailableOS:
+            return L("Apple Intelligence needs macOS 26. The agent with your own key still works.")
+        }
+    }
 }
 
 /// The local generation engine: a downloaded model, run by a bundled
@@ -199,8 +333,9 @@ struct LocalTextEngine: MeetingTextEngine {
     /// these transcripts (measured: a 50-minute meeting is ~13k), which fits
     /// the helper's 16k window with the instructions and the answer. A longer
     /// meeting falls back to the same even sampling Apple's path uses, just
-    /// with 37× the budget.
-    let briefLimit = 45_000
+    /// with 37× the budget. Smaller on Intel, where the window is too — see
+    /// `LocalTextModelFile.helperPlan`.
+    let briefLimit = LocalTextModelFile.currentPlan.briefLimit
     /// Deliberately identical to Apple's: a section is one subject, and this is
     /// the number every section measurement was taken at.
     let sectionLimit = MeetingSectioner.excerptLimit
@@ -209,9 +344,19 @@ struct LocalTextEngine: MeetingTextEngine {
     /// content on these same passages.
     let readsEveryLanguage = true
 
-    /// nil unless there is a model on disk AND a helper to run it.
+    /// nil unless there is a model on disk AND this Mac may run it.
+    ///
+    /// The memory floor is checked HERE, for the engine, and not only for the
+    /// offer: a model installed on a Mac that cannot afford it (see
+    /// `LocalTextModelFile.isRunnable`) is the one case where running it is
+    /// worse than not — the log says why, Settings says why, and Apple's
+    /// engine takes over when it can.
     static func availableEngine() async -> LocalTextEngine? {
-        guard LocalTextModelFile.isInstalled, LocalTextModelFile.isSupported else { return nil }
+        guard LocalTextModelFile.isInstalled else { return nil }
+        guard LocalTextModelFile.isRunnable else {
+            Log.d("text model: installed but this Mac has \(MachineProfile.current.memoryGB) GB, needs 16 — not started")
+            return nil
+        }
         return LocalTextEngine()
     }
 
@@ -229,8 +374,22 @@ struct LocalTextEngine: MeetingTextEngine {
             TITLE: <the title>
             LINE: <the line under it>
             """
-        let raw = try await LlamaServer.shared.complete(system: asked, user: text,
+        var passage = text
+        var raw: String
+        do {
+            raw = try await LlamaServer.shared.complete(system: asked, user: passage,
                                                         temperature: 0.3, maxTokens: 200)
+        } catch GenerationFailure.tooLong {
+            // The character budget is a guess at a token budget, and Cyrillic
+            // runs closer to 2.5 characters a token than the 3.75 the budget
+            // was measured at. One retry on half the text, sampled evenly the
+            // way the excerpt itself was — a shorter read beats a meeting
+            // refused for the rest of the session.
+            passage = Self.halved(passage)
+            Log.d("text model: prompt over the context window — retrying with \(passage.count) chars")
+            raw = try await LlamaServer.shared.complete(system: asked, user: passage,
+                                                        temperature: 0.3, maxTokens: 200)
+        }
         var title = "", summary = ""
         for line in raw.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -248,6 +407,15 @@ struct LocalTextEngine: MeetingTextEngine {
               temperature: Double) async throws -> String {
         try await LlamaServer.shared.complete(system: instructions, user: text,
                                               temperature: temperature, maxTokens: 100)
+    }
+
+    /// Every other line, so the retry still reads from the whole meeting
+    /// rather than from its first half.
+    static func halved(_ text: String) -> String {
+        let lines = text.split(whereSeparator: \.isNewline)
+        guard lines.count > 1 else { return String(text.prefix(text.count / 2)) }
+        return lines.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
+            .joined(separator: "\n")
     }
 }
 
@@ -269,6 +437,20 @@ private extension String {
 actor LlamaServer {
     static let shared = LlamaServer()
 
+    /// Posted on the main queue when the helper is paused for memory (userInfo
+    /// "reason") and again, without a reason, when the pause lifts — Settings
+    /// and the meetings window show it, and AppDelegate kicks the backfills
+    /// again on the way out.
+    nonisolated static let pauseChanged = Notification.Name("dictate.textModelPause")
+
+    /// Whether a meeting is being recorded right now — the helper must not
+    /// start under a live call. Written by MeetingSession from the main actor
+    /// on start and stop; read here, off it. A backfill already asks the
+    /// session before every meeting, but the two hand-triggered paths (a
+    /// recut, a one-time summary) did not, and on a 16 GB Mac a call plus the
+    /// helper is the whole machine.
+    nonisolated static let callInProgress = LockedFlag()
+
     private var process: Process?
     private var port: Int?
     /// Held for the child's lifetime, and this is load-bearing: it is the read
@@ -278,11 +460,18 @@ actor LlamaServer {
     private var output: Pipe?
     private var lastUsed = Date()
     private var idleWatch: Task<Void, Never>?
+    /// Alive only while a child is: the kernel's memory-pressure signal, on
+    /// which an idle helper is dropped at once and a busy one at critical.
+    private var pressureSource: DispatchSourceMemoryPressure?
+    /// Set when the helper was stopped for memory, so the request in flight
+    /// reports a pause rather than a dead socket.
+    private var stoppedForPressure = false
+    /// While set, nothing generates and a poll every 30 s asks whether the
+    /// memory has come back — the pressure source only ever announces the way
+    /// down.
+    private var pausedReason: String?
+    private var resumeWatch: Task<Void, Never>?
 
-    /// How long an idle server keeps 2.4 GB of weights resident. A backfill
-    /// works in bursts with pauses between meetings, so this has to outlast a
-    /// pause comfortably; it does not have to outlast a coffee break.
-    private let idleTimeout: TimeInterval = 180
     /// A cold start memory-maps 2.4 GB and warms the Metal pipeline. Measured
     /// at about 4 s warm; the ceiling is generous because the alternative to
     /// waiting is a meeting with no name.
@@ -321,10 +510,27 @@ actor LlamaServer {
             // most of the per-call cost on short passages.
             "cache_prompt": true,
         ])
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            // The socket died under the request. If WE killed the helper for
+            // memory, that is a pause, not a failure: the meeting is retried
+            // when the memory is back, not refused for the session.
+            if stoppedForPressure { throw GenerationFailure.deferred(pausedReason ?? "memory pressure") }
+            throw error
+        }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw GenerationFailure.failed(
-                "helper returned \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            // llama-server answers 400 for a prompt that does not fit its
+            // window (context shift is off in the server); the body names
+            // the tokens. The brief retries once on a shorter read.
+            if status == 400, let body = String(data: data, encoding: .utf8),
+               body.localizedCaseInsensitiveContains("context") {
+                throw GenerationFailure.tooLong
+            }
+            throw GenerationFailure.failed("helper returned \(status)")
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -347,10 +553,20 @@ actor LlamaServer {
         guard let helper = LocalTextModelFile.helper, LocalTextModelFile.isInstalled else {
             throw GenerationFailure.unavailable
         }
+        // The pre-flight: the same machine that passed the static floor can be
+        // out of room right now. A helper started into a Mac that is already
+        // swapping is the 8 GB freeze at a larger scale — refused here, logged
+        // with the numbers, and retried when the room is back.
+        let plan = LocalTextModelFile.currentPlan
+        if let (why, detail) = Self.refusal(for: plan) {
+            pause(why, detail: detail)
+            throw GenerationFailure.deferred(detail)
+        }
+        clearPause()
         let chosen = try Self.freePort()
         let task = Process()
         task.executableURL = helper
-        task.arguments = [
+        var arguments = [
             "--model", LocalTextModelFile.weights.path,
             // Loopback only. Two reasons, and the second is not obvious: a
             // process listening on a routable address makes macOS put up the
@@ -361,13 +577,21 @@ actor LlamaServer {
             "--port", String(chosen),
             // One slot: this app never generates two lines at once (the
             // sections backfill explicitly waits for the summaries one), and
-            // every extra slot is another KV cache. Measured: 4.7 GB resident
-            // at one slot against 7.6 GB at four.
+            // the context window is shared between slots otherwise.
             "--parallel", "1",
-            // Room for a whole meeting plus its answer.
-            "--ctx-size", "16384",
+            // Room for a whole meeting plus its answer — sized by the machine.
+            "--ctx-size", String(plan.contextSize),
             "--no-webui",
         ]
+        if plan.flashAttention {
+            // A quantised context cache needs flash attention, which Metal
+            // has for this head size; the pair is what lets a 16 GB Mac keep
+            // the full window.
+            arguments += ["--flash-attn", "on",
+                          "--cache-type-k", plan.kvCache.rawValue,
+                          "--cache-type-v", plan.kvCache.rawValue]
+        }
+        task.arguments = arguments
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = pipe
@@ -382,8 +606,9 @@ actor LlamaServer {
         process = task
         port = chosen
         output = pipe
+        stoppedForPressure = false
         Self.writePidFile(task.processIdentifier)
-        Log.d("text model: helper started (pid \(task.processIdentifier), port \(chosen))")
+        Log.d("text model: helper started (pid \(task.processIdentifier), port \(chosen), ctx \(plan.contextSize) \(plan.kvCache.rawValue), headroom \(MachineProfile.memoryText(MachineProfile.memoryHeadroom())))")
         // The child's log has to be drained or the pipe fills and the child
         // blocks writing into it.
         drain(pipe)
@@ -393,8 +618,82 @@ actor LlamaServer {
             stop()
             throw error
         }
-        startIdleWatch()
+        startIdleWatch(after: plan.idleTimeout)
+        watchPressure()
         return chosen
+    }
+
+    /// Why the helper must not start right now, or nil.
+    ///
+    /// Two questions, both of the kernel: is the Mac already under memory
+    /// pressure (then anything we add is paid for by everything else), and
+    /// would the helper's working set fit in what is unused now.
+    nonisolated static func refusal(for plan: LocalTextModelFile.HelperPlan)
+        -> (TextModelRowCopy.Pause, String)? {
+        if callInProgress.value {
+            return (.call, "a meeting is being recorded")
+        }
+        let pressure = MachineProfile.memoryPressureLevel()
+        if pressure >= 2 {
+            return (.memory, "the Mac is under memory pressure (level \(pressure))")
+        }
+        let headroom = MachineProfile.memoryHeadroom()
+        if headroom < plan.neededHeadroomBytes {
+            return (.memory, "not enough free memory (\(MachineProfile.memoryText(headroom)) free, needs \(MachineProfile.memoryText(plan.neededHeadroomBytes)))")
+        }
+        return nil
+    }
+
+    /// Why the helper is waiting, or nil — what the row in Settings and the
+    /// note in the meetings window show.
+    nonisolated static func currentPause() -> TextModelRowCopy.Pause? {
+        pauseState.value
+    }
+
+    /// Mirrors the pause for readers off the actor.
+    nonisolated private static let pauseState = LockedValue<TextModelRowCopy.Pause?>(nil)
+
+    private func pause(_ why: TextModelRowCopy.Pause, detail: String) {
+        let changed = pausedReason != detail
+        pausedReason = detail
+        Self.pauseState.set(why)
+        if changed {
+            Log.d("text model: paused — \(detail)")
+            Self.post(reason: why)
+        }
+        // Ask again every 30 s: the pressure source says nothing on the way
+        // back to normal, so the only way to notice is to look.
+        guard resumeWatch == nil else { return }
+        resumeWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard let self else { return }
+                if await self.resumeIfPossible() { return }
+            }
+        }
+    }
+
+    private func resumeIfPossible() -> Bool {
+        guard pausedReason != nil else { return true }
+        guard Self.refusal(for: LocalTextModelFile.currentPlan) == nil else { return false }
+        Log.d("text model: memory is back — resuming")
+        clearPause()
+        Self.post(reason: nil)
+        return true
+    }
+
+    private func clearPause() {
+        resumeWatch?.cancel()
+        resumeWatch = nil
+        pausedReason = nil
+        Self.pauseState.set(nil)
+    }
+
+    nonisolated private static func post(reason: TextModelRowCopy.Pause?) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: pauseChanged, object: nil,
+                                            userInfo: reason.map { ["reason": $0.rawValue] })
+        }
     }
 
     private func waitUntilHealthy(port: Int, process: Process) async throws {
@@ -423,18 +722,18 @@ actor LlamaServer {
     /// timer, but one that exists only while a child process does — an idle app
     /// has no server, so it has no watch either, and nothing here can show up
     /// as idle CPU.
-    private func startIdleWatch() {
+    private func startIdleWatch(after idleTimeout: TimeInterval) {
         idleWatch?.cancel()
         idleWatch = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
                 guard let self else { return }
-                if await self.expireIfIdle() { return }
+                if await self.expireIfIdle(after: idleTimeout) { return }
             }
         }
     }
 
-    private func expireIfIdle() -> Bool {
+    private func expireIfIdle(after idleTimeout: TimeInterval) -> Bool {
         guard let process, process.isRunning else {
             stop()
             return true
@@ -445,6 +744,36 @@ actor LlamaServer {
         return true
     }
 
+    /// The kernel's memory-pressure signal, for the life of the child. The
+    /// handler runs on a dispatch queue, not on the actor — it hops.
+    private func watchPressure() {
+        pressureSource?.cancel()
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical],
+                                                             queue: .global(qos: .utility))
+        source.setEventHandler { [weak self, weak source] in
+            let critical = source?.data.contains(.critical) ?? false
+            Task { await self?.onPressure(critical: critical) }
+        }
+        source.resume()
+        pressureSource = source
+    }
+
+    /// Warning: an idle helper is not worth 4 GB — drop it. Critical: drop it
+    /// even mid-request; the request reports a pause and the meeting waits.
+    private func onPressure(critical: Bool) {
+        guard let process, process.isRunning else { return }
+        let idle = Date().timeIntervalSince(lastUsed) > 2
+        guard critical || idle else {
+            Log.d("text model: memory pressure warning — helper busy, kept")
+            return
+        }
+        Log.d("text model: memory pressure \(critical ? "critical" : "warning") — stopping the helper")
+        stoppedForPressure = true
+        stop()
+        pause(.memory, detail: critical ? "the Mac is under critical memory pressure"
+                                        : "the Mac is under memory pressure")
+    }
+
     /// Ends the child, politely then not. Safe to call when nothing is running,
     /// which is what makes it safe to call unconditionally from
     /// applicationWillTerminate.
@@ -453,12 +782,14 @@ actor LlamaServer {
         // async hop, and a helper that is still alive when we exit is exactly
         // what this whole design is meant to prevent. The pid file is the
         // shared state, so this needs nothing from the actor.
-        Self.killRecordedHelper(reason: "the app is quitting")
+        Self.killRecordedHelper(reason: "the app is quitting or the model is being removed")
     }
 
     private func stop() {
         idleWatch?.cancel()
         idleWatch = nil
+        pressureSource?.cancel()
+        pressureSource = nil
         if let process, process.isRunning {
             let pid = process.processIdentifier
             process.terminate()                     // SIGTERM
@@ -481,14 +812,18 @@ actor LlamaServer {
     /// Keeps the pipe from filling up (a full pipe blocks the child) and keeps
     /// the interesting lines. The helper's errors are worth having in our own
     /// log: when it refuses to start, its reason is the only thing that
-    /// explains it.
+    /// explains it — and its own memory and timing figures are the ones this
+    /// app used to estimate by hand.
     private nonisolated func drain(_ pipe: Pipe) {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             for line in text.split(whereSeparator: \.isNewline)
             where line.localizedCaseInsensitiveContains("error")
-                || line.localizedCaseInsensitiveContains("failed") {
+                || line.localizedCaseInsensitiveContains("failed")
+                || line.contains("KV buffer size")
+                || line.contains("compute buffer size")
+                || line.contains("prompt eval time") {
                 Log.d("text model: \(line.trimmingCharacters(in: .whitespaces))")
             }
         }
@@ -523,13 +858,19 @@ actor LlamaServer {
     /// (3) Whatever still survives is killed at the NEXT launch, and the app is
     ///     a login item, so the next launch is soon.
     ///
-    /// The pid is only killed while the file still names it; the file is
-    /// deleted the moment the child stops normally, which is what keeps a
-    /// recycled pid from being mistaken for our helper.
+    /// The pid is only killed while the file still names it and the process
+    /// behind it is still OUR helper: a pid file restored by Migration
+    /// Assistant onto a Mac where that number belongs to something else must
+    /// not kill it.
     static func killRecordedHelper(reason: String) {
         guard let text = try? String(contentsOf: pidFile, encoding: .utf8),
               let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)),
               pid > 0, kill(pid, 0) == 0 else {
+            clearPidFile()
+            return
+        }
+        guard executableName(of: pid)?.hasSuffix("llama-server") == true else {
+            Log.d("text model: pid \(pid) in the pid file is not our helper — leaving it")
             clearPidFile()
             return
         }
@@ -540,6 +881,12 @@ actor LlamaServer {
         while kill(pid, 0) == 0, Date() < deadline { usleep(50_000) }
         if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
         clearPidFile()
+    }
+
+    private static func executableName(of pid: pid_t) -> String? {
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
     }
 
     static func reapOrphans() {
@@ -574,4 +921,22 @@ actor LlamaServer {
         guard named == 0 else { throw GenerationFailure.failed("could not read the port") }
         return Int(assigned.sin_port.bigEndian)
     }
+}
+
+/// A Bool readable from any thread — for the one fact the helper needs from
+/// the main actor without hopping to it.
+final class LockedFlag: @unchecked Sendable {   // NSLock guards `flag`
+    private let lock = NSLock()
+    private var flag = false
+    var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+    func set(_ value: Bool) { lock.lock(); flag = value; lock.unlock() }
+}
+
+/// The same, for a value.
+final class LockedValue<T: Sendable>: @unchecked Sendable {   // NSLock guards `stored`
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T { lock.lock(); defer { lock.unlock() }; return stored }
+    func set(_ value: T) { lock.lock(); stored = value; lock.unlock() }
 }

@@ -159,6 +159,12 @@ targets:
       # sit on the far side of this boundary and apply to every engine.
       - path: Sources/MeetingTextEngine.swift
       - path: Sources/LocalTextEngine.swift
+      # The machine profile every hardware gate is a pure function of, the
+      # copy those gates produce, and the onboarding's preload rule — all
+      # dependency-free so the small-Mac cases can be tested on a big one.
+      - path: Sources/MachineProfile.swift
+      - path: Sources/TextModelRowCopy.swift
+      - path: Sources/OnboardingPolicy.swift
       - path: Sources/Log.swift
       # The canonical capability strings and the offers' central ceiling —
       # the ledger's ignore/decline/decided rules are tested here.

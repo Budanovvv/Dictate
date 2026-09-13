@@ -17,8 +17,22 @@ struct GeneratedBrief: Sendable {
 enum GenerationFailure: Error {
     /// No engine at all: no local model on disk and no Apple Intelligence.
     case unavailable
-    /// Anything else: a context overflow, a dead child process, a parse error.
+    /// Not now: the helper was not started (or was stopped) because the Mac
+    /// has no memory to spare, or a call is being recorded. The meeting is
+    /// NOT refused — it is asked about again when the room is back. Distinct
+    /// from `failed` because the callers' memory of refusals must not learn
+    /// it: a refusal is "this text", a deferral is "this moment".
+    case deferred(String)
+    /// The prompt did not fit the helper's context window. The brief retries
+    /// once on a shorter read before giving up.
+    case tooLong
+    /// Anything else: a dead child process, a parse error.
     case failed(String)
+
+    var isDeferred: Bool {
+        if case .deferred = self { return true }
+        return false
+    }
 }
 
 /// The one thing this app ever asks a language model to do: read a piece of a
@@ -115,6 +129,36 @@ enum MeetingTextEngines {
         Log.d("engine: none available — no local model and no Apple Intelligence")
         return nil
     }
+
+    /// Which engine would answer right now — for the surfaces that have to
+    /// SAY it (the line under the reading switch, This Mac, the strip on a
+    /// meeting with nothing to read it). Synchronous and silent: it is asked
+    /// from view bodies, where `best()`'s log line would be spam.
+    enum Status: Equatable, Sendable {
+        case downloadedModel
+        case appleIntelligence
+        /// Nothing on this Mac can read meetings; the state says why not.
+        case none(AppleIntelligenceState)
+
+        var isAvailable: Bool {
+            if case .none = self { return false }
+            return true
+        }
+    }
+
+    static var status: Status {
+        if LocalTextModelFile.isInstalled, LocalTextModelFile.isRunnable { return .downloadedModel }
+        let apple = appleIntelligence
+        return apple.isOn ? .appleIntelligence : .none(apple)
+    }
+
+    /// Apple Intelligence's standing on this Mac, without a log line.
+    static var appleIntelligence: AppleIntelligenceState {
+        #if canImport(FoundationModels)
+        if #available(macOS 26, *) { return AppleTextEngine.state }
+        #endif
+        return .unavailableOS
+    }
 }
 
 // MARK: - Apple's on-device model
@@ -144,6 +188,23 @@ struct AppleTextEngine: MeetingTextEngine {
         case .unavailable(let reason):
             Log.d("engine: system model unavailable (\(reason))")
             return nil
+        }
+    }
+
+    /// The same question, answered for the copy: which of the four ways of
+    /// "not available" this is. "Turn it on in System Settings" is only true
+    /// for one of them.
+    static var state: AppleIntelligenceState {
+        switch SystemLanguageModel.default.availability {
+        case .available:
+            return .on
+        case .unavailable(let reason):
+            switch reason {
+            case .appleIntelligenceNotEnabled: return .notEnabled
+            case .modelNotReady: return .notReady
+            case .deviceNotEligible: return .notEligible
+            @unknown default: return .notEligible
+            }
         }
     }
 

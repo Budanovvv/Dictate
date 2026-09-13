@@ -22,8 +22,20 @@ struct OnboardingView: View {
         return Settings.shared.onboardingDone ? 3 : 0
     }()
     @State private var allGranted = Permissions.allGranted
+    /// The one-time Neural Engine compile has been asked for. Asked once per
+    /// window: the permissions poll would otherwise ask every second.
+    @State private var preloadKicked = false
 
     enum ModelState: Equatable { case notReady, downloading(Double), ready }
+
+    /// Starts loading the speech model when OnboardingPolicy says it may —
+    /// after the permissions, never under their dialogs.
+    private func preloadIfDue() {
+        guard !preloadKicked,
+              OnboardingPolicy.shouldPreload(step: step, allGranted: allGranted) else { return }
+        preloadKicked = true
+        dictation.preloadModel()
+    }
 
     /// Models needed at onboarding — one, since translation moved to macOS.
     static var onboardingTiers: [ModelTier] { [.fast] }
@@ -121,12 +133,19 @@ struct OnboardingView: View {
         .animation(.easeInOut(duration: 0.28), value: step)
         // Only the permissions step's Next button needs the poll (the step
         // view itself has its own timer for the badges).
-        .onReceive(timer) { _ in if step == 3 { allGranted = Permissions.allGranted } }
+        .onReceive(timer) { _ in
+            if step == 3 {
+                allGranted = Permissions.allGranted
+                preloadIfDue()
+            }
+        }
         .onChange(of: step) { _, s in
             if s == 3 { allGranted = Permissions.allGranted }
-            // Once past the model step, load it into memory in the background
-            // so the "try it" dictation is instant — no visible warm-up.
-            if s >= 2 { dictation.preloadModel() }
+            // The Neural Engine compile starts only once the permissions are
+            // granted (or on the try-it step): started earlier, it ran under
+            // the microphone dialog and on an 8 GB Mac froze it
+            // (OnboardingPolicy).
+            preloadIfDue()
             // Fetch the translation data while a real window is on screen:
             // macOS attaches its consent sheet to it. At the first dictation
             // there is no such window and the download can't be asked for.
@@ -260,7 +279,8 @@ struct OnboardingView: View {
                 }
                 await MainActor.run {
                     modelState = .ready
-                    dictation.preloadModel()   // start the ANE compile now, in the background
+                    // NOT preloaded here: the compile waits for the
+                    // permissions step to be passed (OnboardingPolicy).
                     step += 1
                 }
             } catch {
@@ -383,6 +403,15 @@ private struct WelcomeStep: View {
 // MARK: - Step 2: model download
 
 private struct ModelStep: View {
+    /// The one-paragraph story of on-device recognition — told for the chip
+    /// this Mac actually has. The Neural Engine sentence was shown on Intel
+    /// Macs too, where it is not true.
+    static var recognitionStory: String {
+        MachineProfile.current.hasNeuralEngine
+            ? L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 100 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer.")
+            : L("Recognition runs on this Mac's processor — Whisper large-v3-turbo: 100 languages, great with accents. Slower than on Apple Silicon, and translation runs on this Mac too. Your voice never leaves this computer.")
+    }
+
     @Binding var state: OnboardingView.ModelState
     var failed = false
     var totalMB = ModelTier.fast.sizeMB
@@ -412,7 +441,7 @@ private struct ModelStep: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L("On-device recognition"))
                         .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
-                    Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 100 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
+                    Text(ModelStep.recognitionStory)
                         .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -438,7 +467,7 @@ private struct ModelStep: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L("On-device recognition"))
                 .font(.system(size: 20, weight: .semibold)).kerning(-0.4)
-            Text(L("Recognition runs on your Mac's Neural Engine — Whisper large-v3-turbo: 100 languages, great with accents, fast enough for live text. Translation runs on this Mac too. Your voice never leaves this computer."))
+            Text(ModelStep.recognitionStory)
                 .font(.system(size: 13.5)).lineSpacing(13.5 * 0.28)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -914,7 +943,9 @@ private struct TryItStep: View {
             if !engineReady {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text(L("Preparing the model for the Neural Engine… A few minutes, one time."))
+                    Text(MachineProfile.current.hasNeuralEngine
+                         ? L("Preparing the model for the Neural Engine… A few minutes, one time.")
+                         : L("Preparing the model for this Mac's processor… A few minutes, one time."))
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }

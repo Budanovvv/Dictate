@@ -161,7 +161,12 @@ actor WhisperEngine {
             load: true,
             download: false
         )
+        let loadStarted = Date()
         pipes[variant] = try await WhisperKit(config)
+        // The first load compiles the model for the Neural Engine and takes
+        // minutes; later ones take seconds. The number is what tells a log
+        // from a small Mac which of the two it saw.
+        Log.d(String(format: "model: %@ loaded in %.1fs", variant, Date().timeIntervalSince(loadStarted)))
         // Retired tiers would otherwise pile up on disk (~1 GB each) — the
         // dropped translation model is cleared from existing installs here.
         Self.removeOtherModels()

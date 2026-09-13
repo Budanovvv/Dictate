@@ -21,21 +21,45 @@ final class LocalTextModelDownload: ObservableObject {
     static let shared = LocalTextModelDownload()
 
     enum State: Equatable {
-        /// No helper in this build — nothing to offer and nothing to run.
+        /// No helper in this build, or a Mac below the memory floor with
+        /// nothing installed — nothing to offer and nothing to run.
         case unsupported
         case absent
         case downloading(Double)  // 0…1
         case verifying
         case ready
+        /// On disk, and NOT run: this Mac is below the memory floor (a
+        /// migration from a bigger Mac, or the floor raised by 3.2.6). The
+        /// row says why and offers the only useful action, Remove.
+        case installedNotRunnable
         case failed(String)
+
+        var isInstalled: Bool { self == .ready || self == .installedNotRunnable }
+        var isFailed: Bool {
+            if case .failed = self { return true }
+            return false
+        }
     }
 
+    /// Posted on the main queue when a download finishes — the top-of-screen
+    /// notice's cue when Settings is not open to show the row change.
+    nonisolated static let installed = Notification.Name("dictate.textModelInstalled")
+
     @Published private(set) var state: State
+    /// Why the helper is waiting right now, from LlamaServer — nil when it
+    /// is not. Shown under the row and in the meetings window.
+    @Published private(set) var paused: TextModelRowCopy.Pause?
 
     private var task: Task<Void, Never>?
 
     private init() {
         state = Self.onDisk()
+        paused = LlamaServer.currentPause()
+        NotificationCenter.default.addObserver(forName: LlamaServer.pauseChanged, object: nil,
+                                               queue: .main) { [weak self] note in
+            let reason = (note.userInfo?["reason"] as? String).flatMap(TextModelRowCopy.Pause.init(rawValue:))
+            Task { @MainActor in self?.paused = reason }
+        }
     }
 
     /// Re-reads the disk. Cheap, and the window may have been open while the
@@ -47,14 +71,17 @@ final class LocalTextModelDownload: ObservableObject {
 
     /// What the disk and the hardware say, with no download in flight.
     ///
-    /// The order matters. An installed model is `.ready` before the memory
-    /// floor is consulted, so a Mac that already has one keeps its Remove
-    /// button — a rule added later must not strand 2.5 GB with no way to
-    /// delete it. Only the OFFER is gated: too little memory reads the same as
-    /// no helper at all, and nothing anywhere proposes the download.
+    /// An installed model is reported whatever the memory floor says, so a
+    /// Mac that already has one keeps its Remove button — a rule added later
+    /// must not strand 2.5 GB with no way to delete it. Whether it may RUN is
+    /// the second question, and `installedNotRunnable` is the answer when it
+    /// may not. With nothing installed, too little memory reads the same as
+    /// no helper at all: nothing anywhere proposes the download.
     private static func onDisk() -> State {
         guard LocalTextModelFile.isSupported else { return .unsupported }
-        if LocalTextModelFile.isInstalled { return .ready }
+        if LocalTextModelFile.isInstalled {
+            return LocalTextModelFile.isRunnable ? .ready : .installedNotRunnable
+        }
         return LocalTextModelFile.hasEnoughMemory ? .absent : .unsupported
     }
 
@@ -74,13 +101,14 @@ final class LocalTextModelDownload: ObservableObject {
                     await MainActor.run { self.state = .verifying }
                 }
                 await MainActor.run {
-                    self?.state = .ready
+                    self?.state = Self.onDisk()
                     self?.task = nil
+                    NotificationCenter.default.post(name: Self.installed, object: nil)
                 }
                 Log.d("text model: download complete")
             } catch is CancellationError {
                 await MainActor.run {
-                    self?.state = LocalTextModelFile.isInstalled ? .ready : .absent
+                    self?.state = Self.onDisk()
                     self?.task = nil
                 }
                 Log.d("text model: download cancelled — partial files kept for resume")
@@ -100,11 +128,13 @@ final class LocalTextModelDownload: ObservableObject {
     func cancel() {
         task?.cancel()
         task = nil
-        state = LocalTextModelFile.isInstalled ? .ready : .absent
+        state = Self.onDisk()
     }
 
     /// Removes the model AND anything half-downloaded — the button says
-    /// "Remove" and the disk should agree with it completely.
+    /// "Remove" and the disk should agree with it completely. The helper is
+    /// stopped first (inside `LocalTextModelFile.remove`), or the mapped
+    /// weights would keep their disk space for minutes after the click.
     func remove() {
         cancel()
         LocalTextModelFile.remove()
@@ -167,6 +197,41 @@ final class LocalTextModelOffer: ObservableObject {
         dismissed = true
         UserDefaults.standard.set(true, forKey: Self.dismissedKey)
         Log.d("text model: offer dismissed for good")
+    }
+}
+
+/// The offer's stand-in on a Mac that cannot be offered the model: one line
+/// in the meetings window saying that summaries come from Apple Intelligence
+/// and why there is no download card here. Same budget manners as the offer
+/// (two runs of the app), because it describes rather than asks — and a line
+/// that keeps coming back would be nagging about a Mac the person cannot
+/// change.
+@MainActor
+final class SmallMacNote: ObservableObject {
+    static let shared = SmallMacNote()
+
+    private static let seenKey = "smallMacNoteSeen"
+    static let budget = 2
+
+    private let seenBefore: Int
+    private var countedThisRun = false
+
+    private init() {
+        seenBefore = UserDefaults.standard.integer(forKey: Self.seenKey)
+    }
+
+    var allowed: Bool {
+        seenBefore < Self.budget
+            && LocalTextModelFile.isSupported
+            && !LocalTextModelFile.hasEnoughMemory
+            && !LocalTextModelFile.isInstalled
+            && MeetingTextEngines.appleIntelligence.isOn
+    }
+
+    func noteShown() {
+        guard !countedThisRun else { return }
+        countedThisRun = true
+        UserDefaults.standard.set(seenBefore + 1, forKey: Self.seenKey)
     }
 }
 

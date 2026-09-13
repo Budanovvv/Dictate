@@ -42,6 +42,8 @@ struct MeetingsView: View {
     /// Whether the optional text model may still be offered here. Observed so
     /// that "Not now" empties every surface at once.
     @ObservedObject private var offer = LocalTextModelOffer.shared
+    @ObservedObject private var download = LocalTextModelDownload.shared
+    @ObservedObject private var smallMacNote = SmallMacNote.shared
     let onStop: () -> Void
     /// Starts a meeting recording through the owner's consent-aware path —
     /// the same flow the menu bar uses (first-run consent alert included).
@@ -258,6 +260,8 @@ struct MeetingsView: View {
         // Only ever a handful of times, and only while the backfill runs —
         // there is nothing here that ticks.
         .onChange(of: summaries.written) { reload() }
+        // The model arrived or was removed: which engine reads changed.
+        .onChange(of: download.state) { engineStatus = MeetingTextEngines.status }
         // A contents block landed. Same story, and just as rare: only while
         // the backfill runs, and nothing here ticks.
         .onChange(of: sections.written) { reload() }
@@ -402,7 +406,7 @@ struct MeetingsView: View {
             cornerRow(L("Keyboard shortcuts")) { openSettingsWindow(tab: "keys") }
             Divider().padding(.vertical, 4)
             cornerRow(L("Appearance"), trailing: appearanceValue) { openSettingsWindow(tab: "general") }
-            cornerRow(L("Storage & models")) { openSettingsWindow(tab: "meetings") }
+            cornerRow(L("Storage & models")) { openSettingsWindow(tab: "thismac") }
             Divider().padding(.vertical, 4)
             cornerRow(L("Check for updates")) {
                 settingsMenuOpen = false
@@ -480,6 +484,48 @@ struct MeetingsView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .overlay(alignment: .bottom) { Divider() }
+            // The helper is waiting for memory: the summaries are not
+            // missing, they are late, and the list is where the person
+            // looks for them (the pill is about the recording, not this).
+            if download.paused == .memory, Settings.shared.readMeetings, !session.isActive {
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 1)
+                    Text(L("Summary paused: not enough free memory. It resumes on its own."))
+                        .font(.system(size: 11.5))
+                        .lineSpacing(2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .overlay(alignment: .bottom) { Divider() }
+            }
+            // A Mac that cannot be offered the model, with reading on and
+            // Apple Intelligence doing the reading: the one line that
+            // explains why there is no download card here when a bigger Mac
+            // shows one. Shown for the first two runs after reading was
+            // turned on, like the offer it stands in for.
+            if smallMacNote.allowed, Settings.shared.readMeetings, !session.isActive {
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 1)
+                    Text(Lf("Summaries on this Mac come from Apple Intelligence. The downloadable model needs 16 GB of memory; this Mac has %d.",
+                            MachineProfile.current.memoryGB))
+                        .font(.system(size: 11.5))
+                        .lineSpacing(2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .overlay(alignment: .bottom) { Divider() }
+                .onAppear { smallMacNote.noteShown() }
+            }
             if !Settings.shared.noticeCalls, !session.isActive {
                 // Why manual is the only path right now, said where the live
                 // row would be (design MeetingsOff: list).
@@ -1456,7 +1502,7 @@ struct MeetingsView: View {
 
                                notice: bareNotice(for: meeting)
                                    ?? (declined(meeting)
-                                   ? AnyView(TextModelOffer(line: L("The built-in model had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
+                                   ? AnyView(TextModelOffer(line: L("Apple Intelligence had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
                                    : nil),
                                headerLeading: paneToggles(.meeting),
                                // One Ask, never scoped (16): a transcript's
@@ -1855,8 +1901,25 @@ struct MeetingsView: View {
     private func bareNotice(for meeting: ArchivedMeeting) -> AnyView? {
         guard !meeting.entries.isEmpty else { return nil }
         let micOnly = !meeting.entries.contains { !$0.isYou }
-        let unread = !Settings.shared.readMeetings
-            && meeting.summary == nil && meeting.sections.isEmpty
+        let unsummarized = meeting.summary == nil && meeting.sections.isEmpty
+        let unread = !Settings.shared.readMeetings && unsummarized
+        // Nothing on this Mac can read: the strip says WHY, and neither
+        // promises a summary nor offers to write one — "Turn it on" and
+        // "Write one, this once" on a Mac with no engine were promises that
+        // failed silently (design lens, 2026-09-13). The reason is the
+        // engine's, not this view's.
+        let engine = engineStatus
+        if unsummarized, !engine.isAvailable, case .none(let apple) = engine {
+            let reading = Settings.shared.readMeetings
+            return AnyView(CapabilityAbsenceStrip(
+                sentence: reading ? L("Reading is on, but nothing on this Mac can read yet.")
+                                  : MeetingCapability.absenceNoSummary,
+                sub: engineAbsenceSub(apple),
+                turnOnLabel: apple == .notEnabled ? L("Open System Settings") : nil,
+                turnOn: {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Siri-Settings.extension")!)
+                }))
+        }
         if unread {
             let bothOff = micOnly && !Settings.shared.recordCallAudio
             return AnyView(CapabilityAbsenceStrip(
@@ -1894,6 +1957,19 @@ struct MeetingsView: View {
         }
         return nil
     }
+
+    /// Why nothing on this Mac can read meetings, and what would — one
+    /// sentence per Apple Intelligence state, plus the model where it can be
+    /// had. The same words as Settings (TextModelRowCopy), so the two never
+    /// disagree.
+    private func engineAbsenceSub(_ apple: AppleIntelligenceState) -> String {
+        let canDownload = LocalTextModelFile.isOffered && !LocalTextModelFile.isInstalled
+        return TextModelRowCopy.engineLine(status: .none(apple), canDownload: canDownload)
+    }
+
+    /// Which engine reads meetings on this Mac right now. Read when the
+    /// window appears and when the model row changes; it asks the disk.
+    @State private var engineStatus = MeetingTextEngines.status
 
     /// The one-time sample (design section 9): a summary for THIS
     /// transcript, written on request, with every switch left exactly where
@@ -2321,12 +2397,14 @@ private struct TextModelOffer: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            // Under 16 GB it still runs, and it is still worth having — but it
-            // holds 4.7 GB while it writes, and on such a Mac that is felt.
-            // Said with the number in it rather than as a warning: the person
-            // decides, the same way he decides about everything else here.
+            // Under 32 GB it still runs, and it is still worth having — but it
+            // holds a few gigabytes while it writes, and on such a Mac that is
+            // felt. Said with the number in it rather than as a warning: the
+            // person decides, the same way he decides about everything else
+            // here. The number comes from the helper plan for this Mac.
             if LocalTextModelFile.isMemoryTight {
-                Text(L("It holds about 4.7 GB of memory while it writes, which this Mac will feel."))
+                Text(Lf("It holds about %@ of memory while it writes, which this Mac will feel.",
+                        LocalTextModelFile.expectedResidentText))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

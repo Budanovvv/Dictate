@@ -30,14 +30,20 @@ func makeTopNoticePanel(hosting: NSView) -> NSPanel {
     return panel
 }
 
-/// The manual update check's answer: one line in a small panel at the top
-/// of the screen — the same always-visible manners as the call card
-/// (status-bar level, every Space, shown regardless of activation), because
-/// this app never activates and anything less simply isn't seen. Transient
-/// by design: it states a fact and leaves; a click dismisses it early.
-/// (The no-timeout rule covers DECISION cards — this one asks nothing.)
+/// One line in a small panel at the top of the screen — the manual update
+/// check's answer, a finished model download, a model that will not run on
+/// this Mac. The same always-visible manners as the call card (status-bar
+/// level, every Space, shown regardless of activation), because this app
+/// never activates and anything less simply isn't seen. Transient by design:
+/// it states a fact and leaves; a click dismisses it early. (The no-timeout
+/// rule covers DECISION cards — this one asks nothing.)
+///
+/// NOT the recording HUD: that pill is the dictation in flight, every mode
+/// it has replaces the previous one, and it hides itself in seconds at the
+/// bottom of the screen — a fact about a 2.5 GB download would either
+/// interrupt a recording or be gone before anyone looked.
 @MainActor
-enum UpdateNotice {
+enum TopNotice {
     private static var panel: NSPanel?
     private static var timer: Timer?
 
@@ -69,7 +75,11 @@ private struct NoticeCard: View {
             .font(.system(size: 12.5, weight: .medium))
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 340)
+            // A FIXED width, not a maximum: with only a ceiling the hosting
+            // view's fittingSize came back 1637 pt tall for a three-line
+            // notice, and the panel — placed from its own height — landed
+            // in the middle of the screen (seen 2026-09-13).
+            .frame(width: 340, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

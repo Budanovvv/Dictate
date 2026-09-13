@@ -356,10 +356,29 @@ enum MeetingTitler {
     /// prompt, same filters, more to read.
     static func brief(for entries: [TranscriptEntry],
                       titled existing: String? = nil) async -> MeetingBrief? {
-        guard !entries.isEmpty else { return nil }
+        if case .brief(let brief) = await briefOutcome(for: entries, titled: existing) {
+            return brief
+        }
+        return nil
+    }
+
+    /// What asking for a brief came to. Three answers, not two, because the
+    /// backfills must tell them apart: a meeting the model had nothing to say
+    /// about is refused for the session, while a meeting the helper could not
+    /// be started for (no memory to spare, a call in progress) is simply
+    /// asked about again later.
+    enum BriefOutcome {
+        case brief(MeetingBrief)
+        case nothing
+        case deferred(String)
+    }
+
+    static func briefOutcome(for entries: [TranscriptEntry],
+                             titled existing: String? = nil) async -> BriefOutcome {
+        guard !entries.isEmpty else { return .nothing }
         guard let engine = await MeetingTextEngines.best() else {
             Log.d("title: no generation engine — keeping the date name")
-            return nil
+            return .nothing
         }
         var text = excerpt(from: entries, limit: engine.briefLimit)
         let language = dominantLanguage(of: text)
@@ -374,7 +393,7 @@ enum MeetingTitler {
             guard #available(macOS 26, *),
                   let english = await translatedToEnglish(text, from: language) else {
                 Log.d("title: \(language ?? "?") unsupported and not translatable — keeping the date name")
-                return nil
+                return .nothing
             }
             text = english
         }
@@ -383,7 +402,7 @@ enum MeetingTitler {
             let answer = try await engine.brief(about: text, instructions: instructions)
             guard var title = sanitize(answer.title) else {
                 Log.d("title: model returned nothing usable")
-                return nil
+                return .nothing
             }
             // The title follows the meeting's language too (owner 2026-08-28).
             if let language, language != "en",
@@ -399,10 +418,13 @@ enum MeetingTitler {
             Log.d(String(format: "title: \"%@\" in %.1fs via %@ (%d chars read)", title,
                          Date().timeIntervalSince(started), engine.engineName, text.count))
             if let summary { Log.d("summary: \"\(summary)\"") }
-            return MeetingBrief(title: title, summary: summary)
+            return .brief(MeetingBrief(title: title, summary: summary))
+        } catch GenerationFailure.deferred(let why) {
+            Log.d("title: deferred — \(why)")
+            return .deferred(why)
         } catch {
             Log.d("title: generation failed (\(error))")
-            return nil
+            return .nothing
         }
     }
 
@@ -626,22 +648,51 @@ enum MeetingSectioner {
                          detail: MeetingPolicy.SectionDetail = Settings.shared.sectionDetail,
                          progress: @escaping @Sendable @MainActor () async -> Bool = { true })
         async -> [TranscriptSection] {
+        if case .sections(let out) = await sectionsOutcome(for: entries, detail: detail,
+                                                           progress: progress) {
+            return out
+        }
+        return []
+    }
+
+    /// Like `BriefOutcome`: a block the model could not write is refused, a
+    /// block the helper could not be started for is asked for again later.
+    enum SectionsOutcome {
+        case sections([TranscriptSection])
+        case deferred(String)
+    }
+
+    static func sectionsOutcome(for entries: [TranscriptEntry],
+                                detail: MeetingPolicy.SectionDetail = Settings.shared.sectionDetail,
+                                progress: @escaping @Sendable @MainActor () async -> Bool = { true })
+        async -> SectionsOutcome {
         let ranges = MeetingArchive.sectionRanges(of: entries, detail: detail)
-        guard ranges.count >= 2 else { return [] }
+        guard ranges.count >= 2 else { return .sections([]) }
         guard let engine = await MeetingTextEngines.best() else {
             Log.d("sections: no generation engine")
-            return []
+            return .sections([])
         }
         let started = Date()
         var out: [TranscriptSection] = []
         for range in ranges {
             guard await progress() else {
                 Log.d("sections: abandoned after \(out.count)/\(ranges.count)")
-                return []
+                return .sections([])
             }
             let slice = Array(entries[range])
-            guard let time = slice.first?.time,
-                  let line = await self.line(for: slice, on: engine) else { continue }
+            guard let time = slice.first?.time else { continue }
+            let line: String?
+            do {
+                line = try await self.line(for: slice, on: engine)
+            } catch GenerationFailure.deferred(let why) {
+                // Stop at once, and write nothing: a half-filled block would
+                // never be finished. The whole meeting comes back later.
+                Log.d("sections: deferred after \(out.count)/\(ranges.count) — \(why)")
+                return .deferred(why)
+            } catch {
+                continue
+            }
+            guard let line else { continue }
             out.append(TranscriptSection(time: time, line: line))
         }
         Log.d(String(format: "sections: %d of %d in %.1fs via %@", out.count, ranges.count,
@@ -653,16 +704,18 @@ enum MeetingSectioner {
         // unsafe" — a real answer, seen on ordinary business calls), and a
         // meeting where that happens three times in eight is far better off
         // with the five lines that worked than with nothing to search.
-        guard out.count >= 2, out.count * 2 >= ranges.count else { return [] }
-        return out
+        guard out.count >= 2, out.count * 2 >= ranges.count else { return .sections([]) }
+        return .sections(out)
     }
 
     /// One section, one model call — and one retry, with every filter in
     /// between. Which model answers is the engine's business; everything that
     /// decides whether the answer is USABLE lives here, and applies to all of
     /// them.
+    /// Throws only `GenerationFailure.deferred` — every other failure is a
+    /// passage without a line, which is nil.
     private static func line(for slice: [TranscriptEntry],
-                             on engine: any MeetingTextEngine) async -> String? {
+                             on engine: any MeetingTextEngine) async throws -> String? {
         var text = MeetingTitler.excerpt(from: slice, limit: engine.sectionLimit)
         guard !text.isEmpty else { return nil }
         let language = MeetingTitler.dominantLanguage(of: text)
@@ -682,7 +735,7 @@ enum MeetingSectioner {
         // fails twice gets NO line: a keyword list would find badly and read
         // worse, and the block is allowed to have holes in it.
         for attempt in 0..<2 {
-            guard let answer = await ask(text, strict: attempt > 0, on: engine) else { continue }
+            guard let answer = try await ask(text, strict: attempt > 0, on: engine) else { continue }
             let raw = withoutSpeakerPrefix(answer, spokenBy: slice)
             let collapsed = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             // Too long to write, not too long to show: rather than amputate it
@@ -711,11 +764,13 @@ enum MeetingSectioner {
     /// The colder second attempt is the whole point of the retry: the same
     /// prompt at the same temperature mostly produces the same shape again.
     private static func ask(_ text: String, strict: Bool,
-                            on engine: any MeetingTextEngine) async -> String? {
+                            on engine: any MeetingTextEngine) async throws -> String? {
         do {
             return try await engine.line(about: text,
                                          instructions: strict ? stricterInstructions : instructions,
                                          temperature: strict ? 0.1 : 0.3)
+        } catch let failure as GenerationFailure where failure.isDeferred {
+            throw failure
         } catch {
             Log.d("sections: one passage failed (\(error))")
             return nil
@@ -937,9 +992,21 @@ final class MeetingSummaries: ObservableObject {
                 // library opened during other work must not become a queue of
                 // inference the Mac chews through back to back.
                 if index > 0 { try? await Task.sleep(for: breather) }
-                guard let brief = await MeetingTitler.brief(for: meeting.entries,
-                                                            titled: meeting.title),
-                      let summary = brief.summary else {
+                let brief: MeetingBrief
+                switch await MeetingTitler.briefOutcome(for: meeting.entries, titled: meeting.title) {
+                case .brief(let answer):
+                    brief = answer
+                case .nothing:
+                    refused.insert(meeting.url)
+                    continue
+                case .deferred(let why):
+                    // Not refused, and not retried in 400 ms either: the
+                    // queue waits for the next kick, which comes when the
+                    // memory is back or the library is opened again.
+                    Log.d("summary: backfill paused — \(why)")
+                    return
+                }
+                guard let summary = brief.summary else {
                     refused.insert(meeting.url)
                     continue
                 }
@@ -1056,11 +1123,17 @@ final class MeetingSections: ObservableObject {
                     guard MeetingArchive.sectionRanges(of: meeting.entries,
                                                        detail: detail).count >= 3
                     else { continue }
-                    let cut = await MeetingSectioner.sections(for: meeting.entries,
-                                                             detail: detail) { [weak self] in
+                    let cut: [TranscriptSection]
+                    switch await MeetingSectioner.sectionsOutcome(for: meeting.entries,
+                                                                  detail: detail, progress: { [weak self] in
                         guard let self else { return false }
                         try? await Task.sleep(for: self.pause)
                         return allowed()
+                    }) {
+                    case .sections(let made): cut = made
+                    case .deferred(let why):
+                        Log.d("sections: backfill paused — \(why)")
+                        return
                     }
                     guard !cut.isEmpty else { continue }
                     SectionCache.remember(cut, for: meeting.url, meeting.entries, detail)

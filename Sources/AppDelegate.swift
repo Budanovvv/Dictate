@@ -379,6 +379,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // Diagnostics first: catch a wedged main thread (CoreAnimation ↔
         // WindowServer freeze) and write evidence to ~/Library/Logs/Dictate.
         MainThreadWatchdog.shared.start()
+        // What Mac this log comes from — the first thing a log from somebody
+        // else's machine has to say (an 8 GB MacBook froze under the text
+        // model before this line existed, and the log could not say why).
+        Log.d(MachineProfile.current.logLine)
 
         // Capability migration (design MeetingsOff, 2026-08-29): the
         // switches default OFF for a fresh install — the meetings window's
@@ -646,8 +650,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // Main by construction: the observer's queue is .main.
             MainActor.assumeIsolated { self?.manualUpdateCheck() }
         })
+        // The text model's helper paused for memory and the memory is back:
+        // the backfills exited their loops when it paused, so somebody has
+        // to start them again.
+        menuObservers.append(NotificationCenter.default.addObserver(
+            forName: LlamaServer.pauseChanged, object: nil, queue: .main
+        ) { [weak self] note in
+            guard note.userInfo?["reason"] == nil else { return }
+            MainActor.assumeIsolated { self?.meeting.resumeBackfills() }
+        })
+        // A 2.5 GB download finished while Settings was closed: say so at
+        // the top of the screen, where the row that changed cannot be seen.
+        menuObservers.append(NotificationCenter.default.addObserver(
+            forName: LocalTextModelDownload.installed, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard self?.settingsWindow?.isVisible != true else { return }
+                TopNotice.show(L("Meeting model installed. New meetings get titles and summaries on this Mac."))
+            }
+        })
+        noticeModelBelowFloorOnce()
 
         applyDebugShot()
+    }
+
+    /// Once: a model on disk that this Mac may not run. A silent update
+    /// raised the floor (3.2.6) or the data came from a bigger Mac, and the
+    /// only other sign is a row in Settings the person has no reason to open.
+    private func noticeModelBelowFloorOnce() {
+        let key = "textModelBelowFloorNoticed"
+        guard LocalTextModelDownload.shared.state == .installedNotRunnable else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        TopNotice.show(Lf("The meeting model needs 16 GB of memory; this Mac has %d. It is not running. Settings › Meetings to remove the %@.",
+                          MachineProfile.current.memoryGB, LocalTextModelFile.sizeText))
     }
 
     /// Hidden screenshot harness for the design pass: `defaults write
@@ -857,7 +896,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         startDownloadAfterProbe = true
         DispatchQueue.main.async {
             Log.d("updates: manual probe — v\(item.displayVersionString) available")
-            UpdateNotice.show(Lf("Update %@ is on its way — downloading now, it installs itself soon.",
+            TopNotice.show(Lf("Update %@ is on its way — downloading now, it installs itself soon.",
                                  item.displayVersionString))
         }
     }
@@ -871,14 +910,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if let staged = statusController.stagedUpdateVersion {
             DispatchQueue.main.async {
                 Log.d("updates: manual probe — v\(staged) already staged")
-                UpdateNotice.show(Lf("Update %@ installs at the next quiet moment", staged))
+                TopNotice.show(Lf("Update %@ installs at the next quiet moment", staged))
             }
             return
         }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         DispatchQueue.main.async {
             Log.d("updates: manual probe — up to date")
-            UpdateNotice.show(Lf("You're up to date — Dictate %@ is the newest version.", version))
+            TopNotice.show(Lf("You're up to date — Dictate %@ is the newest version.", version))
         }
     }
 
@@ -902,7 +941,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         manualUpdateProbe = false
         DispatchQueue.main.async {
             Log.d("updates: manual probe failed — \(error!.localizedDescription)")
-            UpdateNotice.show(L("Couldn't reach the update server. Try again once you're online."))
+            TopNotice.show(L("Couldn't reach the update server. Try again once you're online."))
         }
     }
 
@@ -948,6 +987,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
               !meeting.isActive,
               onboardingWindow == nil,
               settingsWindow?.isVisible != true else { return }
+        // A model download runs on with Settings closed; a relaunch in the
+        // middle of 2.5 GB keeps the partial file but forgets the intent, and
+        // the person has to click Download again.
+        switch LocalTextModelDownload.shared.state {
+        case .downloading, .verifying: return
+        default: break
+        }
         let idle = [CGEventType.keyDown, .flagsChanged, .leftMouseDown, .mouseMoved]
             .map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
             .min() ?? 0

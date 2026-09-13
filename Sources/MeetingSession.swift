@@ -478,6 +478,9 @@ final class MeetingSession: ObservableObject {
             MainActor.assumeIsolated { self.evaluateWindows() }
         }
         Log.d("meeting: session started -> \(fileURL?.lastPathComponent ?? "?")")
+        // The text model's helper must not start under a live call (the two
+        // hand-triggered generation paths do not ask the session first).
+        LlamaServer.callInProgress.set(true)
         // A recording that fills the disk loses the FILE, not just the tail —
         // watch the volume and stop early enough to keep everything written.
         diskTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -593,6 +596,7 @@ final class MeetingSession: ObservableObject {
         dump?.close()
         dump = nil
         isActive = false
+        LlamaServer.callInProgress.set(false)
         listeningFor = nil
         livePreview = nil
         modelWarming = false
@@ -1395,13 +1399,23 @@ final class MeetingSession: ObservableObject {
                 // Back on the main queue — the main actor.
                 MainActor.assumeIsolated {
                     guard !self.isActive else { return }
-                    if Settings.shared.readMeetings {
-                        MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
-                    }
+                    // Both under the reading switch. The sections used to run
+                    // outside it, which started the helper after every call
+                    // on a Mac whose owner had said "no summary, no outline".
+                    guard Settings.shared.readMeetings else { return }
+                    MeetingSummaries.shared.backfill(meetings) { [weak self] in self?.isActive != true }
                     MeetingSections.shared.backfill(meetings) { [weak self] in self?.isActive != true }
                 }
             }
         }
+    }
+
+    /// The backfills again, from outside: the helper paused for memory and
+    /// the memory has come back.
+    @MainActor
+    func resumeBackfills() {
+        guard !isActive else { return }
+        kickBackfills()
     }
 
     /// Hands the finished transcript's per-voice measurements to the diarizer,
