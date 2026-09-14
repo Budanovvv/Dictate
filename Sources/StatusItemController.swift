@@ -28,6 +28,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// exactly the invisibility that read as "my version is wrong"
     /// (versioning postmortem, 2026-09-01).
     var stagedUpdateVersion: String?
+    /// Installs the staged update and relaunches — the menu's own way to
+    /// not wait for the quiet moment (owner, 2026-09-14: "it says it will
+    /// install soon and gives me nothing to press").
+    var installStagedUpdate: (() -> Void)?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
@@ -359,7 +363,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(settings)
 
         if let staged = stagedUpdateVersion {
-            menu.addItem(Self.label(Lf("Update %@ installs at the next quiet moment", staged)))
+            let install = NSMenuItem(title: Lf("Install update %@ and relaunch", staged),
+                                     action: #selector(installUpdateNow), keyEquivalent: "")
+            install.target = self
+            menu.addItem(install)
         }
 
         let about = NSMenuItem(title: L("About Dictate"), action: #selector(showAbout), keyEquivalent: "")
@@ -561,6 +568,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .version: stamp])
             }
         }
+    }
+
+    @objc private func installUpdateNow() {
+        installStagedUpdate?()
     }
 
     @objc private func quit() {

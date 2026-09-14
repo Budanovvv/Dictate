@@ -693,6 +693,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 TopNotice.show(L("Meeting model installed. New meetings get titles and summaries on this Mac."))
             }
         })
+        statusController.installStagedUpdate = { [weak self] in
+            MainActor.assumeIsolated { self?.installPendingUpdateNow() }
+        }
         noticeModelBelowFloorOnce()
 
         applyDebugShot()
@@ -920,7 +923,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         startDownloadAfterProbe = true
         DispatchQueue.main.async {
             Log.d("updates: manual probe — v\(item.displayVersionString) available")
-            TopNotice.show(Lf("Update %@ is on its way — downloading now, it installs itself soon.",
+            TopNotice.show(Lf("Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.",
                                  item.displayVersionString))
         }
     }
@@ -934,7 +937,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if let staged = statusController.stagedUpdateVersion {
             DispatchQueue.main.async {
                 Log.d("updates: manual probe — v\(staged) already staged")
-                TopNotice.show(Lf("Update %@ installs at the next quiet moment", staged))
+                TopNotice.show(Lf("Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.", staged))
             }
             return
         }
@@ -989,6 +992,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             self.scheduleUpdateRelaunchTimer()
         }
         return true
+    }
+
+    /// The person asked for it from the menu bar: install and relaunch now
+    /// — unless a recording is in flight, which the relaunch would kill.
+    private func installPendingUpdateNow() {
+        guard let install = pendingUpdateInstall else { return }
+        guard dictation.state == .idle, !meeting.isActive else {
+            TopNotice.show(L("The update waits until the recording ends."))
+            return
+        }
+        Log.d("update: installing staged update from the menu bar")
+        pendingUpdateInstall = nil
+        updateRelaunchTimer?.invalidate()
+        updateRelaunchTimer = nil
+        install()
     }
 
     private func scheduleUpdateRelaunchTimer() {

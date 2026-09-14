@@ -159,9 +159,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Вопросы — единственное, что покидает этот Mac: ваш вопрос, найденные фрагменты и транскрипты, которые агент открывает для ответа, уходят к %@ на вашем ключе. Ничего не отправляется, пока вы не спросите.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain отказался сохранить ключ — он остался в поле. Разблокируйте связку и попробуйте снова.",
         "Couldn't reach the update server. Try again once you're online.": "Не удалось связаться с сервером обновлений. Попробуйте, когда появится сеть.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "Обновление %@ уже в пути — скачивается и вскоре установится само.",
         "You're up to date — Dictate %@ is the newest version.": "У вас последняя версия — новее Dictate %@ нет.",
-        "Update %@ installs at the next quiet moment": "Обновление %@ установится в ближайший спокойный момент",
         "Recorded meetings appear here.": "Записанные встречи появятся здесь.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Здесь только ваш микрофон — вторая сторона звонка не записывалась, и её не восстановить.",
         "Turning both on covers the calls that come next.": "Если включить оба, следующие звонки будут записаны полностью.",
@@ -803,6 +801,10 @@ extension Localization {
         "What’s new": "Что нового",
         "What’s new in Dictate %@": "Что нового в Dictate %@",
         "Your own templates": "Свои шаблоны",
+        "Install update %@ and relaunch": "Установить обновление %@ и перезапустить",
+        "The update waits until the recording ends.": "Обновление подождёт, пока закончится запись.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Обновление %@ уже в пути — скачивается. Установится само в ближайший спокойный момент; в строке меню можно раньше.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Обновление %@ готово — установите из строки меню, или оно установится само в ближайший спокойный момент.",
     ]
 
     static let uk: [String: String] = [
@@ -812,9 +814,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Запитання — єдине, що залишає цей Mac: ваше запитання, знайдені фрагменти та транскрипти, які агент відкриває для відповіді, йдуть до %@ на вашому ключі. Нічого не надсилається, поки ви не спитаєте.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain відмовився зберегти ключ — він залишився в полі. Розблокуйте в'язку і спробуйте ще раз.",
         "Couldn't reach the update server. Try again once you're online.": "Не вдалося зв'язатися з сервером оновлень. Спробуйте, коли з'явиться мережа.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "Оновлення %@ вже в дорозі — завантажується і невдовзі встановиться саме.",
         "You're up to date — Dictate %@ is the newest version.": "У вас остання версія — новішої за Dictate %@ немає.",
-        "Update %@ installs at the next quiet moment": "Оновлення %@ встановиться в найближчий спокійний момент",
         "Recorded meetings appear here.": "Записані зустрічі з'являться тут.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Тут лише ваш мікрофон — друга сторона дзвінка не записувалась, і її не відновити.",
         "Turning both on covers the calls that come next.": "Якщо увімкнути обидва, наступні дзвінки буде записано повністю.",
@@ -1447,6 +1447,10 @@ extension Localization {
         "What’s new": "Що нового",
         "What’s new in Dictate %@": "Що нового в Dictate %@",
         "Your own templates": "Власні шаблони",
+        "Install update %@ and relaunch": "Установити оновлення %@ і перезапустити",
+        "The update waits until the recording ends.": "Оновлення почекає, поки закінчиться запис.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Оновлення %@ вже в дорозі — завантажується. Установиться саме у найближчий спокійний момент; у рядку меню можна раніше.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Оновлення %@ готове — установіть із рядка меню, або воно встановиться саме у найближчий спокійний момент.",
     ]
 
     static let es: [String: String] = [
@@ -1456,9 +1460,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Preguntar es lo único que sale de este Mac: su pregunta, los resultados de búsqueda y las transcripciones que el agente abre para responder van a %@ con su clave. No se envía nada hasta que usted pregunta.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "El llavero rechazó guardar la clave; sigue en el campo. Desbloquee el llavero e inténtelo de nuevo.",
         "Couldn't reach the update server. Try again once you're online.": "No se pudo contactar el servidor de actualizaciones. Inténtelo cuando esté en línea.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "La actualización %@ está en camino: descargando ahora, se instalará sola en breve.",
         "You're up to date — Dictate %@ is the newest version.": "Está al día: Dictate %@ es la versión más reciente.",
-        "Update %@ installs at the next quiet moment": "La actualización %@ se instalará en el próximo momento de calma",
         "Recorded meetings appear here.": "Las reuniones grabadas aparecen aquí.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Esto es solo su micrófono: la otra parte de la llamada no se grabó y no se puede recuperar.",
         "Turning both on covers the calls that come next.": "Al activar ambos, las próximas llamadas quedan cubiertas.",
@@ -2100,6 +2102,10 @@ extension Localization {
         "What’s new": "Novedades",
         "What’s new in Dictate %@": "Novedades de Dictate %@",
         "Your own templates": "Sus propias plantillas",
+        "Install update %@ and relaunch": "Instalar la actualización %@ y reiniciar",
+        "The update waits until the recording ends.": "La actualización espera a que termine la grabación.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "La actualización %@ está en camino: descargando. Se instalará sola en el próximo momento tranquilo; la barra de menús la ofrece antes.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "La actualización %@ está lista: instálela desde la barra de menús, o se instalará sola en el próximo momento tranquilo.",
     ]
 
     static let pt: [String: String] = [
@@ -2109,9 +2115,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Perguntar é a única coisa que sai deste Mac: sua pergunta, os resultados da busca e as transcrições que o agente abre para responder vão para %@ na sua chave. Nada é enviado até você perguntar.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "As Chaves recusaram salvar a chave — ela continua no campo. Desbloqueie as chaves e tente de novo.",
         "Couldn't reach the update server. Try again once you're online.": "Não foi possível contatar o servidor de atualizações. Tente de novo quando estiver online.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "A atualização %@ está a caminho — baixando agora, se instala sozinha em breve.",
         "You're up to date — Dictate %@ is the newest version.": "Você está em dia — Dictate %@ é a versão mais recente.",
-        "Update %@ installs at the next quiet moment": "A atualização %@ será instalada no próximo momento de calma",
         "Recorded meetings appear here.": "As reuniões gravadas aparecem aqui.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Isto é só o seu microfone — o outro lado da chamada não foi gravado e não pode ser recuperado.",
         "Turning both on covers the calls that come next.": "Ao ativar ambos, as próximas chamadas ficam cobertas.",
@@ -2753,6 +2757,10 @@ extension Localization {
         "What’s new": "Novidades",
         "What’s new in Dictate %@": "Novidades do Dictate %@",
         "Your own templates": "Seus próprios modelos",
+        "Install update %@ and relaunch": "Instalar a atualização %@ e reiniciar",
+        "The update waits until the recording ends.": "A atualização espera a gravação terminar.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "A atualização %@ está a caminho: baixando. Instala-se sozinha no próximo momento tranquilo; a barra de menus oferece antes.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "A atualização %@ está pronta: instale pela barra de menus, ou ela se instala sozinha no próximo momento tranquilo.",
     ]
 
     static let fr: [String: String] = [
@@ -2762,9 +2770,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Demander est la seule chose qui quitte ce Mac : votre question, les résultats de recherche et les transcriptions que l'agent ouvre pour répondre vont chez %@ avec votre clé. Rien n'est envoyé tant que vous ne demandez pas.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Le trousseau a refusé d'enregistrer la clé — elle reste dans le champ. Déverrouillez le trousseau et réessayez.",
         "Couldn't reach the update server. Try again once you're online.": "Impossible de joindre le serveur de mise à jour. Réessayez une fois en ligne.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "La mise à jour %@ arrive — téléchargement en cours, elle s'installera d'elle-même bientôt.",
         "You're up to date — Dictate %@ is the newest version.": "Vous êtes à jour — Dictate %@ est la version la plus récente.",
-        "Update %@ installs at the next quiet moment": "La mise à jour %@ s'installera au prochain moment calme",
         "Recorded meetings appear here.": "Les réunions enregistrées apparaissent ici.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Ceci n'est que votre micro — l'autre partie de l'appel n'a pas été enregistrée et ne peut pas être récupérée.",
         "Turning both on covers the calls that come next.": "En activant les deux, les prochains appels seront couverts.",
@@ -3406,6 +3412,10 @@ extension Localization {
         "What’s new": "Nouveautés",
         "What’s new in Dictate %@": "Nouveautés de Dictate %@",
         "Your own templates": "Vos propres modèles",
+        "Install update %@ and relaunch": "Installer la mise à jour %@ et relancer",
+        "The update waits until the recording ends.": "La mise à jour attend la fin de l’enregistrement.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "La mise à jour %@ arrive : téléchargement en cours. Elle s’installera d’elle-même au prochain moment calme ; la barre des menus la propose plus tôt.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "La mise à jour %@ est prête : installez-la depuis la barre des menus, ou elle s’installera d’elle-même au prochain moment calme.",
     ]
 
     static let de: [String: String] = [
@@ -3415,9 +3425,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Fragen ist das Einzige, was diesen Mac verlässt: Ihre Frage, die Suchtreffer und die Transkripte, die der Agent zum Antworten öffnet, gehen mit Ihrem Schlüssel an %@. Nichts wird gesendet, bevor Sie fragen.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Der Schlüsselbund hat das Speichern verweigert — der Schlüssel bleibt im Feld. Entsperren Sie den Schlüsselbund und versuchen Sie es erneut.",
         "Couldn't reach the update server. Try again once you're online.": "Der Update-Server ist nicht erreichbar. Versuchen Sie es, sobald Sie online sind.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "Update %@ ist unterwegs — lädt gerade und installiert sich bald von selbst.",
         "You're up to date — Dictate %@ is the newest version.": "Sie sind auf dem neuesten Stand — Dictate %@ ist die aktuellste Version.",
-        "Update %@ installs at the next quiet moment": "Update %@ wird im nächsten ruhigen Moment installiert",
         "Recorded meetings appear here.": "Aufgenommene Meetings erscheinen hier.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Das ist nur Ihr Mikrofon — die Gegenseite des Anrufs wurde nicht aufgenommen und ist nicht wiederherstellbar.",
         "Turning both on covers the calls that come next.": "Beide eingeschaltet decken die nächsten Anrufe ab.",
@@ -4059,6 +4067,10 @@ extension Localization {
         "What’s new": "Neuigkeiten",
         "What’s new in Dictate %@": "Neu in Dictate %@",
         "Your own templates": "Eigene Vorlagen",
+        "Install update %@ and relaunch": "Update %@ installieren und neu starten",
+        "The update waits until the recording ends.": "Das Update wartet, bis die Aufnahme beendet ist.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Update %@ ist unterwegs – wird heruntergeladen. Es installiert sich im nächsten ruhigen Moment selbst; die Menüleiste bietet es früher an.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Update %@ ist bereit – installieren Sie es über die Menüleiste, oder es installiert sich im nächsten ruhigen Moment selbst.",
     ]
 
     static let zh: [String: String] = [
@@ -4068,9 +4080,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "提问是唯一离开这台 Mac 的内容：你的问题、搜索命中的片段，以及代理为回答而打开的转录文字，都会通过你的密钥发送给 %@。你不提问，什么都不会发送。",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "钥匙串拒绝保存密钥——它仍留在输入框中。解锁钥匙串后重试。",
         "Couldn't reach the update server. Try again once you're online.": "无法连接更新服务器。联网后再试一次。",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "更新 %@ 正在路上——正在下载，稍后会自动安装。",
         "You're up to date — Dictate %@ is the newest version.": "已是最新版本——Dictate %@ 就是最新版。",
-        "Update %@ installs at the next quiet moment": "更新 %@ 将在下一个空闲时刻自动安装",
         "Recorded meetings appear here.": "录制的会议会显示在这里。",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "这里只有你的麦克风——通话对方没有被录下，无法找回。",
         "Turning both on covers the calls that come next.": "两项都开启后，之后的通话会被完整记录。",
@@ -4712,6 +4722,10 @@ extension Localization {
         "What’s new": "新功能",
         "What’s new in Dictate %@": "Dictate %@ 新功能",
         "Your own templates": "你自己的模板",
+        "Install update %@ and relaunch": "安装更新 %@ 并重新启动",
+        "The update waits until the recording ends.": "更新将等到录音结束。",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "更新 %@ 正在下载。它会在下一个空闲时刻自动安装；菜单栏可以提前安装。",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "更新 %@ 已就绪：可从菜单栏安装，或者它会在下一个空闲时刻自动安装。",
     ]
 
     static let ja: [String: String] = [
@@ -4721,9 +4735,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "この Mac から出ていくのは質問だけです。あなたの質問、検索でヒットした断片、そして回答のためにエージェントが開く文字起こしが、あなたのキーで %@ に送られます。質問するまで何も送信されません。",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "キーチェーンがキーの保存を拒否しました — キーは入力欄に残っています。キーチェーンのロックを解除してからもう一度お試しください。",
         "Couldn't reach the update server. Try again once you're online.": "アップデートサーバーに接続できません。オンラインになったらもう一度お試しください。",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "アップデート %@ が届きます — ダウンロード中で、まもなく自動的にインストールされます。",
         "You're up to date — Dictate %@ is the newest version.": "最新の状態です — Dictate %@ が最新バージョンです。",
-        "Update %@ installs at the next quiet moment": "アップデート %@ は次の空き時間に自動的にインストールされます",
         "Recorded meetings appear here.": "録音したミーティングはここに表示されます。",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "これはあなたのマイクのみです — 通話の相手側は録音されておらず、取り戻せません。",
         "Turning both on covers the calls that come next.": "両方オンにすると、次の通話からはすべて記録されます。",
@@ -5365,6 +5377,10 @@ extension Localization {
         "What’s new": "新機能",
         "What’s new in Dictate %@": "Dictate %@ の新機能",
         "Your own templates": "自分のテンプレート",
+        "Install update %@ and relaunch": "アップデート %@ をインストールして再起動",
+        "The update waits until the recording ends.": "アップデートは録音が終わるまで待ちます。",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "アップデート %@ をダウンロード中です。次の空いたタイミングで自動的にインストールされます。メニューバーからならすぐに実行できます。",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "アップデート %@ の準備ができました。メニューバーからインストールするか、次の空いたタイミングで自動的にインストールされます。",
     ]
 
     static let ko: [String: String] = [
@@ -5374,9 +5390,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "이 Mac을 떠나는 것은 질문뿐입니다: 질문, 검색 결과, 그리고 에이전트가 답하기 위해 여는 기록이 내 키로 %@에 전달됩니다. 질문하기 전에는 아무것도 전송되지 않습니다.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "키체인이 키 저장을 거부했습니다 — 키는 입력란에 남아 있습니다. 키체인 잠금을 해제하고 다시 시도하세요.",
         "Couldn't reach the update server. Try again once you're online.": "업데이트 서버에 연결할 수 없습니다. 온라인 상태가 되면 다시 시도하세요.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "업데이트 %@가 오는 중입니다 — 지금 다운로드 중이며 곧 자동 설치됩니다.",
         "You're up to date — Dictate %@ is the newest version.": "최신 상태입니다 — Dictate %@가 최신 버전입니다.",
-        "Update %@ installs at the next quiet moment": "업데이트 %@ — 다음 한가한 순간에 설치됩니다",
         "Recorded meetings appear here.": "녹음된 회의가 여기에 표시됩니다.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "여기에는 내 마이크만 담겨 있습니다 — 통화 상대방은 녹음되지 않았고 되돌릴 수 없습니다.",
         "Turning both on covers the calls that come next.": "둘 다 켜면 다음 통화부터는 모두 담깁니다.",
@@ -6018,6 +6032,10 @@ extension Localization {
         "What’s new": "새 기능",
         "What’s new in Dictate %@": "Dictate %@의 새 기능",
         "Your own templates": "나만의 템플릿",
+        "Install update %@ and relaunch": "업데이트 %@ 설치 후 다시 시작",
+        "The update waits until the recording ends.": "업데이트는 녹음이 끝날 때까지 기다립니다.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "업데이트 %@ 다운로드 중입니다. 다음 한가한 순간에 자동으로 설치되며, 메뉴 막대에서 더 일찍 설치할 수 있습니다.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "업데이트 %@ 준비됨 — 메뉴 막대에서 설치하거나 다음 한가한 순간에 자동으로 설치됩니다.",
     ]
 
     static let vi: [String: String] = [
@@ -6027,9 +6045,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Hỏi là thứ duy nhất rời khỏi máy Mac này: câu hỏi của bạn, các kết quả tìm kiếm và những bản ghi chép mà tác nhân mở để trả lời sẽ đến %@ bằng khóa của bạn. Không gì được gửi cho đến khi bạn hỏi.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain từ chối lưu khóa — khóa vẫn còn trong ô. Mở khóa keychain rồi thử lại.",
         "Couldn't reach the update server. Try again once you're online.": "Không thể kết nối máy chủ cập nhật. Thử lại khi có mạng.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "Bản cập nhật %@ đang trên đường đến — đang tải xuống, sẽ tự cài đặt sớm.",
         "You're up to date — Dictate %@ is the newest version.": "Bạn đang dùng bản mới nhất — Dictate %@ là phiên bản mới nhất.",
-        "Update %@ installs at the next quiet moment": "Bản cập nhật %@ sẽ được cài vào lúc rảnh tiếp theo",
         "Recorded meetings appear here.": "Các cuộc họp đã ghi sẽ xuất hiện ở đây.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Đây chỉ là micrô của bạn — phía bên kia của cuộc gọi không được ghi âm và không thể khôi phục.",
         "Turning both on covers the calls that come next.": "Bật cả hai sẽ bao trọn các cuộc gọi tiếp theo.",
@@ -6671,6 +6687,10 @@ extension Localization {
         "What’s new": "Có gì mới",
         "What’s new in Dictate %@": "Có gì mới trong Dictate %@",
         "Your own templates": "Mẫu của riêng bạn",
+        "Install update %@ and relaunch": "Cài bản cập nhật %@ và khởi động lại",
+        "The update waits until the recording ends.": "Bản cập nhật sẽ đợi đến khi ghi âm kết thúc.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Bản cập nhật %@ đang tải về. Nó sẽ tự cài vào lúc rảnh tiếp theo; thanh menu cho phép cài sớm hơn.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Bản cập nhật %@ đã sẵn sàng — cài từ thanh menu, hoặc nó sẽ tự cài vào lúc rảnh tiếp theo.",
     ]
 
     static let tl: [String: String] = [
@@ -6680,9 +6700,7 @@ extension Localization {
         "Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.": "Ang pagtatanong lang ang umaalis sa Mac na ito: ang tanong mo, ang mga tama sa paghahanap, at ang mga transcript na binubuksan ng agent para sumagot ay pumupunta sa %@ gamit ang key mo. Walang ipinapadala hangga't hindi ka nagtatanong.",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Tumanggi ang Keychain na i-save ang key — nanatili ito sa field. I-unlock ang keychain at subukan ulit.",
         "Couldn't reach the update server. Try again once you're online.": "Hindi maabot ang update server. Subukan ulit kapag online ka na.",
-        "Update %@ is on its way — downloading now, it installs itself soon.": "Parating na ang update %@ — dina-download ngayon, mag-i-install ito mag-isa.",
         "You're up to date — Dictate %@ is the newest version.": "Updated ka na — ang Dictate %@ ang pinakabagong bersyon.",
-        "Update %@ installs at the next quiet moment": "Ii-install ang update na %@ sa susunod na tahimik na sandali",
         "Recorded meetings appear here.": "Dito lalabas ang mga na-record na meeting.",
         "This is your microphone only — the other side of the call was not recorded and cannot be recovered.": "Mikropono mo lang ito — ang kabilang panig ng tawag ay hindi na-record at hindi na maibabalik.",
         "Turning both on covers the calls that come next.": "Kapag binuksan pareho, sakop na ang mga susunod na tawag.",
@@ -7324,5 +7342,9 @@ extension Localization {
         "What’s new": "Ano ang bago",
         "What’s new in Dictate %@": "Ano ang bago sa Dictate %@",
         "Your own templates": "Sarili mong mga template",
+        "Install update %@ and relaunch": "I-install ang update %@ at i-relaunch",
+        "The update waits until the recording ends.": "Maghihintay ang update hanggang matapos ang recording.",
+        "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Parating na ang update %@ — dina-download ngayon. Mag-i-install ito nang kusa sa susunod na tahimik na sandali; mas maaga sa menu bar.",
+        "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Handa na ang update %@ — i-install mula sa menu bar, o mag-i-install ito nang kusa sa susunod na tahimik na sandali.",
     ]
 }
