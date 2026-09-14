@@ -2231,6 +2231,9 @@ struct MeetingsView: View {
         // Where the call ran (design: "· Google Meet") — the fact that used
         // to hide in the list row belongs with the meeting's own facts.
         if let source = meeting.source { parts.append(source) }
+        // A report, when there is one — the same fact the list row carries
+        // as "Reported", named by its template here where there is room.
+        if let report = meeting.report { parts.append(L("Report") + " · " + report.templateName) }
         return parts.joined(separator: " · ")
     }
 
@@ -2780,8 +2783,9 @@ private struct TranscriptPane: View {
     /// the control used to re-cut the file and visibly change nothing).
     @State private var outlineDepth: OutlineDepth = .more
     /// Which template the card's "Write report" uses; nil means the first.
-    @State private var chosenTemplate: UUID?
     @State private var templateChooserOpen = false
+    /// The template chosen from the pull-down, awaiting the person's yes.
+    @State private var pendingTemplate: ReportTemplate?
     /// Granularities a grow came back empty for (too short to cut, or the
     /// model refused more than half) — skipped for the rest of this view's
     /// life, or the depth control would ask for them on every turn.
@@ -2964,6 +2968,16 @@ private struct TranscriptPane: View {
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 8) {
+                    // The one labelled action on a finished meeting: write a
+                    // report — a pull-down naming the template, where a
+                    // document's primary action lives on this platform (the
+                    // toolbar, next to its siblings), not down in the text.
+                    if reportsAvailable {
+                        reportPullDown
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(width: 0.5, height: 20)
+                    }
                     // The reading-size tray (design MeetingOutline): part of
                     // the head's actions, parted from them by a hair of rail.
                     DSTextSizeTray(scale: Binding(
@@ -3355,17 +3369,13 @@ private struct TranscriptPane: View {
     /// template and time, Open and Show in Finder, then the fields.
     @ViewBuilder
     private var reportBlock: some View {
-        if live == nil, reportsAvailable || report != nil || reportPhase != nil {
+        if live == nil, report != nil || reportPhase != nil {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 10) {
-                    Text(L("Report"))
-                        .font(DS.sectionLabel)
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                        .kerning(0.3)
-                    Spacer(minLength: 0)
-                    reportWriter
-                }
+                Text(L("Report"))
+                    .font(DS.sectionLabel)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .kerning(0.3)
                 switch reportPhase {
                 case .queued, .writing:
                     HStack(spacing: 8) {
@@ -3426,57 +3436,87 @@ private struct TranscriptPane: View {
                             }
                         }
                     }
-                } else if reportsAvailable, reportPhase == nil, !reportTemplates.isEmpty {
-                    Text(Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
-                            (Settings.shared.askProvider ?? .anthropic).vendorName))
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: DS.readingMeasure, alignment: .leading)
         }
     }
 
-    /// The header's control: the template popup and the button, in the
-    /// app's own PopupTrigger and button styles. Absent while a report is
-    /// being written; a way to Settings when there is no template yet.
+    /// The head's pull-down: the report's actions where a document's
+    /// actions live on this platform. With a report: open it, show it in
+    /// Finder, write again from a template. Without: the templates. A
+    /// template is a request, not a command — it asks first, in the same
+    /// dialog the window uses before anything irreversible, because a
+    /// transcript is about to leave this Mac.
     @ViewBuilder
-    private var reportWriter: some View {
-        if reportsAvailable, !isBusy(reportPhase) {
-            if reportTemplates.isEmpty {
-                if let onOpenTemplates {
-                    Button(L("Set up templates…"), action: onOpenTemplates)
-                        .buttonStyle(.dsSmall)
-                        .controlSize(.small)
-                }
-            } else {
-                let chosen = reportTemplates.first { $0.id == chosenTemplate } ?? reportTemplates.first!
-                PopupTrigger(label: chosen.name) { templateChooserOpen.toggle() }
-                    .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
-                        VStack(alignment: .leading, spacing: 0) {
+    private var reportPullDown: some View {
+        if isBusy(reportPhase) {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text(L("Writing…")).font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        } else {
+            PopupTrigger(label: report == nil ? L("Write report") : L("Report"),
+                         icon: "doc.text") { templateChooserOpen.toggle() }
+                // Its own width, whatever the title does: in the head's
+                // cluster a two-line title squeezed the label to nothing
+                // and left an icon nobody could name.
+                .fixedSize()
+                .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if report != nil {
+                            PopupRow(title: L("Open report"), icon: "doc.text", selected: false) {
+                                templateChooserOpen = false
+                                onOpenReport?()
+                            }
+                            PopupRow(title: L("Show in Finder"), icon: "folder", selected: false) {
+                                templateChooserOpen = false
+                                onRevealReport?()
+                            }
+                            Divider().padding(.vertical, 4)
+                            Text(L("Write again with"))
+                                .font(DS.sectionLabel)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                        }
+                        if reportTemplates.isEmpty {
+                            PopupRow(title: L("Set up templates…"),
+                                     subtitle: L("No templates yet."), selected: false) {
+                                templateChooserOpen = false
+                                onOpenTemplates?()
+                            }
+                        } else {
                             ForEach(reportTemplates) { template in
                                 PopupRow(title: template.name,
                                          subtitle: Lf("%d fields", template.usableFields.count),
-                                         selected: template.id == chosen.id) {
-                                    chosenTemplate = template.id
+                                         selected: false) {
                                     templateChooserOpen = false
+                                    pendingTemplate = template
                                 }
                             }
                         }
-                        .padding(6)
-                        .frame(width: 240)
                     }
-                if let onWriteReport {
-                    if report == nil {
-                        Button(L("Write report")) { onWriteReport(chosen) }
-                            .buttonStyle(.dsPrimary)
-                    } else {
-                        Button(L("Write again")) { onWriteReport(chosen) }
-                            .buttonStyle(.dsRegular)
-                    }
+                    .padding(6)
+                    .frame(width: 260)
                 }
-            }
+                .accessibilityLabel(L("Write report"))
+                .confirmationDialog(Lf("Write a “%@” report?", pendingTemplate?.name ?? ""),
+                                    isPresented: Binding(get: { pendingTemplate != nil },
+                                                         set: { if !$0 { pendingTemplate = nil } }),
+                                    titleVisibility: .visible) {
+                    Button(report == nil ? L("Write report") : L("Write again")) {
+                        if let template = pendingTemplate { onWriteReport?(template) }
+                        pendingTemplate = nil
+                    }
+                    Button(L("Cancel"), role: .cancel) { pendingTemplate = nil }
+                } message: {
+                    Text(report == nil
+                         ? Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
+                              (Settings.shared.askProvider ?? .anthropic).vendorName)
+                         : Lf("Sends this transcript to %@ on your key and replaces the report already written.",
+                              (Settings.shared.askProvider ?? .anthropic).vendorName))
+                }
         }
     }
 

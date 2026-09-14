@@ -737,7 +737,6 @@ extension Localization {
         "Who “we” are and what to look for": "Кто такие “мы” и на что обращать внимание",
         "Write reports in": "Язык отчётов",
         "Writing · about a minute": "Пишу · около минуты",
-        "Written by %@, %@": "Написано: %@, %@",
         "Written by Dictate on this Mac from the transcript": "Написано Dictate на этом Mac по транскрипту",
         "Your %@ account refused the request for billing reasons.": "Ваш аккаунт %@ отклонил запрос по биллингу.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Форма, которую агент заполняет по транскрипту: имена полей становятся заголовками, модель пишет под каждым.",
@@ -758,6 +757,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Этот Mac офлайн. Ничего не отправлено — попробуйте, когда вернётся связь.",
         "Open": "Открыть",
         "Open report": "Открыть отчёт",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Отправляет этот транскрипт в %@ на вашем ключе и заменяет уже написанный отчёт.",
+        "Write a “%@” report?": "Написать отчёт «%@»?",
+        "Write again with": "Написать заново по шаблону",
     ]
 
     static let uk: [String: String] = [
@@ -1366,7 +1368,6 @@ extension Localization {
         "Who “we” are and what to look for": "Хто такі “ми” і на що звертати увагу",
         "Write reports in": "Мова звітів",
         "Writing · about a minute": "Пишу · близько хвилини",
-        "Written by %@, %@": "Написано: %@, %@",
         "Written by Dictate on this Mac from the transcript": "Написано Dictate на цьому Mac за транскриптом",
         "Your %@ account refused the request for billing reasons.": "Ваш обліковий запис %@ відхилив запит через білінг.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Форма, яку агент заповнює за транскриптом: назви полів стають заголовками, модель пише під кожним.",
@@ -1387,6 +1388,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Цей Mac офлайн. Нічого не надіслано — спробуйте, коли з’явиться зв’язок.",
         "Open": "Відкрити",
         "Open report": "Відкрити звіт",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Надсилає цей транскрипт до %@ на вашому ключі й замінює вже написаний звіт.",
+        "Write a “%@” report?": "Написати звіт «%@»?",
+        "Write again with": "Написати заново за шаблоном",
     ]
 
     static let es: [String: String] = [
@@ -2004,7 +2008,6 @@ extension Localization {
         "Who “we” are and what to look for": "Quiénes somos “nosotros” y en qué fijarse",
         "Write reports in": "Escribir informes en",
         "Writing · about a minute": "Escribiendo · alrededor de un minuto",
-        "Written by %@, %@": "Escrito por %@, %@",
         "Written by Dictate on this Mac from the transcript": "Escrito por Dictate en este Mac a partir de la transcripción",
         "Your %@ account refused the request for billing reasons.": "Su cuenta de %@ rechazó la solicitud por motivos de facturación.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Un formulario que el agente rellena a partir de una transcripción: los nombres de los campos son los títulos y el modelo escribe debajo de cada uno.",
@@ -2025,6 +2028,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está sin conexión. No se envió nada: inténtelo cuando vuelva la conexión.",
         "Open": "Abrir",
         "Open report": "Abrir el informe",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Envía esta transcripción a %@ con su clave y sustituye el informe ya escrito.",
+        "Write a “%@” report?": "¿Escribir un informe “%@”?",
+        "Write again with": "Escribir de nuevo con",
     ]
 
     static let pt: [String: String] = [
@@ -2642,7 +2648,6 @@ extension Localization {
         "Who “we” are and what to look for": "Quem somos “nós” e o que observar",
         "Write reports in": "Escrever relatórios em",
         "Writing · about a minute": "Escrevendo · cerca de um minuto",
-        "Written by %@, %@": "Escrito por %@, %@",
         "Written by Dictate on this Mac from the transcript": "Escrito pelo Dictate neste Mac a partir da transcrição",
         "Your %@ account refused the request for billing reasons.": "Sua conta %@ recusou a solicitação por motivos de cobrança.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Um formulário que o agente preenche a partir de uma transcrição: os nomes dos campos viram títulos e o modelo escreve embaixo de cada um.",
@@ -2663,6 +2668,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está offline. Nada foi enviado: tente de novo quando a conexão voltar.",
         "Open": "Abrir",
         "Open report": "Abrir o relatório",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Envia esta transcrição para %@ com a sua chave e substitui o relatório já escrito.",
+        "Write a “%@” report?": "Escrever um relatório “%@”?",
+        "Write again with": "Escrever de novo com",
     ]
 
     static let fr: [String: String] = [
@@ -3280,7 +3288,6 @@ extension Localization {
         "Who “we” are and what to look for": "Qui est “nous” et ce qu'il faut chercher",
         "Write reports in": "Écrire les rapports en",
         "Writing · about a minute": "Écriture · environ une minute",
-        "Written by %@, %@": "Écrit par %@, %@",
         "Written by Dictate on this Mac from the transcript": "Écrit par Dictate sur ce Mac à partir de la transcription",
         "Your %@ account refused the request for billing reasons.": "Votre compte %@ a refusé la requête pour des raisons de facturation.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Un formulaire que l’agent remplit à partir d’une transcription : les noms des champs deviennent des titres, le modèle écrit sous chacun.",
@@ -3301,6 +3308,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Ce Mac est hors ligne. Rien n’a été envoyé : réessayez quand la connexion sera revenue.",
         "Open": "Ouvrir",
         "Open report": "Ouvrir le rapport",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Envoie cette transcription à %@ avec votre clé et remplace le rapport déjà rédigé.",
+        "Write a “%@” report?": "Rédiger un rapport « %@ » ?",
+        "Write again with": "Rédiger à nouveau avec",
     ]
 
     static let de: [String: String] = [
@@ -3918,7 +3928,6 @@ extension Localization {
         "Who “we” are and what to look for": "Wer “wir” sind und worauf zu achten ist",
         "Write reports in": "Berichte schreiben auf",
         "Writing · about a minute": "Schreibt · etwa eine Minute",
-        "Written by %@, %@": "Geschrieben von %@, %@",
         "Written by Dictate on this Mac from the transcript": "Von Dictate auf diesem Mac aus dem Transkript geschrieben",
         "Your %@ account refused the request for billing reasons.": "Ihr %@-Konto hat die Anfrage aus Abrechnungsgründen abgelehnt.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Ein Formular, das der Agent aus einem Transkript ausfüllt: Feldnamen werden zu Überschriften, das Modell schreibt darunter.",
@@ -3939,6 +3948,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Dieser Mac ist offline. Nichts wurde gesendet – versuchen Sie es erneut, sobald die Verbindung zurück ist.",
         "Open": "Öffnen",
         "Open report": "Bericht öffnen",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Sendet dieses Transkript mit Ihrem Schlüssel an %@ und ersetzt den bereits geschriebenen Bericht.",
+        "Write a “%@” report?": "Bericht „%@“ schreiben?",
+        "Write again with": "Erneut schreiben mit",
     ]
 
     static let zh: [String: String] = [
@@ -4556,7 +4568,6 @@ extension Localization {
         "Who “we” are and what to look for": "“我们”是谁，以及要关注什么",
         "Write reports in": "报告语言",
         "Writing · about a minute": "正在撰写 · 约一分钟",
-        "Written by %@, %@": "由 %@ 撰写，%@",
         "Written by Dictate on this Mac from the transcript": "由 Dictate 在这台 Mac 上根据转录撰写",
         "Your %@ account refused the request for billing reasons.": "你的 %@ 账户因计费原因拒绝了请求。",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "代理根据转录填写的表单：字段名成为标题，模型在每个标题下书写。",
@@ -4577,6 +4588,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "此 Mac 处于离线状态。未发送任何内容，请在恢复连接后再试。",
         "Open": "打开",
         "Open report": "打开报告",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "用你的密钥把此转录发送给 %@，并替换已写好的报告。",
+        "Write a “%@” report?": "写一份“%@”报告？",
+        "Write again with": "用以下模板重新写",
     ]
 
     static let ja: [String: String] = [
@@ -5194,7 +5208,6 @@ extension Localization {
         "Who “we” are and what to look for": "“私たち”とは誰で、何に注目するか",
         "Write reports in": "レポートの言語",
         "Writing · about a minute": "作成中 · 約 1 分",
-        "Written by %@, %@": "%@ が作成、%@",
         "Written by Dictate on this Mac from the transcript": "この Mac 上で Dictate が文字起こしから作成",
         "Your %@ account refused the request for billing reasons.": "あなたの %@ アカウントが課金上の理由でリクエストを拒否しました。",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "エージェントが文字起こしから埋めるフォームです。項目名が見出しになり、モデルがその下に書きます。",
@@ -5215,6 +5228,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "この Mac はオフラインです。何も送信されていません。接続が戻ってからもう一度お試しください。",
         "Open": "開く",
         "Open report": "レポートを開く",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "この文字起こしをあなたのキーで %@ に送り、すでに書かれたレポートを置き換えます。",
+        "Write a “%@” report?": "「%@」レポートを書きますか？",
+        "Write again with": "次のテンプレートでもう一度書く",
     ]
 
     static let ko: [String: String] = [
@@ -5832,7 +5848,6 @@ extension Localization {
         "Who “we” are and what to look for": "“우리”가 누구이고 무엇을 살펴볼지",
         "Write reports in": "보고서 작성 언어",
         "Writing · about a minute": "작성 중 · 약 1분",
-        "Written by %@, %@": "작성: %@, %@",
         "Written by Dictate on this Mac from the transcript": "이 Mac에서 Dictate가 기록을 바탕으로 작성",
         "Your %@ account refused the request for billing reasons.": "%@ 계정이 결제 문제로 요청을 거부했습니다.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "에이전트가 전사에서 채우는 양식입니다. 항목 이름이 제목이 되고, 모델이 각 제목 아래에 씁니다.",
@@ -5853,6 +5868,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "이 Mac은 오프라인입니다. 아무것도 보내지 않았으니 연결이 돌아오면 다시 시도하세요.",
         "Open": "열기",
         "Open report": "보고서 열기",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "이 전사를 내 키로 %@에 보내고 이미 작성된 보고서를 대체합니다.",
+        "Write a “%@” report?": "“%@” 보고서를 쓸까요?",
+        "Write again with": "다음 템플릿으로 다시 쓰기",
     ]
 
     static let vi: [String: String] = [
@@ -6470,7 +6488,6 @@ extension Localization {
         "Who “we” are and what to look for": "“Chúng tôi” là ai và cần tìm gì",
         "Write reports in": "Viết báo cáo bằng",
         "Writing · about a minute": "Đang viết · khoảng một phút",
-        "Written by %@, %@": "Viết bởi %@, %@",
         "Written by Dictate on this Mac from the transcript": "Viết bởi Dictate trên máy Mac này từ bản ghi",
         "Your %@ account refused the request for billing reasons.": "Tài khoản %@ của bạn đã từ chối yêu cầu vì lý do thanh toán.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Một biểu mẫu mà tác nhân điền từ bản ghi: tên trường trở thành tiêu đề, mô hình viết bên dưới mỗi tiêu đề.",
@@ -6491,6 +6508,9 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Mac này đang ngoại tuyến. Chưa gửi gì cả — hãy thử lại khi có kết nối.",
         "Open": "Mở",
         "Open report": "Mở báo cáo",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Gửi bản ghi này tới %@ bằng khóa của bạn và thay thế báo cáo đã viết.",
+        "Write a “%@” report?": "Viết báo cáo “%@”?",
+        "Write again with": "Viết lại với",
     ]
 
     static let tl: [String: String] = [
@@ -7108,7 +7128,6 @@ extension Localization {
         "Who “we” are and what to look for": "Sino ang “kami” at ano ang hahanapin",
         "Write reports in": "Isulat ang mga report sa",
         "Writing · about a minute": "Sinusulat · mga isang minuto",
-        "Written by %@, %@": "Isinulat ng %@, %@",
         "Written by Dictate on this Mac from the transcript": "Isinulat ng Dictate sa Mac na ito mula sa transcript",
         "Your %@ account refused the request for billing reasons.": "Tumanggi ang %@ account mo sa request dahil sa billing.",
         "A form the agent fills in from a transcript: field names become headings, the model writes under each.": "Isang form na pinupunan ng agent mula sa transcript: ang mga pangalan ng field ay nagiging heading, at sumusulat ang model sa ilalim ng bawat isa.",
@@ -7129,5 +7148,8 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Offline ang Mac na ito. Walang ipinadala — subukan ulit kapag bumalik na ang koneksyon.",
         "Open": "Buksan",
         "Open report": "Buksan ang report",
+        "Sends this transcript to %@ on your key and replaces the report already written.": "Ipinapadala ang transcript na ito sa %@ gamit ang key mo at pinapalitan ang report na naisulat na.",
+        "Write a “%@” report?": "Isulat ang report na “%@”?",
+        "Write again with": "Isulat muli gamit ang",
     ]
 }
