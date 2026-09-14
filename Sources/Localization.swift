@@ -808,6 +808,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Обновление уже в пути — установится само в ближайший спокойный момент.",
         "Downloading update %@…": "Скачивается обновление %@…",
         "Preparing update %@…": "Готовится обновление %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate обновился до %@. Что нового — в окне Meetings.",
     ]
 
     static let uk: [String: String] = [
@@ -1457,6 +1458,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Оновлення вже в дорозі — установиться саме у найближчий спокійний момент.",
         "Downloading update %@…": "Завантажується оновлення %@…",
         "Preparing update %@…": "Готується оновлення %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate оновився до %@. Що нового — у вікні Meetings.",
     ]
 
     static let es: [String: String] = [
@@ -2115,6 +2117,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Ya hay una actualización en camino: se instalará sola en el próximo momento tranquilo.",
         "Downloading update %@…": "Descargando la actualización %@…",
         "Preparing update %@…": "Preparando la actualización %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate se actualizó a %@. Las novedades están en la ventana Reuniones.",
     ]
 
     static let pt: [String: String] = [
@@ -2773,6 +2776,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Já há uma atualização a caminho: ela se instala sozinha no próximo momento tranquilo.",
         "Downloading update %@…": "Baixando a atualização %@…",
         "Preparing update %@…": "Preparando a atualização %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "O Dictate foi atualizado para %@. As novidades estão na janela Reuniões.",
     ]
 
     static let fr: [String: String] = [
@@ -3431,6 +3435,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Une mise à jour est déjà en route : elle s’installera d’elle-même au prochain moment calme.",
         "Downloading update %@…": "Téléchargement de la mise à jour %@…",
         "Preparing update %@…": "Préparation de la mise à jour %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate est passé à la version %@. Les nouveautés sont dans la fenêtre Réunions.",
     ]
 
     static let de: [String: String] = [
@@ -4089,6 +4094,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Ein Update ist bereits unterwegs – es installiert sich im nächsten ruhigen Moment selbst.",
         "Downloading update %@…": "Update %@ wird geladen …",
         "Preparing update %@…": "Update %@ wird vorbereitet …",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate wurde auf %@ aktualisiert. Die Neuigkeiten stehen im Meetings-Fenster.",
     ]
 
     static let zh: [String: String] = [
@@ -4747,6 +4753,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "更新已在下载中，会在下一个空闲时刻自动安装。",
         "Downloading update %@…": "正在下载更新 %@…",
         "Preparing update %@…": "正在准备更新 %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate 已更新到 %@。新功能见“会议”窗口。",
     ]
 
     static let ja: [String: String] = [
@@ -5405,6 +5412,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "アップデートはすでに進行中です。次の空いたタイミングで自動的にインストールされます。",
         "Downloading update %@…": "アップデート %@ をダウンロード中…",
         "Preparing update %@…": "アップデート %@ を準備中…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate は %@ に更新されました。新機能はミーティングウインドウにあります。",
     ]
 
     static let ko: [String: String] = [
@@ -6063,6 +6071,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "업데이트가 이미 진행 중입니다. 다음 한가한 순간에 자동으로 설치됩니다.",
         "Downloading update %@…": "업데이트 %@ 다운로드 중…",
         "Preparing update %@…": "업데이트 %@ 준비 중…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate가 %@(으)로 업데이트되었습니다. 새 기능은 회의 창에 있습니다.",
     ]
 
     static let vi: [String: String] = [
@@ -6721,6 +6730,7 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "Bản cập nhật đã đang tải — nó sẽ tự cài vào lúc rảnh tiếp theo.",
         "Downloading update %@…": "Đang tải bản cập nhật %@…",
         "Preparing update %@…": "Đang chuẩn bị bản cập nhật %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Dictate đã cập nhật lên %@. Có gì mới nằm trong cửa sổ Cuộc họp.",
     ]
 
     static let tl: [String: String] = [
@@ -7379,5 +7389,6 @@ extension Localization {
         "An update is already on its way — it installs itself at the next quiet moment.": "May update nang parating — mag-i-install ito nang kusa sa susunod na tahimik na sandali.",
         "Downloading update %@…": "Dina-download ang update %@…",
         "Preparing update %@…": "Inihahanda ang update %@…",
+        "Dictate updated to %@. What’s new is in the Meetings window.": "Na-update ang Dictate sa %@. Nasa window ng Meetings ang bago.",
     ]
 }

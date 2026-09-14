@@ -565,8 +565,11 @@ struct MeetingsView: View {
                         .foregroundStyle(DS.accentText)
                         .padding(.top, 1)
                     VStack(alignment: .leading, spacing: 4) {
+                        // Bold, on the selection tint: the plain grey line
+                        // this started as sat in the column unnoticed
+                        // (owner, first update to 3.3: "I saw nothing").
                         Text(Lf("Dictate updated to %@.", WhatsNew.currentVersion))
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12, weight: .semibold))
                             .lineSpacing(2)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 10) {
@@ -583,9 +586,13 @@ struct MeetingsView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.vertical, 10)
+                .background(DS.selectionTint, in: DS.shape)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
                 .overlay(alignment: .bottom) { Divider() }
             }
             if download.paused == .memory, Settings.shared.readMeetings, !session.isActive {

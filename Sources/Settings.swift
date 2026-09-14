@@ -209,6 +209,15 @@ final class Settings: @unchecked Sendable {
     /// offering the ask row; it does not care with whom.
     var askArchive: Bool { askProvider != nil }
 
+    /// The version whose first-launch notice has been shown.
+    var whatsNewNoticedVersion: String? {
+        get { d.string(forKey: "whatsNewNoticedVersion") }
+        set {
+            if let newValue { d.set(newValue, forKey: "whatsNewNoticedVersion") }
+            else { d.removeObject(forKey: "whatsNewNoticedVersion") }
+        }
+    }
+
     /// The version whose "what's new" the person has seen (or dismissed).
     var whatsNewShownVersion: String? {
         get { d.string(forKey: "whatsNewShownVersion") }

@@ -697,6 +697,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             MainActor.assumeIsolated { self?.installPendingUpdateNow() }
         }
         noticeModelBelowFloorOnce()
+        // The first launch on a new version: one line at the top of the
+        // screen saying where to look. Transient, no button; the strip in
+        // the meetings window is the thing itself and stays until seen.
+        if WhatsNew.pending, Settings.shared.whatsNewNoticedVersion != WhatsNew.currentVersion {
+            Settings.shared.whatsNewNoticedVersion = WhatsNew.currentVersion
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                TopNotice.show(Lf("Dictate updated to %@. What’s new is in the Meetings window.", WhatsNew.currentVersion))
+            }
+        }
 
         applyDebugShot()
     }
