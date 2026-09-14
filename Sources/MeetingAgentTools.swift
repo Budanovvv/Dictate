@@ -109,9 +109,19 @@ enum MeetingAgentTool: String, CaseIterable {
                 let names = meetings.map(\.url.lastPathComponent).joined(separator: "\n")
                 return "No meeting named \"\(file)\". The archive has:\n\(names)"
             }
+            // The report first, when there is one: a person's own fields,
+            // already answered — the agent should quote it before it
+            // re-derives the same thing from an hour of transcript.
             var text = Self.line(for: meeting) + "\n\n"
-                + meeting.entries.map { "[\($0.time)] \($0.speaker): \($0.text)" }
-                    .joined(separator: "\n")
+            if let report = meeting.report {
+                text += "Report (\(report.templateName), written by \(report.writer)):\n"
+                for answer in report.answers {
+                    text += "## \(answer.field)\n\(answer.isEmpty ? "Not discussed" : answer.text)\n"
+                }
+                text += "\nTranscript:\n"
+            }
+            text += meeting.entries.map { "[\($0.time)] \($0.speaker): \($0.text)" }
+                .joined(separator: "\n")
             if text.count > readCap {
                 let dropped = text.count - readCap
                 text = String(text.prefix(readCap))

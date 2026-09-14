@@ -41,17 +41,18 @@ enum ReportExport {
     // MARK: - The report's own file
 
     /// Where a report lives as a file of its own: a Reports folder inside
-    /// the archive, one Markdown file per meeting and template. A
-    /// subfolder, not a sibling — the archive reads every .md beside the
-    /// transcripts as a meeting. Written when the report is written, so
-    /// the card can open it and show it in Finder; rewritten on "Write
-    /// again".
+    /// the archive, one PDF per meeting and template — the format that
+    /// opens on every desk and travels in mail; the Markdown stays in the
+    /// meeting's file as the source. A subfolder, not a sibling: the
+    /// archive reads every .md beside the transcripts as a meeting.
+    /// Written when the report is written, so the card can open it and
+    /// show it in Finder; rewritten on "Write again".
     static var reportsDirectory: URL {
         MeetingArchive.directory.appendingPathComponent("Reports", isDirectory: true)
     }
 
     static func fileURL(for meeting: ArchivedMeeting, report: MeetingReport) -> URL {
-        reportsDirectory.appendingPathComponent(fileName(for: meeting, report: report) + ".md")
+        reportsDirectory.appendingPathComponent(fileName(for: meeting, report: report) + ".pdf")
     }
 
     /// Writes the file, creating the folder; the URL it landed at.
@@ -59,8 +60,9 @@ enum ReportExport {
     static func writeFile(for meeting: ArchivedMeeting, report: MeetingReport) -> URL? {
         let url = fileURL(for: meeting, report: report)
         try? FileManager.default.createDirectory(at: reportsDirectory, withIntermediateDirectories: true)
-        guard (try? markdown(meeting, report: report).write(to: url, atomically: true, encoding: .utf8)) != nil
-        else { return nil }
+        // A Markdown twin from the first build of this feature gives way.
+        try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("md"))
+        guard pdf(meeting, report: report, to: url) else { return nil }
         return url
     }
 

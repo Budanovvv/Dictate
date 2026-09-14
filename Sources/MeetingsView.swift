@@ -1064,6 +1064,7 @@ struct MeetingsView: View {
                              && sourceFilter == nil) {
                 starredOnly = false
                 recentOnly = false
+                reportsOnly = false
                 sourceFilter = nil
                 if selection == .ask, let newest = meetings.first {
                     selection = .archived(newest.url)
@@ -1074,15 +1075,27 @@ struct MeetingsView: View {
                 navRow(icon: starredOnly ? "star.fill" : "star", title: L("Starred"),
                        count: starredCount, selected: starredOnly) {
                     starredOnly.toggle()
-                    if starredOnly { recentOnly = false; sourceFilter = nil }
+                    if starredOnly { recentOnly = false; sourceFilter = nil; reportsOnly = false }
                     leaveAsk()
                 }
             }
             navRow(icon: "clock", title: L("Recently Added"),
                    selected: recentOnly) {
                 recentOnly.toggle()
-                if recentOnly { starredOnly = false; sourceFilter = nil }
+                if recentOnly { starredOnly = false; sourceFilter = nil; reportsOnly = false }
                 leaveAsk()
+            }
+            // The meetings with a report — the reports are meeting-bound
+            // documents, so the way to them is the library's own filter,
+            // the same row as Starred, not a window of their own.
+            let reportedCount = meetings.filter { $0.report != nil }.count
+            if reportedCount > 0 || reportsOnly {
+                navRow(icon: "doc.text", title: L("Reports"),
+                       count: reportedCount, selected: reportsOnly) {
+                    reportsOnly.toggle()
+                    if reportsOnly { starredOnly = false; recentOnly = false; sourceFilter = nil }
+                    leaveAsk()
+                }
             }
             let sources = sourcesPresent
             // Shown whenever anything is bucketed at all (design): even one
@@ -1844,6 +1857,7 @@ struct MeetingsView: View {
     private var filtered: [ArchivedMeeting] {
         var out = MeetingSearch.literal(meetings, query: query)
         if starredOnly { out = out.filter { MeetingStars.isStarred($0.started) } }
+        if reportsOnly { out = out.filter { $0.report != nil } }
         if recentOnly {
             let cutoff = Date().addingTimeInterval(-7 * 86400)
             out = out.filter { $0.started >= cutoff }
@@ -1950,6 +1964,7 @@ struct MeetingsView: View {
     @State private var starredOnly = false
     /// The sidebar's Recently Added filter (design): the last seven days.
     @State private var recentOnly = false
+    @State private var reportsOnly = false
     @State private var sourceFilter: String?
 
     /// The connect sheet, and the question that opened it — asked the moment
