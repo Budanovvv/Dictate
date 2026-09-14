@@ -574,27 +574,75 @@ enum MeetingArchive {
     /// it on the main thread first — the localization table is not something
     /// to read while the user may be switching languages on main.
     static func list(youLabel: String) -> [ArchivedMeeting] {
+        list(in: directory, youLabel: youLabel)
+    }
+
+    /// The index over the files (2026-09-14): a meeting is parsed once and
+    /// kept by its file's fingerprint — path, modification date, size — and
+    /// the label it was parsed with. Every later listing reads the folder's
+    /// attributes only and re-parses just the files that changed: a summary
+    /// or a report landing in ONE meeting used to re-read all forty. The
+    /// files stay the truth; this forgets itself when the app quits and is
+    /// rebuilt from them. When cold starts outgrow this (hundreds of
+    /// meetings), the next layer is the same index on disk with the
+    /// transcript read lazily — not a database that could disagree with
+    /// what Finder shows.
+    private struct Fingerprint: Equatable {
+        let modified: Date?
+        let size: Int?
+        let youLabel: String
+    }
+    private static let indexLock = NSLock()
+    nonisolated(unsafe) private static var index: [URL: (print: Fingerprint, meeting: ArchivedMeeting)] = [:]
+
+    /// What the last listing cost — files seen, files parsed, milliseconds —
+    /// for the log and for the day this needs the on-disk layer.
+    nonisolated(unsafe) private(set) static var lastListing: (files: Int, parsed: Int, ms: Int) = (0, 0, 0)
+
+    static func list(in directory: URL, youLabel: String) -> [ArchivedMeeting] {
+        let began = Date()
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.creationDateKey],
+            at: directory,
+            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles]) else { return [] }
-        return files
+        var parsed = 0
+        var seen = Set<URL>()
+        let meetings: [ArchivedMeeting] = files
             .filter { $0.pathExtension == "md" }
             .compactMap { url -> ArchivedMeeting? in
+                seen.insert(url)
+                let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .fileSizeKey])
+                let print = Fingerprint(modified: values?.contentModificationDate,
+                                        size: values?.fileSize, youLabel: youLabel)
+                if let hit = indexLock.withLock({ index[url] }), hit.print == print {
+                    return hit.meeting
+                }
                 guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+                parsed += 1
                 let created = startedDate(fileName: url.lastPathComponent)
-                    ?? (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+                    ?? values?.creationDate
                     ?? Date.distantPast
-                return ArchivedMeeting(id: url, url: url, started: created,
-                                       entries: parse(markdown: text, youLabel: youLabel),
-                                       title: parseTitle(markdown: text),
-                                       summary: parseSummary(markdown: text),
-                                       sections: parseSections(markdown: text),
-                                       tags: MeetingTags.parse(markdown: text),
-                                       source: parseSource(markdown: text),
-                                       reports: parseReports(markdown: text))
+                let meeting = ArchivedMeeting(id: url, url: url, started: created,
+                                              entries: parse(markdown: text, youLabel: youLabel),
+                                              title: parseTitle(markdown: text),
+                                              summary: parseSummary(markdown: text),
+                                              sections: parseSections(markdown: text),
+                                              tags: MeetingTags.parse(markdown: text),
+                                              source: parseSource(markdown: text),
+                                              reports: parseReports(markdown: text))
+                indexLock.withLock { index[url] = (print, meeting) }
+                return meeting
             }
             .sorted { $0.started > $1.started }
+        // Files that are gone — deleted, renamed — leave the index.
+        indexLock.withLock {
+            for url in index.keys where !seen.contains(url) { index[url] = nil }
+        }
+        let ms = Int(Date().timeIntervalSince(began) * 1000)
+        lastListing = (meetings.count, parsed, ms)
+        Log.d("archive: \(meetings.count) meetings, \(parsed) parsed, \(ms) ms")
+        return meetings
     }
 
     @discardableResult

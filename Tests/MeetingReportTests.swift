@@ -191,3 +191,54 @@ final class ReportRequestTests: XCTestCase {
         XCTAssertFalse(ReportTemplate(name: "T", fields: [ReportField(name: "")]).isUsable)
     }
 }
+
+/// The index over the files: a listing parses a file once and again only
+/// when the file changes; a file that goes away leaves the listing.
+final class MeetingIndexTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUp() {
+        folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dictate-index-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() { try? FileManager.default.removeItem(at: folder) }
+
+    private func write(_ name: String, _ text: String) {
+        try? text.write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+
+    func testUnchangedFilesAreNotParsedAgain() {
+        write("2026-09-14 09.00 — A.md", "# A\n_14 September 2026 at 9:00 AM_\n\nAbout A.\n\n**[09:00:01] You:** hi\n")
+        write("2026-09-14 10.00 — B.md", "# B\n_14 September 2026 at 10:00 AM_\n\nAbout B.\n\n**[10:00:01] You:** hey\n")
+        let first = MeetingArchive.list(in: folder, youLabel: "You")
+        XCTAssertEqual(first.count, 2)
+        XCTAssertEqual(MeetingArchive.lastListing.parsed, 2)
+        let second = MeetingArchive.list(in: folder, youLabel: "You")
+        XCTAssertEqual(second.count, 2)
+        XCTAssertEqual(MeetingArchive.lastListing.parsed, 0, "nothing changed, nothing re-read")
+        XCTAssertEqual(second.map(\.title), first.map(\.title))
+    }
+
+    func testChangedFileIsParsedAgainAndGoneFileLeaves() throws {
+        write("2026-09-14 09.00 — A.md", "# A\n_14 September 2026 at 9:00 AM_\n\nOld line.\n\n**[09:00:01] You:** hi\n")
+        _ = MeetingArchive.list(in: folder, youLabel: "You")
+        // A rewrite with a different size — the fingerprint moves even
+        // within the same second of modification time.
+        write("2026-09-14 09.00 — A.md", "# A\n_14 September 2026 at 9:00 AM_\n\nA newer, longer line here.\n\n**[09:00:01] You:** hi\n")
+        let changed = MeetingArchive.list(in: folder, youLabel: "You")
+        XCTAssertEqual(MeetingArchive.lastListing.parsed, 1)
+        XCTAssertEqual(changed.first?.summary, "A newer, longer line here.")
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("2026-09-14 09.00 — A.md"))
+        XCTAssertTrue(MeetingArchive.list(in: folder, youLabel: "You").isEmpty)
+    }
+
+    func testDifferentYouLabelParsesAgain() {
+        write("2026-09-14 09.00 — A.md", "# A\n_14 September 2026 at 9:00 AM_\n\nAbout A.\n\n**[09:00:01] Вы:** привет\n")
+        _ = MeetingArchive.list(in: folder, youLabel: "You")
+        let russian = MeetingArchive.list(in: folder, youLabel: "Вы")
+        XCTAssertEqual(MeetingArchive.lastListing.parsed, 1)
+        XCTAssertEqual(russian.first?.entries.first?.isYou, true)
+    }
+}
