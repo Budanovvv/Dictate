@@ -96,6 +96,9 @@ struct NewBadge: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(Capsule().fill(DS.accentText.opacity(0.12)))
+            // Its own width: in a header cluster the word was squeezed to
+            // a sliver.
+            .fixedSize()
             .accessibilityLabel(L("New in this version"))
     }
 }
