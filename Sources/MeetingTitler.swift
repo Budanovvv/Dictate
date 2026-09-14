@@ -456,6 +456,7 @@ enum MeetingTitler {
         // Apple hop for a Russian one, both take the on-device packs.
         let wanted = summaryLanguage.translationCode
         if let written = dominantLanguage(of: summary), written != wanted,
+           !plausibly(summary, isIn: wanted),
            #available(macOS 26, *),
            let translated = await translated(summary, from: written, to: wanted) {
             summary = translated
@@ -465,6 +466,17 @@ enum MeetingTitler {
             return nil
         }
         return summary
+    }
+
+    /// Whether the recogniser gives the wanted language a real chance: two
+    /// Russian lines of the 41 regenerated on 2026-09-14 came back as
+    /// "Kazakh" and went for a kk→ru hop that does not exist. Cyrillic
+    /// neighbours confuse a first guess; the hypotheses do not.
+    private static func plausibly(_ text: String, isIn language: String) -> Bool {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let odds = recognizer.languageHypotheses(withMaximum: 5)
+        return (odds[NLLanguage(rawValue: language)] ?? 0) >= 0.2
     }
 
     /// en → the meeting's language, the reverse of translatedToEnglish.
