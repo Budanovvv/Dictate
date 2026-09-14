@@ -1,376 +1,206 @@
 import AppKit
 import SwiftUI
 
-/// The template editor: a sheet on the Settings window. Left, the templates
-/// and the dot for the automatic one; right, the chosen template — its name,
-/// the Context, the field rows (name + instruction, drag to reorder, remove)
-/// and Add field. Every keystroke is saved: the file is a few kilobytes and
-/// a Save button would be the one control in Settings that lies about the
-/// others (design: ReportTemplates › editor).
-struct ReportTemplateEditor: View {
+/// The Templates tab of Settings — its own tab, shown once the agent is on,
+/// because "reports" is a thing a person goes looking for by name and would
+/// not find under Agent. Grouped-form rows like every other tab: which
+/// template, then its name, its Context, its fields; every keystroke is
+/// saved, as every change in this window takes effect immediately.
+struct ReportTemplatesSection: View {
     @ObservedObject private var store = ReportTemplateStore.shared
-    @ObservedObject private var reports = MeetingReports.shared
     @ObservedObject private var loc = Localization.shared
-    @Environment(\.dismiss) private var dismiss
 
     @State private var selection: UUID?
     @State private var draft: ReportTemplate?
-    @State private var showStarters = false
+    @State private var chooserOpen = false
+    @State private var startersOpen = false
     @State private var confirmRemove = false
-    @State private var confirmArchive = false
-    @State private var keepExisting = true
-    @State private var archiveCount = 0
-    @State private var archiveMeetings: [ArchivedMeeting] = []
-    @State private var automatic = Settings.shared.reportAutomatic
+    @State private var reportLanguage = Settings.shared.reportLanguage
     @FocusState private var focusedField: UUID?
 
-    init(select: UUID? = nil) {
-        _selection = State(initialValue: select)
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                sidebar.frame(width: 200)
-                Divider()
-                if let draft {
-                    editor(draft)
-                } else {
-                    empty
+        Section {
+            LabeledContent {
+                HStack(spacing: 10) {
+                    if !store.templates.isEmpty {
+                        PopupTrigger(label: draft?.name ?? L("Choose a template")) { chooserOpen.toggle() }
+                            .popover(isPresented: $chooserOpen, arrowEdge: .bottom) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(store.templates) { template in
+                                        PopupRow(title: template.name,
+                                                 subtitle: Lf("%d fields", template.usableFields.count),
+                                                 selected: template.id == selection) {
+                                            selection = template.id
+                                            chooserOpen = false
+                                        }
+                                    }
+                                }
+                                .padding(6)
+                                .frame(width: 240)
+                            }
+                    }
+                    Button(L("New template…")) { startersOpen.toggle() }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                        .popover(isPresented: $startersOpen, arrowEdge: .bottom) {
+                            StarterPicker { kind in
+                                let template = ReportTemplate.starter(kind)
+                                store.save(template)
+                                selection = template.id
+                                load()
+                                startersOpen = false
+                            }
+                        }
+                }
+            } label: {
+                rowLabel(L("Template"),
+                         L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
+            }
+        } header: { Text(L("Templates")) }
+
+        if let draft {
+            Section {
+                LabeledContent {
+                    TextField("", text: binding(draft, \.name), prompt: Text(L("Template name")))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 260)
+                        .accessibilityLabel(L("Template name"))
+                } label: {
+                    rowLabel(L("Name"), nil)
+                }
+                LabeledContent {
+                    TextField("", text: binding(draft, \.context),
+                              prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(2...4)
+                        .frame(maxWidth: 420)
+                        .accessibilityLabel(L("Context"))
+                } label: {
+                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.”"))
+                }
+                LabeledContent {
+                    fieldsControl(draft)
+                } label: {
+                    rowLabel(L("Fields"),
+                             L("A field with no instruction goes by its name alone. A field the call did not cover reads “Not discussed”."))
+                }
+            } header: { Text(draft.name.isEmpty ? L("New template") : draft.name) }
+
+            Section {
+                LabeledContent {
+                    ReportLanguagePicker(selection: $reportLanguage)
+                        .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
+                } label: {
+                    rowLabel(L("Write reports in"),
+                             L("Field names stay exactly as typed; only the text under them is written in this language."))
+                }
+                LabeledContent {
+                    HStack(spacing: 10) {
+                        Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
+                            .buttonStyle(.dsSmall).controlSize(.small)
+                        Button(L("Remove template…")) { confirmRemove = true }
+                            .buttonStyle(.dsSmall).controlSize(.small)
+                    }
+                    .confirmationDialog(Lf("Remove “%@”?", draft.name), isPresented: $confirmRemove,
+                                        titleVisibility: .visible) {
+                        Button(L("Remove template"), role: .destructive) {
+                            store.remove(id: draft.id)
+                            selection = store.templates.first?.id
+                            load()
+                        }
+                        Button(L("Cancel"), role: .cancel) {}
+                    } message: {
+                        Text(L("Reports already written with it stay in their meetings."))
+                    }
+                } label: {
+                    rowLabel(L("Written reports"),
+                             L("Every report written with this template, one file per meeting: Markdown, plain text or PDF, plus a CSV table."))
                 }
             }
-            Divider()
-            footer
         }
-        .frame(width: 720, height: 520)
-        .onAppear {
-            if selection == nil { selection = store.automatic?.id ?? store.templates.first?.id }
-            load()
-            if store.templates.isEmpty { showStarters = true }
-        }
-        .onChange(of: selection) { load() }
-        .onChange(of: draft) { _, now in
-            guard let now, now.id == selection else { return }
-            store.save(now)
-        }
-        .onReceive(NotificationCenter.default.publisher(
-            for: UserDefaults.didChangeNotification).receive(on: RunLoop.main)) { _ in
-            if automatic != Settings.shared.reportAutomatic { automatic = Settings.shared.reportAutomatic }
-        }
-        .sheet(isPresented: $showStarters) {
-            StarterPicker { kind in
-                let template = ReportTemplate.starter(kind)
-                store.save(template)
-                selection = template.id
+        // Invisible plumbing: which template is showing, and saving as you type.
+        Color.clear.frame(height: 0)
+            .onAppear {
+                if selection == nil { selection = store.templates.first?.id }
                 load()
             }
-        }
-        .confirmationDialog(Lf("Remove “%@”?", draft?.name ?? ""), isPresented: $confirmRemove,
-                            titleVisibility: .visible) {
-            Button(L("Remove template"), role: .destructive) {
-                if let id = draft?.id {
-                    store.remove(id: id)
+            .onChange(of: selection) { load() }
+            .onChange(of: store.templates.count) {
+                if draft == nil || !store.templates.contains(where: { $0.id == selection }) {
                     selection = store.templates.first?.id
                     load()
                 }
             }
-            Button(L("Cancel"), role: .cancel) {}
-        } message: {
-            Text(L("Reports already written with it stay in their meetings."))
-        }
-        .confirmationDialog(archiveTitle, isPresented: $confirmArchive, titleVisibility: .visible) {
-            Button(Lf("Report %d meetings", archiveCount)) {
-                guard let draft else { return }
-                reports.reportArchive(archiveMeetings, with: draft, keepExisting: keepExisting)
+            .onChange(of: draft) { _, now in
+                guard let now, now.id == selection, store.template(id: now.id) != now else { return }
+                store.save(now)
             }
-            Button(keepExisting ? L("Replace the reports already written")
-                                : L("Keep the reports already written")) {
-                keepExisting.toggle()
-                confirmArchive = true
-            }
-            Button(L("Cancel"), role: .cancel) {}
-        } message: {
-            Text(archiveMessage)
-        }
     }
 
-    // MARK: - Sidebar
+    // MARK: - Fields
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(L("Report templates"))
-                .font(DS.windowTitle)
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 4)
-            Text(L("Field names become headings; the model writes under each."))
-                .font(DS.helpText)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 10)
-            ScrollView {
-                VStack(spacing: 1) {
-                    ForEach(store.templates) { template in
-                        templateRow(template)
-                    }
-                }
-                .padding(.horizontal, 8)
-            }
-            Spacer(minLength: 0)
-            Button {
-                showStarters = true
-            } label: {
-                Label(L("New template"), systemImage: "plus")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(DS.accentText)
-            .padding(16)
-            .accessibilityLabel(L("New template"))
-        }
-        .background(SidebarMaterial())
-    }
-
-    private func templateRow(_ template: ReportTemplate) -> some View {
-        let selected = template.id == selection
-        let isAutomatic = template.id == Settings.shared.reportAutomaticTemplateID
-        return Button {
-            selection = template.id
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(isAutomatic ? DS.accent : Color.clear)
-                    .overlay(Circle().strokeBorder(isAutomatic ? Color.clear : Color.primary.opacity(0.2), lineWidth: 1))
-                    .frame(width: 7, height: 7)
-                    .opacity(isAutomatic && !automatic ? 0.35 : 1)
-                Text(template.name.isEmpty ? L("New template") : template.name)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .contentShape(Rectangle())
-            .padding(.vertical, 5)
-            .padding(.horizontal, 10)
-        }
-        .buttonStyle(.plain)
-        .background(
-            HStack(spacing: 0) {
-                if selected {
-                    RoundedRectangle(cornerRadius: 1.5).fill(DS.accent).frame(width: DS.selectionEdge)
-                }
-                Rectangle().fill(selected ? DS.selectionTint : .clear)
-            }
-        )
-        .hoverHighlight()
-        .clipShape(DS.shape)
-        .accessibilityLabel(template.name)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var empty: some View {
-        VStack(spacing: 10) {
-            Text(L("No templates yet."))
-                .font(DS.windowTitle)
-            Text(L("Start from one of these and change anything: four or five fields with instructions, and an example Context."))
-                .font(DS.helpText)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
-            Button(L("New template…")) { showStarters = true }
-                .buttonStyle(.dsPrimary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Editor
-
-    private func editor(_ template: ReportTemplate) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                TextField("", text: binding(template, \.name), prompt: Text(L("Template name")))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 17, weight: .semibold))
-                    .accessibilityLabel(L("Template name"))
-
-                automaticRow(template)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text(L("Context")).font(DS.sectionLabel)
-                        Text(L("· optional, applies to the whole template"))
-                            .font(DS.helpText).foregroundStyle(.secondary)
-                    }
-                    TextField("", text: binding(template, \.context),
-                              prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
+    private func fieldsControl(_ template: ReportTemplate) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(template.fields.enumerated()), id: \.element.id) { index, field in
+                HStack(spacing: 6) {
+                    TextField("", text: fieldBinding(index, \.name), prompt: Text(L("Field name")))
                         .textFieldStyle(.roundedBorder)
-                        .lineLimit(2...4)
-                        .accessibilityLabel(L("Context"))
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L("Fields")).font(DS.sectionLabel)
-                    fieldsList(template)
-                    Button {
-                        var updated = template
-                        let field = ReportField(name: "")
-                        updated.fields.append(field)
-                        draft = updated
-                        focusedField = field.id
-                    } label: {
-                        Label(L("Add field"), systemImage: "plus")
+                        .frame(width: 150)
+                        .focused($focusedField, equals: field.id)
+                        .accessibilityLabel(L("Field name"))
+                    TextField("", text: fieldBinding(index, \.instruction),
+                              prompt: Text(L("Instruction (optional)")))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 180)
+                        .accessibilityLabel(L("Instruction (optional)"))
+                    Button { move(index, by: -1) } label: {
+                        Image(systemName: "chevron.up").font(.caption)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(DS.accentText)
-                    .padding(.top, 2)
-                    Text(L("A field with no instruction goes by its name alone. A field the call did not cover reads “Not discussed”."))
-                        .font(DS.helpText)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(.secondary)
+                    .disabled(index == 0)
+                    .accessibilityLabel(L("Move up"))
+                    Button { move(index, by: 1) } label: {
+                        Image(systemName: "chevron.down").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(index == template.fields.count - 1)
+                    .accessibilityLabel(L("Move down"))
+                    Button {
+                        var updated = template
+                        updated.fields.removeAll { $0.id == field.id }
+                        draft = updated
+                    } label: {
+                        Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L("Remove field"))
                 }
             }
-            .padding(20)
-        }
-    }
-
-    private func automaticRow(_ template: ReportTemplate) -> some View {
-        let marked = template.id == Settings.shared.reportAutomaticTemplateID
-        return VStack(alignment: .leading, spacing: 3) {
-            Toggle(isOn: Binding(
-                get: { marked },
-                set: { on in store.setAutomatic(id: on ? template.id : nil) }
-            )) {
-                Text(L("Runs after every call"))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .disabled(!automatic)
-            if !automatic {
-                Text(L("Automatic reports are off in Settings."))
-                    .font(DS.helpText)
-                    .foregroundStyle(.secondary)
-            } else if marked {
-                Text(L("The one template that runs after every call. Marking another moves the dot."))
-                    .font(DS.helpText)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func fieldsList(_ template: ReportTemplate) -> some View {
-        List {
-            ForEach(template.fields) { field in
-                fieldRow(field, template: template)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
-            }
-            .onMove { from, to in
-                var updated = template
-                updated.fields.move(fromOffsets: from, toOffset: to)
-                draft = updated
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .frame(height: CGFloat(max(template.fields.count, 1)) * 34 + 8)
-    }
-
-    private func fieldRow(_ field: ReportField, template: ReportTemplate) -> some View {
-        let index = template.fields.firstIndex { $0.id == field.id } ?? 0
-        return HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-            TextField("", text: fieldBinding(index, \.name), prompt: Text(L("Field name")))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 170)
-                .focused($focusedField, equals: field.id)
-                .accessibilityLabel(L("Field name"))
-            TextField("", text: fieldBinding(index, \.instruction), prompt: Text(L("Instruction (optional)")))
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel(L("Instruction (optional)"))
             Button {
                 var updated = template
-                updated.fields.removeAll { $0.id == field.id }
+                let field = ReportField(name: "")
+                updated.fields.append(field)
                 draft = updated
+                focusedField = field.id
             } label: {
-                Image(systemName: "minus.circle")
-                    .foregroundStyle(.secondary)
+                Label(L("Add field"), systemImage: "plus")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L("Remove field"))
+            .buttonStyle(.dsSmall)
+            .controlSize(.small)
+            .padding(.top, 2)
         }
     }
 
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Lf("Reports are written in %@ (Settings › Agent). Field names stay exactly as typed.",
-                        (Settings.shared.reportLanguage ?? Localization.shared.effective).label))
-                    .font(DS.helpText)
-                    .foregroundStyle(.secondary)
-                if let run = reports.archiveRun {
-                    Text(Lf("Writing “%@” reports: %d of %d.", run.templateName, run.done, run.total))
-                        .font(DS.helpText)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-            if let draft, draft.isUsable {
-                if reports.archiveRun != nil {
-                    Button(L("Cancel · keeps the written")) { reports.cancelArchiveRun() }
-                        .buttonStyle(.dsSmall).controlSize(.small)
-                } else {
-                    Button(L("Report past meetings…")) { prepareArchiveRun(draft) }
-                        .buttonStyle(.dsSmall).controlSize(.small)
-                        .disabled(Settings.shared.askProvider == nil)
-                    Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
-                        .buttonStyle(.dsSmall).controlSize(.small)
-                }
-                Button(L("Remove template…")) { confirmRemove = true }
-                    .buttonStyle(.dsSmall).controlSize(.small)
-            }
-            Button(L("Done")) { dismiss() }
-                .buttonStyle(.dsPrimary)
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+    private func move(_ index: Int, by offset: Int) {
+        guard var updated = draft, updated.fields.indices.contains(index),
+              updated.fields.indices.contains(index + offset) else { return }
+        updated.fields.swapAt(index, index + offset)
+        draft = updated
     }
 
-    private var archiveTitle: String {
-        guard let draft else { return "" }
-        return Lf("Report %d past meetings with “%@”?", archiveCount, draft.name)
-    }
-
-    private var archiveMessage: String {
-        let vendor = (Settings.shared.askProvider ?? .anthropic).vendorName
-        var text = Lf("Sends %d whole transcripts to %@ on your key. Runs in the background; you can keep working.",
-                      archiveCount, vendor)
-        let already = archiveMeetings.filter { $0.report?.templateID == draft?.id }.count
-        if already > 0 {
-            text += "\n\n" + (keepExisting
-                ? Lf("Keeping the %d already written with this template.", already)
-                : Lf("Replacing the %d already written with this template.", already))
-        }
-        return text
-    }
-
-    private func prepareArchiveRun(_ template: ReportTemplate) {
-        let youLabel = L("You")
-        DispatchQueue.global(qos: .userInitiated).async {
-            let meetings = MeetingArchive.list(youLabel: youLabel).filter { !$0.entries.isEmpty }
-            DispatchQueue.main.async {
-                archiveMeetings = meetings
-                archiveCount = meetings.count
-                keepExisting = true
-                confirmArchive = !meetings.isEmpty
-            }
-        }
-    }
-
-    // MARK: - Bindings
+    // MARK: - Plumbing
 
     private func load() {
         draft = selection.flatMap { store.template(id: $0) }
@@ -397,108 +227,38 @@ struct ReportTemplateEditor: View {
             }
         )
     }
-}
 
-/// "New template": four starters, each a name, its fields and an example
-/// Context. Blank is the fourth.
-private struct StarterPicker: View {
-    let choose: (ReportTemplate.StarterKind) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var picked: ReportTemplate.StarterKind = .sales
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L("New template")).font(DS.windowTitle)
-            Text(L("Start from one of these and change anything: four or five fields with instructions, and an example Context."))
-                .font(DS.helpText)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(spacing: 4) {
-                ForEach(ReportTemplate.StarterKind.allCases, id: \.self) { kind in
-                    let template = ReportTemplate.starter(kind)
-                    Button {
-                        picked = kind
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: picked == kind ? "largecircle.fill.circle" : "circle")
-                                .foregroundStyle(picked == kind ? DS.accent : .secondary)
-                                .padding(.top, 1)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(template.name).fontWeight(.medium)
-                                if kind == .blank {
-                                    Text(L("One empty field. You name it."))
-                                        .font(DS.helpText).foregroundStyle(.secondary)
-                                } else {
-                                    Text(template.fields.map(\.name).joined(separator: " · "))
-                                        .font(DS.helpText).foregroundStyle(.secondary)
-                                    Text(Lf("Context: %@", template.context))
-                                        .font(DS.helpText).foregroundStyle(.tertiary)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .contentShape(Rectangle())
-                        .padding(8)
-                    }
-                    .buttonStyle(.plain)
-                    .background(picked == kind ? DS.selectionTint : .clear)
-                    .clipShape(DS.shape)
-                }
-            }
-            HStack {
-                Spacer()
-                Button(L("Cancel")) { dismiss() }
-                    .buttonStyle(.dsRegular)
-                    .keyboardShortcut(.cancelAction)
-                Button(L("Create")) {
-                    choose(picked)
-                    dismiss()
-                }
-                .buttonStyle(.dsPrimary)
-                .keyboardShortcut(.defaultAction)
+    /// The same row label as the rest of the Settings window.
+    private func rowLabel(_ title: String, _ hint: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            if let hint {
+                Text(hint).font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(20)
-        .frame(width: 440)
     }
 }
 
-/// The ask-first moment before macOS's own permission dialog: shown once,
-/// when automatic reports are first turned on. Not now means macOS is never
-/// asked (design: Notices › permission).
-struct ReportNotificationAskCard: View {
-    @Environment(\.dismiss) private var dismiss
+/// "New template": four starters in the app's own popup vocabulary — a
+/// name, its fields and an example Context. Blank is the fourth.
+private struct StarterPicker: View {
+    let choose: (ReportTemplate.StarterKind) -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "bell.badge")
-                .font(.system(size: 26))
-                .foregroundStyle(DS.accent)
-            Text(L("Dictate will tell you when a report is written while you're away."))
-                .font(.system(size: 14.5, weight: .semibold))
-                .multilineTextAlignment(.center)
-            Text(L("Reports are written after a call ends, sometimes hours later if this Mac was offline. A notification says when one lands or could not be written. macOS asks next."))
-                .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 9) {
-                Button(L("Not now")) {
-                    MeetingReports.shared.allowNotifications(false)
-                    dismiss()
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(ReportTemplate.StarterKind.allCases, id: \.self) { kind in
+                let template = ReportTemplate.starter(kind)
+                PopupRow(title: template.name,
+                         subtitle: kind == .blank ? L("One empty field. You name it.")
+                                                  : template.fields.map(\.name).joined(separator: " · "),
+                         selected: false) {
+                    choose(kind)
                 }
-                .buttonStyle(.dsWide)
-                .keyboardShortcut(.cancelAction)
-                Button(L("Allow notifications")) {
-                    MeetingReports.shared.allowNotifications(true)
-                    dismiss()
-                }
-                .buttonStyle(.dsWidePrimary)
-                .keyboardShortcut(.defaultAction)
             }
-            .padding(.top, 6)
         }
-        .padding(22)
-        .frame(width: 404)
+        .padding(6)
+        .frame(width: 300)
     }
 }

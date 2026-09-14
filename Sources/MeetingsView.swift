@@ -1013,30 +1013,19 @@ struct MeetingsView: View {
         return facts
     }
 
-    /// The ⋯ menu's report rows: one "Write a report" per template while
-    /// the agent is on — no threshold, on demand is the person's call — and
-    /// the copy and export of a report already written.
+    /// The ⋯ menu's report rows: the copy and export of a report already
+    /// written. Writing one lives on the card itself, where the template
+    /// is chosen.
     private func reportMenuActions(for meeting: ArchivedMeeting) -> [TranscriptMenuAction] {
-        var actions: [TranscriptMenuAction] = []
-        if Settings.shared.askArchive, !reports.isBusy(meeting.url) {
-            let templates = templateStore.templates.filter(\.isUsable)
-            for (index, template) in templates.enumerated() {
-                actions.append(TranscriptMenuAction(
-                    title: templates.count == 1 ? L("Write a report") : Lf("Write a report · %@", template.name),
-                    dividerBefore: index == 0) {
-                    reports.write(meeting.url, with: template)
-                })
-            }
-        }
-        if let report = meeting.report {
-            actions.append(TranscriptMenuAction(title: L("Copy report"), dividerBefore: actions.isEmpty) {
+        guard let report = meeting.report else { return [] }
+        return [
+            TranscriptMenuAction(title: L("Copy report"), dividerBefore: true) {
                 TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
-            })
-            actions.append(TranscriptMenuAction(title: L("Export report…")) {
+            },
+            TranscriptMenuAction(title: L("Export report…")) {
                 ReportExport.exportOne(meeting)
-            })
-        }
-        return actions
+            },
+        ]
     }
 
     // MARK: - Detail
@@ -1388,12 +1377,7 @@ struct MeetingsView: View {
                     Button(L("Set up a template")) {
                         Settings.shared.reportOfferDismissed = true
                         reportOfferHidden = true
-                        openSettingsWindow(tab: "agent")
-                        // A beat later: a Settings window created by the
-                        // line above has not subscribed yet.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            NotificationCenter.default.post(name: .init("dictate.editReportTemplates"), object: nil)
-                        }
+                        openSettingsWindow(tab: "templates")
                     }
                     .buttonStyle(.dsSmall).controlSize(.small)
                     Button(L("Not now")) {
@@ -1672,6 +1656,9 @@ struct MeetingsView: View {
                                        TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
                                    }
                                },
+                               reportTemplates: templateStore.templates.filter(\.isUsable),
+                               reportsAvailable: Settings.shared.askArchive,
+                               onOpenTemplates: { openSettingsWindow(tab: "templates") },
                                onRecut: { recut(meeting, to: $0) },
                                onGrow: { detail, done in growCut(meeting, to: detail, done: done) },
                                recutting: recutting == meeting.url,
@@ -2777,6 +2764,12 @@ private struct TranscriptPane: View {
     /// failure, and the ⋯ menu's row.
     var onWriteReport: ((ReportTemplate) -> Void)? = nil
     var onCopyReport: (() -> Void)? = nil
+    /// The templates a report can be written from, and whether the agent
+    /// is there to write one. Empty templates with the agent on shows the
+    /// way to Settings › Templates instead of a control that does nothing.
+    var reportTemplates: [ReportTemplate] = []
+    var reportsAvailable = false
+    var onOpenTemplates: (() -> Void)? = nil
     /// Recut this meeting's contents at a chosen granularity. nil where there
     /// is nothing to recut — a live call has no contents yet. The pane holds
     /// the control because that is where somebody is looking at the result;
@@ -2836,6 +2829,9 @@ private struct TranscriptPane: View {
     /// Fewer / Standard / More — how deep the tree SHOWS (owner's report:
     /// the control used to re-cut the file and visibly change nothing).
     @State private var outlineDepth: OutlineDepth = .more
+    /// Which template the card's "Write report" uses; nil means the first.
+    @State private var chosenTemplate: UUID?
+    @State private var templateChooserOpen = false
     /// Granularities a grow came back empty for (too short to cut, or the
     /// model refused more than half) — skipped for the rest of this view's
     /// life, or the depth control would ask for them on every turn.
@@ -3403,62 +3399,33 @@ private struct TranscriptPane: View {
     }
 
     /// The report between the summary and the outline: the finished one, or
-    /// where it stands. Absent — not an empty slot — for a meeting with
-    /// neither, so the archive is not papered with "no report" notices.
+    /// where it stands, and — with the agent on — the control that writes
+    /// one: the template, chosen here, and the button. Absent for a live
+    /// call and while the agent is off.
     @ViewBuilder
     private var reportBlock: some View {
-        if let report {
+        if live == nil, reportsAvailable || report != nil || reportPhase != nil {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(L("Report") + " · " + report.templateName)
+                    Text(report.map { L("Report") + " · " + $0.templateName } ?? L("Report"))
                         .font(DS.sectionLabel)
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                         .kerning(0.3)
-                    if let written = report.written {
+                    if let report, let written = report.written {
                         Text(Lf("Written by %@, %@", report.writer,
                                 written.formatted(date: .abbreviated, time: .shortened)))
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
                     Spacer(minLength: 0)
-                    if let onCopyReport {
+                    if report != nil, let onCopyReport {
                         Button(L("Copy"), action: onCopyReport)
                             .buttonStyle(.dsSmall)
                             .controlSize(.small)
                             .accessibilityLabel(L("Copy report"))
                     }
                 }
-                ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(answer.field)
-                            .font(.system(size: textScale.body, weight: .semibold))
-                        if answer.isEmpty {
-                            Text(L("Not discussed"))
-                                .font(.system(size: textScale.body))
-                                .foregroundStyle(.tertiary)
-                        } else {
-                            Text(answer.text)
-                                .font(.system(size: textScale.body))
-                                .lineSpacing(textScale.extraLeading / 2)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .frame(maxWidth: DS.readingMeasure, alignment: .leading)
-                Text(Lf("Filled only from the transcript. Written into this meeting’s file as “## Report · %@”, so it travels with the transcript.", report.templateName))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } else if let reportPhase {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L("Report"))
-                    .font(DS.sectionLabel)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .kerning(0.3)
                 switch reportPhase {
                 case .queued, .writing:
                     HStack(spacing: 8) {
@@ -3481,20 +3448,94 @@ private struct TranscriptPane: View {
                         .foregroundStyle(DS.warn)
                         .fixedSize(horizontal: false, vertical: true)
                     if kind == .outOfCredit {
-                        Text(L("Nothing was retried. Fix it in your provider account, then write the report from the ⋯ menu. Automatic reports pause until one succeeds."))
+                        Text(L("Nothing was retried. Fix it in your provider account, then write the report again once it is."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let onWriteReport, let template = ReportTemplateStore.shared.automatic
-                        ?? ReportTemplateStore.shared.templates.first(where: \.isUsable) {
-                        Button(L("Write it now")) { onWriteReport(template) }
-                            .buttonStyle(.dsSmall)
-                            .controlSize(.small)
+                case nil:
+                    EmptyView()
+                }
+                if let report {
+                    ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(answer.field)
+                                .font(.system(size: textScale.body, weight: .semibold))
+                            if answer.isEmpty {
+                                Text(L("Not discussed"))
+                                    .font(.system(size: textScale.body))
+                                    .foregroundStyle(.tertiary)
+                            } else {
+                                Text(answer.text)
+                                    .font(.system(size: textScale.body))
+                                    .lineSpacing(textScale.extraLeading / 2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
+                            }
+                        }
                     }
+                    .frame(maxWidth: DS.readingMeasure, alignment: .leading)
+                }
+                if reportsAvailable, reportPhase == nil || isFailed(reportPhase) {
+                    reportWriter
                 }
             }
             .frame(maxWidth: DS.readingMeasure, alignment: .leading)
+        }
+    }
+
+    private func isFailed(_ phase: MeetingReports.Phase?) -> Bool {
+        if case .failed = phase { return true }
+        return false
+    }
+
+    /// The template popup and the button. The popup is the app's own
+    /// PopupTrigger, the button its small style — nothing here is a new
+    /// species of control.
+    @ViewBuilder
+    private var reportWriter: some View {
+        if reportTemplates.isEmpty {
+            HStack(spacing: 10) {
+                Text(L("No templates yet."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let onOpenTemplates {
+                    Button(L("Set up templates…"), action: onOpenTemplates)
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                }
+            }
+        } else {
+            let chosen = reportTemplates.first { $0.id == chosenTemplate } ?? reportTemplates.first!
+            HStack(spacing: 10) {
+                PopupTrigger(label: chosen.name) { templateChooserOpen.toggle() }
+                    .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(reportTemplates) { template in
+                                PopupRow(title: template.name,
+                                         subtitle: Lf("%d fields", template.usableFields.count),
+                                         selected: template.id == chosen.id) {
+                                    chosenTemplate = template.id
+                                    templateChooserOpen = false
+                                }
+                            }
+                        }
+                        .padding(6)
+                        .frame(width: 240)
+                    }
+                if let onWriteReport {
+                    Button(report == nil ? L("Write report") : L("Write again")) { onWriteReport(chosen) }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                }
+            }
+            if report == nil {
+                Text(Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
+                        (Settings.shared.askProvider ?? .anthropic).vendorName))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

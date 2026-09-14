@@ -114,15 +114,15 @@ struct SettingsView: View {
     // the person's key — the provider, the key, what is sent, and reports —
     // in the one place the app already calls "Agent". Meetings is purely
     // local again: calendar names, reading, the meeting model.
-    private enum Tab: CaseIterable { case keys, languages, meetings, agent, general, thisMac }
+    // Templates is the seventh, and shows only once the agent is on: a
+    // report is the agent's work, and a tab for it with the agent off would
+    // be a door to a room with no floor.
+    private enum Tab: CaseIterable { case keys, languages, meetings, agent, templates, general, thisMac }
     @State private var tab: Tab = .keys
-    /// The report template editor, a sheet on this window.
-    @State private var showTemplateEditor = false
-    /// The ask-first card before macOS's own notification permission dialog.
-    @State private var askNotifications = false
-    @State private var reportAutomatic = Settings.shared.reportAutomatic
-    @State private var reportLanguage = Settings.shared.reportLanguage
-    @ObservedObject private var templateStore = ReportTemplateStore.shared
+
+    private var visibleTabs: [Tab] {
+        Tab.allCases.filter { $0 != .templates || askProvider != nil }
+    }
     /// The removal dialog for the meeting model.
     @State private var confirmRemoveModel = false
     /// The removal dialog for the debug audio dumps.
@@ -142,6 +142,7 @@ struct SettingsView: View {
         case .languages: return L("Languages")
         case .meetings: return L("Meetings")
         case .agent: return L("Agent")
+        case .templates: return L("Templates")
         case .general: return L("General")
         case .thisMac: return L("This Mac")
         }
@@ -153,6 +154,7 @@ struct SettingsView: View {
         case .languages: return "globe"
         case .meetings: return "video"
         case .agent: return "sparkles"
+        case .templates: return "doc.text"
         case .general: return "gearshape"
         case .thisMac: return "desktopcomputer"
         }
@@ -262,22 +264,11 @@ struct SettingsView: View {
             if nameFromCalendar != Settings.shared.nameMeetingsFromCalendar {
                 nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
             }
-            if reportAutomatic != Settings.shared.reportAutomatic { reportAutomatic = Settings.shared.reportAutomatic }
             if askProvider != Settings.shared.askProvider { askProvider = Settings.shared.askProvider }
         }
-        .sheet(isPresented: $showTemplateEditor) {
-            ReportTemplateEditor()
-        }
-        .sheet(isPresented: $askNotifications) {
-            ReportNotificationAskCard()
-        }
-        // The Meetings window asks for the editor by name (its first-run
-        // card, its Agent empty state).
-        .onReceive(NotificationCenter.default.publisher(
-            for: .init("dictate.editReportTemplates")).receive(on: RunLoop.main)) { _ in
-            tab = .agent
-            showTemplateEditor = true
-        }
+        // The Templates tab leaves with the agent: a tab that is showing
+        // when its reason goes away lands on the reason.
+        .onChange(of: askProvider) { _, now in if now == nil, tab == .templates { tab = .agent } }
         .onDisappear {
             captureMain.cancel()
             captureTranslate.cancel()
@@ -288,7 +279,7 @@ struct SettingsView: View {
     private var settingsSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
             Color.clear.frame(height: 40)   // the traffic lights' band
-            ForEach(Tab.allCases, id: \.self) { candidate in
+            ForEach(visibleTabs, id: \.self) { candidate in
                 Button {
                     tab = candidate
                 } label: {
@@ -338,6 +329,7 @@ struct SettingsView: View {
         case .languages: Form { languagesSection }.formStyle(.grouped)
         case .meetings: Form { meetingsSection }.formStyle(.grouped)
         case .agent: Form { agentSection }.formStyle(.grouped)
+        case .templates: Form { ReportTemplatesSection() }.formStyle(.grouped)
         case .general: Form { generalSection }.formStyle(.grouped)
         case .thisMac: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
         }
@@ -798,54 +790,20 @@ struct SettingsView: View {
             }
             LabeledContent {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L("A structured write-up of each call under fields you define once, such as Objections or Next steps. A field the call did not cover reads “Not discussed”."))
+                    Text(L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let gate = reportsGateLine {
+                    if let gate = reportsGateLine(hasKey: hasKey) {
                         Text(gate).font(.caption).foregroundStyle(DS.warn)
                             .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(L("The templates have their own tab, next to this one."))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             } label: {
                 rowLabel(L("Reports"), nil)
             }
-            LabeledContent {
-                templatesControl
-            } label: {
-                rowLabel(L("Templates"), nil)
-            }
-            LabeledContent {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(isOn: $reportAutomatic) {
-                        Text(L("Report every call automatically"))
-                    }
-                    .toggleStyle(.switch)
-                    .disabled(askProvider == nil || templateStore.templates.isEmpty)
-                    .onChange(of: reportAutomatic) { _, on in
-                        Settings.shared.reportAutomatic = on
-                        // The app's first system notification is asked for
-                        // only after its own card has said why — once.
-                        if on, !Settings.shared.reportNotificationsAsked { askNotifications = true }
-                    }
-                    Text(reportAutoHelp)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if Settings.shared.reportsPausedForBilling, let provider = askProvider {
-                        Text(Lf("Paused: your %@ account refused the last report for billing reasons. Automatic reports resume once one succeeds.", provider.vendorName))
-                            .font(.caption).foregroundStyle(DS.warn)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            } label: {
-                rowLabel(L("Automatic"), nil)
-            }
-            LabeledContent {
-                ReportLanguagePicker(selection: $reportLanguage)
-                    .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
-            } label: {
-                rowLabel(L("Write reports in"),
-                         L("Field names stay exactly as typed; only the text under them is written in this language."))
-            }
-            if let provider = askProvider {
+            if let provider = askProvider, hasKey {
                 LabeledContent {
                     Text(Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
                         .font(.caption).foregroundStyle(.secondary)
@@ -861,68 +819,23 @@ struct SettingsView: View {
         }
     }
 
+    /// One Keychain read per render of the section, not one per row: the
+    /// query is not free, and the window redraws on every keystroke.
+    private var hasKey: Bool {
+        _ = keyRevision
+        guard let provider = askProvider else { return false }
+        return APIKey.current(provider) != nil
+    }
+
     /// Why reports cannot run right now, when they cannot.
-    private var reportsGateLine: String? {
+    private func reportsGateLine(hasKey: Bool) -> String? {
         guard let provider = askProvider else {
             return L("Reports need the agent, which is off. Choose Claude or ChatGPT above to turn them on; the templates keep until then.")
         }
-        _ = keyRevision
-        guard APIKey.current(provider) != nil else {
+        guard hasKey else {
             return Lf("%@ is chosen but has no key. Add one above; reports start with the next call.", provider.productName)
         }
         return nil
-    }
-
-    private var reportAutoHelp: String {
-        if askProvider == nil { return L("Waiting on the agent above.") }
-        if templateStore.templates.isEmpty {
-            return L("Make a template first; the switch turns on once there is one to run.")
-        }
-        guard reportAutomatic else {
-            return L("Off: no report is written unless you ask for one from a meeting’s ⋯ menu.")
-        }
-        let name = templateStore.automatic?.name ?? templateStore.templates.first?.name ?? ""
-        return Lf("After each call ends, the “%@” template is filled in from the transcript in the background. Meetings under 5 minutes are skipped.", name)
-    }
-
-    /// The templates, the dot for the automatic one, and the way into the
-    /// editor. The dot is subordinate to the switch: with automatic off it
-    /// draws dimmed, so nothing here suggests reports are being written.
-    private var templatesControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if templateStore.templates.isEmpty {
-                Text(L("No templates yet.")).font(.caption).foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(templateStore.templates) { template in
-                        let marked = template.id == Settings.shared.reportAutomaticTemplateID
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(marked ? DS.accent : Color.clear)
-                                .overlay(Circle().strokeBorder(marked ? Color.clear : Color.primary.opacity(0.2), lineWidth: 1))
-                                .frame(width: 7, height: 7)
-                                .opacity(marked && !(reportAutomatic && askProvider != nil) ? 0.35 : 1)
-                            Text(template.name).lineLimit(1)
-                            Text(templateMeta(template, marked: marked))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            HStack(spacing: 10) {
-                Button(L("Edit templates…")) { showTemplateEditor = true }
-                    .buttonStyle(.dsSmall).controlSize(.small)
-            }
-        }
-    }
-
-    private func templateMeta(_ template: ReportTemplate, marked: Bool) -> String {
-        var meta = Lf("%d fields", template.usableFields.count)
-        if marked {
-            meta += " · " + (reportAutomatic && askProvider != nil
-                             ? L("runs after every call") : L("marked automatic"))
-        }
-        return meta
     }
 
     @ViewBuilder
@@ -1417,6 +1330,7 @@ struct SettingsView: View {
         case "languages": tab = .languages
         case "meetings": tab = .meetings
         case "agent": tab = .agent
+        case "templates": tab = askProvider != nil ? .templates : .agent
         case "general": tab = .general
         case "thismac": tab = .thisMac
         default: tab = .keys
