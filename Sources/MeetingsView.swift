@@ -1105,8 +1105,10 @@ struct MeetingsView: View {
                 }
                 // By template, the way Sources lists platforms: a report is
                 // found by its kind as much as by its meeting (design, the
-                // smart-folder rule). One sub-row per template in use.
-                ForEach(reportTemplatesPresent, id: \.name) { kind in
+                // smart-folder rule). One sub-row per template in use —
+                // shown while Reports is open, so eight templates are eight
+                // rows only for the person who went looking for them.
+                ForEach(reportsOnly ? reportTemplatesPresent : [], id: \.name) { kind in
                     navRow(icon: "doc.text", title: kind.name, count: kind.count,
                            selected: reportTemplateFilter == kind.name) {
                         if reportTemplateFilter == kind.name {
@@ -2840,6 +2842,7 @@ private struct TranscriptPane: View {
     /// Which of several reports the card shows (design: one document, a
     /// template switch — Fathom's and Granola's answer, not a stack).
     @State private var shownReport: String?
+    @State private var shownReportChooserOpen = false
     /// The template chosen from the pull-down, awaiting the person's yes.
     @State private var pendingTemplate: ReportTemplate?
     /// Granularities a grow came back empty for (too short to cut, or the
@@ -3522,7 +3525,29 @@ private struct TranscriptPane: View {
                         // The switch on its own line, at its own width: in
                         // the header row it shared with two buttons and a
                         // date, the template names lost their second word.
-                        if reports.count > 1 {
+                        // Up to three reports read as segments; more than
+                        // that would not fit a line, so the same popup as
+                        // the head's takes over.
+                        if reports.count > 3 {
+                            PopupTrigger(label: report.templateName) { shownReportChooserOpen.toggle() }
+                                .fixedSize()
+                                .popover(isPresented: $shownReportChooserOpen, arrowEdge: .bottom) {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        ForEach(Array(reports.enumerated()), id: \.offset) { _, candidate in
+                                            PopupRow(title: candidate.templateName,
+                                                     subtitle: candidate.written.map {
+                                                         $0.formatted(date: .abbreviated, time: .shortened)
+                                                     } ?? "",
+                                                     selected: candidate.templateName == report.templateName) {
+                                                shownReport = candidate.templateName
+                                                shownReportChooserOpen = false
+                                            }
+                                        }
+                                    }
+                                    .padding(6)
+                                    .frame(width: 260)
+                                }
+                        } else if reports.count > 1 {
                             DSSegmented(options: reports.map { ($0.templateName, $0.templateName) },
                                         selection: Binding(
                                             get: { report.templateName },
