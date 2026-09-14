@@ -32,6 +32,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// not wait for the quiet moment (owner, 2026-09-14: "it says it will
     /// install soon and gives me nothing to press").
     var installStagedUpdate: (() -> Void)?
+    /// What the updater is doing right now — "Downloading update 3.3…",
+    /// "Preparing update 3.3…" — while it is doing it. The one place the
+    /// silent update is visible before it is staged (owner, 2026-09-14:
+    /// "I pressed Check and saw nothing happening").
+    var updateProgress: String?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
@@ -362,6 +367,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settings.target = self
         menu.addItem(settings)
 
+        if let progress = updateProgress, stagedUpdateVersion == nil {
+            menu.addItem(Self.label(progress))
+        }
         if let staged = stagedUpdateVersion {
             let install = NSMenuItem(title: Lf("Install update %@ and relaunch", staged),
                                      action: #selector(installUpdateNow), keyEquivalent: "")

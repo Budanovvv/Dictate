@@ -918,6 +918,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     // MARK: - Sparkle: the manual probe's verdicts
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString
+        DispatchQueue.main.async { [weak self] in
+            self?.statusController.updateProgress = Lf("Downloading update %@…", version)
+        }
         guard manualUpdateProbe else { return }
         manualUpdateProbe = false
         startDownloadAfterProbe = true
@@ -925,6 +929,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             Log.d("updates: manual probe — v\(item.displayVersionString) available")
             TopNotice.show(Lf("Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.",
                                  item.displayVersionString))
+        }
+    }
+
+    func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString
+        DispatchQueue.main.async { [weak self] in
+            self?.statusController.updateProgress = Lf("Preparing update %@…", version)
+        }
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            Log.d("updates: aborted — \(error.localizedDescription)")
+            self?.statusController.updateProgress = nil
         }
     }
 
@@ -985,6 +1003,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             guard let self else { return }
             Log.d("update: v\(item.displayVersionString) staged — waiting for an idle moment to relaunch")
             self.pendingUpdateInstall = immediateInstallHandler
+            self.statusController.updateProgress = nil
             // Say so in the menu: the newer version already sits on disk
             // while every surface still describes the old process — the gap
             // that read as "About shows the wrong version".
