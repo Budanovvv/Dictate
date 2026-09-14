@@ -807,29 +807,15 @@ struct SettingsView: View {
                     rowLabel(provider.keyLabel, L("Your account, your usage"))
                 }
             }
-            LabeledContent {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."))
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let gate = reportsGateLine(hasKey: storedKey != nil) {
-                        Text(gate).font(.caption).foregroundStyle(DS.warn)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text(L("The templates have their own tab, next to this one."))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            } label: {
-                rowLabel(L("Reports"), nil)
-            }
+            // Whole-width rows, like This Mac's verdicts: a name and the
+            // sentences under it, nothing to put in a control column.
+            let gate = reportsGateLine(hasKey: storedKey != nil)
+            rowLabel(L("Reports"),
+                     L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."),
+                     note: gate ?? L("The templates have their own tab, next to this one."))
             if let provider = askProvider, storedKey != nil {
-                LabeledContent {
-                    Text(Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } label: {
-                    rowLabel(L("What is sent"), nil)
-                }
+                rowLabel(L("What is sent"),
+                         Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
             }
         } header: { Text(L("Agent")) } footer: {
             Text(askFooter)
@@ -1085,28 +1071,38 @@ struct SettingsView: View {
             Section {
                 LabeledContent {
                     TextField("", text: templateBinding(draft, \.name), prompt: Text(L("Template name")))
+                        .labelsHidden()
                         .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.leading)
                         .frame(width: 260)
                         .accessibilityLabel(L("Template name"))
                 } label: {
                     rowLabel(L("Name"), nil)
                 }
-                LabeledContent {
+                // Context and the fields take the whole row: a paragraph and
+                // a list have no business in a control column.
+                VStack(alignment: .leading, spacing: 8) {
+                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.”"))
                     TextField("", text: templateBinding(draft, \.context),
                               prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
+                        .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(2...4)
-                        .frame(maxWidth: 420)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel(L("Context"))
-                } label: {
-                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.”"))
                 }
-                LabeledContent {
-                    templateFields(draft)
-                } label: {
+                // The grouped form hands a row its ideal width and aligns
+                // its text trailing; a list of fields wants the whole row
+                // and its text at the left, so both are said explicitly.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+                VStack(alignment: .leading, spacing: 8) {
                     rowLabel(L("Fields"),
                              L("A field with no instruction goes by its name alone. A field the call did not cover reads “Not discussed”."))
+                    templateFields(draft)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
             } header: { Text(draft.name.isEmpty ? L("New template") : draft.name) }
 
             Section {
@@ -1147,37 +1143,49 @@ struct SettingsView: View {
             ForEach(Array(template.fields.enumerated()), id: \.element.id) { index, field in
                 HStack(spacing: 6) {
                     TextField("", text: fieldBinding(field.id, \.name), prompt: Text(L("Field name")))
+                        .labelsHidden()
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
+                        .frame(width: 190)
                         .focused($focusedTemplateField, equals: field.id)
                         .accessibilityLabel(L("Field name"))
                     TextField("", text: fieldBinding(field.id, \.instruction),
                               prompt: Text(L("Instruction (optional)")))
+                        .labelsHidden()
                         .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 180)
+                        .frame(maxWidth: .infinity)
                         .accessibilityLabel(L("Instruction (optional)"))
-                    Button { moveTemplateField(field.id, by: -1) } label: {
-                        Image(systemName: "chevron.up").font(.caption)
+                    HStack(spacing: 2) {
+                        Button { moveTemplateField(field.id, by: -1) } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 18, height: 18)
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .disabled(index == 0)
+                        .accessibilityLabel(L("Move up"))
+                        Button { moveTemplateField(field.id, by: 1) } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 18, height: 18)
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .disabled(index == template.fields.count - 1)
+                        .accessibilityLabel(L("Move down"))
+                        Button {
+                            var updated = template
+                            updated.fields.removeAll { $0.id == field.id }
+                            templateDraft = updated
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .font(.system(size: 13))
+                                .frame(width: 20, height: 18)
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel(L("Remove field"))
                     }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .disabled(index == 0)
-                    .accessibilityLabel(L("Move up"))
-                    Button { moveTemplateField(field.id, by: 1) } label: {
-                        Image(systemName: "chevron.down").font(.caption)
-                    }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .disabled(index == template.fields.count - 1)
-                    .accessibilityLabel(L("Move down"))
-                    Button {
-                        var updated = template
-                        updated.fields.removeAll { $0.id == field.id }
-                        templateDraft = updated
-                    } label: {
-                        Image(systemName: "minus.circle").foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L("Remove field"))
+                    .padding(.leading, 4)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button {
                 var updated = template
