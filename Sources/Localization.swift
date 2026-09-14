@@ -755,6 +755,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Что подняли и не закрыли, и кто за это отвечает",
         "Who does what, by when — one line per task": "Кто что делает и к какому сроку — по строке на задачу",
         "Why we met and what we set out to settle": "Зачем встречались и что собирались решить",
+        "%d more": "ещё %d",
     ]
 
     static let uk: [String: String] = [
@@ -1381,6 +1382,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Що порушили й не закрили, і хто за це відповідає",
         "Who does what, by when — one line per task": "Хто що робить і до якого терміну — по рядку на завдання",
         "Why we met and what we set out to settle": "Навіщо зустрічалися і що збиралися вирішити",
+        "%d more": "ще %d",
     ]
 
     static let es: [String: String] = [
@@ -2016,6 +2018,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Qué se planteó sin resolver, y quién se encarga",
         "Who does what, by when — one line per task": "Quién hace qué y para cuándo: una línea por tarea",
         "Why we met and what we set out to settle": "Por qué nos reunimos y qué queríamos resolver",
+        "%d more": "%d más",
     ]
 
     static let pt: [String: String] = [
@@ -2651,6 +2654,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "O que foi levantado e não resolvido, e quem é responsável",
         "Who does what, by when — one line per task": "Quem faz o quê, até quando — uma linha por tarefa",
         "Why we met and what we set out to settle": "Por que nos reunimos e o que queríamos resolver",
+        "%d more": "mais %d",
     ]
 
     static let fr: [String: String] = [
@@ -3286,6 +3290,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Ce qui a été soulevé sans être tranché, et qui s’en charge",
         "Who does what, by when — one line per task": "Qui fait quoi, pour quand — une ligne par tâche",
         "Why we met and what we set out to settle": "Pourquoi nous nous sommes réunis et ce que nous voulions trancher",
+        "%d more": "%d de plus",
     ]
 
     static let de: [String: String] = [
@@ -3921,6 +3926,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Was angesprochen, aber nicht geklärt wurde – und wer dafür zuständig ist",
         "Who does what, by when — one line per task": "Wer macht was bis wann – eine Zeile pro Aufgabe",
         "Why we met and what we set out to settle": "Warum wir uns getroffen haben und was wir klären wollten",
+        "%d more": "%d weitere",
     ]
 
     static let zh: [String: String] = [
@@ -4556,6 +4562,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "提出但未解决的事项，以及由谁负责",
         "Who does what, by when — one line per task": "谁做什么、何时完成——每项一行",
         "Why we met and what we set out to settle": "我们为什么开会、打算解决什么",
+        "%d more": "还有 %d 位",
     ]
 
     static let ja: [String: String] = [
@@ -5191,6 +5198,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "提起されたが未解決の事項と、その担当者",
         "Who does what, by when — one line per task": "誰が何をいつまでに——1 タスク 1 行",
         "Why we met and what we set out to settle": "なぜ集まり、何を決めようとしたか",
+        "%d more": "他 %d 人",
     ]
 
     static let ko: [String: String] = [
@@ -5826,6 +5834,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "제기되었지만 해결되지 않은 것과 그 담당자",
         "Who does what, by when — one line per task": "누가 무엇을 언제까지 — 작업당 한 줄",
         "Why we met and what we set out to settle": "왜 모였고 무엇을 결정하려 했는지",
+        "%d more": "%d명 더",
     ]
 
     static let vi: [String: String] = [
@@ -6461,6 +6470,7 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Điều gì được nêu nhưng chưa giải quyết, và ai chịu trách nhiệm",
         "Who does what, by when — one line per task": "Ai làm gì, đến khi nào — mỗi việc một dòng",
         "Why we met and what we set out to settle": "Vì sao chúng tôi họp và muốn giải quyết điều gì",
+        "%d more": "%d nữa",
     ]
 
     static let tl: [String: String] = [
@@ -7096,5 +7106,6 @@ extension Localization {
         "What was raised and not settled, and who owns it": "Ano ang nabanggit na hindi naresolba, at sino ang may hawak",
         "Who does what, by when — one line per task": "Sino ang gagawa ng ano, kailan — isang linya bawat gawain",
         "Why we met and what we set out to settle": "Bakit kami nagkita at ano ang nais naming ayusin",
+        "%d more": "%d pa",
     ]
 }

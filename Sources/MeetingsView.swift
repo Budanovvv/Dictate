@@ -2784,6 +2784,8 @@ private struct TranscriptPane: View {
     @State private var outlineDepth: OutlineDepth = .more
     /// Which template the card's "Write report" uses; nil means the first.
     @State private var templateChooserOpen = false
+    /// Whether a long call's folded voices are all on show.
+    @State private var voicesExpanded = false
     /// The template chosen from the pull-down, awaiting the person's yes.
     @State private var pendingTemplate: ReportTemplate?
     /// Granularities a grow came back empty for (too short to cut, or the
@@ -3027,15 +3029,29 @@ private struct TranscriptPane: View {
                                      arrowEdge: .bottom) { voiceInfoPopover }
                         }
                     }
+                    // A long call's cast folds (owner, 2026-09-14: a dozen
+                    // chips "is a mess"): the four who spoke most stay, the
+                    // rest sit behind one "+N more" chip in the same capsule.
+                    // Opened, they can be renamed; a rename — the reason to
+                    // open — folds them again, and so does the next meeting.
                     FlowRow(spacing: 6) {
-                        ForEach(speakingShares, id: \.name) { share in
+                        ForEach(visibleShares, id: \.name) { share in
                             VoiceChip(name: share.name, isYou: share.isYou,
-                                      minutes: share.minutes, onRename: onRename)
+                                      minutes: share.minutes) { old, new in
+                                onRename(old, new)
+                                voicesExpanded = false
+                            }
+                        }
+                        if foldedVoices > 0 || voicesExpanded {
+                            VoiceFoldChip(label: voicesExpanded ? L("Fewer") : Lf("%d more", foldedVoices)) {
+                                voicesExpanded.toggle()
+                            }
                         }
                     }
                 }
             }
             .padding(.bottom, 14)
+            .onChange(of: title) { voicesExpanded = false }
         }
         .padding(.top, 16)
         .padding(.horizontal, 24)
@@ -3150,6 +3166,26 @@ private struct TranscriptPane: View {
     /// next one starts, capped at 25 s (a cap because the gap after the LAST
     /// word of a monologue is silence, not speech). An estimate presented as
     /// one ("~14 min") — good enough for "who did the talking".
+    /// How many voices show before the rest fold. One more than this is
+    /// shown whole: a "+1 more" chip would take the room the chip takes.
+    private static let voiceLimit = 4
+
+    /// The voices on show: all of them when few or opened; otherwise the
+    /// ones who spoke most, in the order they first spoke.
+    private var visibleShares: [(name: String, isYou: Bool, minutes: Int)] {
+        let all = speakingShares
+        guard !voicesExpanded, all.count > Self.voiceLimit + 1 else { return all }
+        let kept = Set(all.enumerated()
+            .sorted { $0.element.minutes != $1.element.minutes
+                      ? $0.element.minutes > $1.element.minutes : $0.offset < $1.offset }
+            .prefix(Self.voiceLimit).map(\.element.name))
+        return all.filter { kept.contains($0.name) }
+    }
+
+    private var foldedVoices: Int {
+        max(0, speakingShares.count - visibleShares.count)
+    }
+
     private var speakingShares: [(name: String, isYou: Bool, minutes: Int)] {
         var seconds: [String: Int] = [:]
         var isYou: [String: Bool] = [:]
@@ -5453,6 +5489,30 @@ struct MeetingOutlineModel {
             nodes.append(node)
         }
         return .init(nodes: nodes, levels: used.count, momentCount: moments)
+    }
+}
+
+/// The "+N more" / "Fewer" chip that folds a long call's cast: the voice
+/// chip's own capsule, in the secondary colour, with no name to rename.
+private struct VoiceFoldChip: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .background(Capsule().fill(.quaternary.opacity(0.5)))
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .hoverEmphasis(scale: 1.03)
+        .pointerStyle(.link)
+        .accessibilityLabel(label)
     }
 }
 
