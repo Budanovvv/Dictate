@@ -67,8 +67,7 @@ enum ReportExport {
     }
 
     /// The file, written now if an older report never had one.
-    static func ensureFile(for meeting: ArchivedMeeting) -> URL? {
-        guard let report = meeting.report else { return nil }
+    static func ensureFile(for meeting: ArchivedMeeting, report: MeetingReport) -> URL? {
         let url = fileURL(for: meeting, report: report)
         if FileManager.default.fileExists(atPath: url.path) { return url }
         return writeFile(for: meeting, report: report)
@@ -76,8 +75,7 @@ enum ReportExport {
 
     // MARK: - One meeting
 
-    static func exportOne(_ meeting: ArchivedMeeting) {
-        guard let report = meeting.report else { return }
+    static func exportOne(_ meeting: ArchivedMeeting, report: MeetingReport) {
         let panel = NSSavePanel()
         panel.title = Lf("Export the “%@” report", report.templateName)
         panel.message = Lf("%@ · %@. The report stays in the meeting’s file either way; this makes a copy.",
@@ -115,7 +113,7 @@ enum ReportExport {
         let youLabel = L("You")
         DispatchQueue.global(qos: .userInitiated).async {
             let meetings = MeetingArchive.list(youLabel: youLabel)
-                .filter { $0.report?.templateID == template.id }
+                .filter { $0.reports.contains { $0.templateID == template.id } }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { exportAll(meetings, template: template) }
             }
@@ -147,7 +145,7 @@ enum ReportExport {
                 lastFormat = format
                 var written = 0
                 for meeting in meetings {
-                    guard let report = meeting.report else { continue }
+                    guard let report = meeting.reports.first(where: { $0.templateID == template.id }) else { continue }
                     let url = folder.appendingPathComponent(
                         fileName(for: meeting, report: report) + "." + format.fileExtension)
                     if write(meeting, report: report, format: format, to: url) { written += 1 }
@@ -234,7 +232,7 @@ enum ReportExport {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm"
         for meeting in meetings {
-            guard let report = meeting.report else { continue }
+            guard let report = meeting.reports.first(where: { $0.templateID == template.id }) else { continue }
             var row = [cell(MeetingReports.name(of: meeting)), cell(f.string(from: meeting.started))]
             for field in fields {
                 let answer = report.answers.first { $0.field == field }

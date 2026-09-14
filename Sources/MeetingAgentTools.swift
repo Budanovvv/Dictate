@@ -113,13 +113,14 @@ enum MeetingAgentTool: String, CaseIterable {
             // already answered — the agent should quote it before it
             // re-derives the same thing from an hour of transcript.
             var text = Self.line(for: meeting) + "\n\n"
-            if let report = meeting.report {
+            for report in meeting.reports {
                 text += "Report (\(report.templateName), written by \(report.writer)):\n"
                 for answer in report.answers {
                     text += "## \(answer.field)\n\(answer.isEmpty ? "Not discussed" : answer.text)\n"
                 }
-                text += "\nTranscript:\n"
+                text += "\n"
             }
+            if !meeting.reports.isEmpty { text += "Transcript:\n" }
             text += meeting.entries.map { "[\($0.time)] \($0.speaker): \($0.text)" }
                 .joined(separator: "\n")
             if text.count > readCap {

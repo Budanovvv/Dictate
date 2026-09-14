@@ -89,6 +89,56 @@ final class MeetingReportTests: XCTestCase {
         XCTAssertEqual(MeetingArchive.parseReport(markdown: both)?.answers.first?.text, "one")
     }
 
+    func testOneReportPerTemplateCoexist() {
+        let summary = MeetingReport(templateID: UUID(), templateName: "Meeting summary", writer: "Claude",
+                                    written: nil, answers: [.init(field: "Purpose", text: "why")])
+        let actions = MeetingReport(templateID: UUID(), templateName: "Decisions & actions", writer: "ChatGPT",
+                                    written: nil, answers: [.init(field: "Decisions", text: "yes")])
+        let one = MeetingArchive.applying(report: summary, heading: "Report", to: sample)
+        let two = MeetingArchive.applying(report: actions, heading: "Report", to: one)
+        let read = MeetingArchive.parseReports(markdown: two)
+        XCTAssertEqual(read.map(\.templateName), ["Meeting summary", "Decisions & actions"])
+        XCTAssertEqual(read.map(\.answers.first?.text), ["why", "yes"])
+        // The other parsers still see one summary, two sections, two entries.
+        XCTAssertEqual(MeetingArchive.parseSections(markdown: two).count, 2)
+        XCTAssertEqual(MeetingArchive.parse(markdown: two, youLabel: "You").count, 2)
+        XCTAssertEqual(MeetingArchive.parseSummary(markdown: two), "Northwind will renew if the per-seat price holds.")
+        // Both sit before the contents block.
+        let contents = two.range(of: "## Contents")!.lowerBound
+        XCTAssertLessThan(two.range(of: "Decisions & actions")!.lowerBound, contents)
+    }
+
+    func testSameTemplateReplacesOnlyItself() {
+        let id = UUID()
+        let first = MeetingReport(templateID: id, templateName: "Meeting summary", writer: "Claude",
+                                  written: nil, answers: [.init(field: "Purpose", text: "old")])
+        let other = MeetingReport(templateID: UUID(), templateName: "Decisions & actions", writer: "Claude",
+                                  written: nil, answers: [.init(field: "Decisions", text: "keep")])
+        let again = MeetingReport(templateID: id, templateName: "Meeting summary", writer: "ChatGPT",
+                                  written: nil, answers: [.init(field: "Purpose", text: "new")])
+        var text = MeetingArchive.applying(report: first, heading: "Report", to: sample)
+        text = MeetingArchive.applying(report: other, heading: "Report", to: text)
+        text = MeetingArchive.applying(report: again, heading: "Report", to: text)
+        let read = MeetingArchive.parseReports(markdown: text)
+        XCTAssertEqual(read.count, 2)
+        XCTAssertEqual(read.first { $0.templateID == id }?.answers.first?.text, "new")
+        XCTAssertEqual(read.first { $0.templateName == "Decisions & actions" }?.answers.first?.text, "keep")
+        XCTAssertEqual(text.components(separatedBy: MeetingArchive.reportMarkerPrefix).count - 1, 2)
+    }
+
+    func testRemovingOneTemplateKeepsTheOther() {
+        let id = UUID()
+        let a = MeetingReport(templateID: id, templateName: "A", writer: "Claude", written: nil,
+                              answers: [.init(field: "F", text: "a")])
+        let b = MeetingReport(templateID: UUID(), templateName: "B", writer: "Claude", written: nil,
+                              answers: [.init(field: "F", text: "b")])
+        let both = MeetingArchive.applying(report: b, heading: "Report",
+                                           to: MeetingArchive.applying(report: a, heading: "Report", to: sample))
+        let without = MeetingArchive.removingReport(from: both, templateID: id)
+        XCTAssertEqual(MeetingArchive.parseReports(markdown: without).map(\.templateName), ["B"])
+        XCTAssertTrue(MeetingArchive.parseReports(markdown: MeetingArchive.removingReport(from: both)).isEmpty)
+    }
+
     func testModelTextIsMadeSafe() {
         let cleaned = MeetingArchive.cleanReportText("## Heading\n\n\n**[10:00:00] Bob:** said\n- **[10:01:00]** bullet")
         XCTAssertFalse(cleaned.contains("#"))

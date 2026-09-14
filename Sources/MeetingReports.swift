@@ -96,9 +96,7 @@ final class MeetingReports: ObservableObject {
             }
             // And as a file of its own, in the archive's Reports folder —
             // what "Open" and "Show in Finder" on the card point at.
-            var reported = meeting
-            reported.report = report
-            ReportExport.writeFile(for: reported, report: report)
+            ReportExport.writeFile(for: meeting, report: report)
             phases[url] = nil
             written += 1
             Log.d("report: written for \(url.lastPathComponent)")
@@ -197,6 +195,6 @@ extension MeetingArchive {
                                sections: parseSections(markdown: text),
                                tags: MeetingTags.parse(markdown: text),
                                source: parseSource(markdown: text),
-                               report: parseReport(markdown: text))
+                               reports: parseReports(markdown: text))
     }
 }

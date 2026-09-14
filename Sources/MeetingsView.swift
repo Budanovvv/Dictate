@@ -982,7 +982,7 @@ struct MeetingsView: View {
         switch reports.phases[meeting.url] {
         case .queued, .writing: facts.append(L("Writing…"))
         case .failed: facts.append(L("Report not written"))
-        case nil: if meeting.report != nil { facts.append(L("Reported")) }
+        case nil: if !meeting.reports.isEmpty { facts.append(L("Reported")) }
         }
         return facts
     }
@@ -991,15 +991,20 @@ struct MeetingsView: View {
     /// written. Writing one lives on the card itself, where the template
     /// is chosen.
     private func reportMenuActions(for meeting: ArchivedMeeting) -> [TranscriptMenuAction] {
-        guard let report = meeting.report else { return [] }
-        return [
-            TranscriptMenuAction(title: L("Copy report"), dividerBefore: true) {
+        var actions: [TranscriptMenuAction] = []
+        for (index, report) in meeting.reports.enumerated() {
+            let one = meeting.reports.count == 1
+            actions.append(TranscriptMenuAction(
+                title: one ? L("Copy report") : Lf("Copy report · %@", report.templateName),
+                dividerBefore: index == 0) {
                 TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
-            },
-            TranscriptMenuAction(title: L("Export report…")) {
-                ReportExport.exportOne(meeting)
-            },
-        ]
+            })
+            actions.append(TranscriptMenuAction(
+                title: one ? L("Export report…") : Lf("Export report · %@…", report.templateName)) {
+                ReportExport.exportOne(meeting, report: report)
+            })
+        }
+        return actions
     }
 
     // MARK: - Detail
@@ -1088,7 +1093,7 @@ struct MeetingsView: View {
             // The meetings with a report — the reports are meeting-bound
             // documents, so the way to them is the library's own filter,
             // the same row as Starred, not a window of their own.
-            let reportedCount = meetings.filter { $0.report != nil }.count
+            let reportedCount = meetings.filter { !$0.reports.isEmpty }.count
             if reportedCount > 0 || reportsOnly {
                 navRow(icon: "doc.text", title: L("Reports"),
                        count: reportedCount, selected: reportsOnly) {
@@ -1588,16 +1593,16 @@ struct MeetingsView: View {
                                jumpTo: selection?.time,
                                overviewSummary: meeting.summary,
                                overviewSections: meeting.sections,
-                               report: meeting.report,
+                               reports: meeting.reports,
                                reportPhase: reports.phases[meeting.url],
                                onWriteReport: { reports.write(meeting.url, with: $0) },
-                               onOpenReport: {
-                                   if let file = ReportExport.ensureFile(for: meeting) {
+                               onOpenReport: { report in
+                                   if let file = ReportExport.ensureFile(for: meeting, report: report) {
                                        NSWorkspace.shared.open(file)
                                    }
                                },
-                               onRevealReport: {
-                                   if let file = ReportExport.ensureFile(for: meeting) {
+                               onRevealReport: { report in
+                                   if let file = ReportExport.ensureFile(for: meeting, report: report) {
                                        NSWorkspace.shared.activateFileViewerSelecting([file])
                                    }
                                },
@@ -1862,7 +1867,7 @@ struct MeetingsView: View {
     private var filtered: [ArchivedMeeting] {
         var out = MeetingSearch.literal(meetings, query: query)
         if starredOnly { out = out.filter { MeetingStars.isStarred($0.started) } }
-        if reportsOnly { out = out.filter { $0.report != nil } }
+        if reportsOnly { out = out.filter { !$0.reports.isEmpty } }
         if recentOnly {
             let cutoff = Date().addingTimeInterval(-7 * 86400)
             out = out.filter { $0.started >= cutoff }
@@ -2238,7 +2243,9 @@ struct MeetingsView: View {
         if let source = meeting.source { parts.append(source) }
         // A report, when there is one — the same fact the list row carries
         // as "Reported", named by its template here where there is room.
-        if let report = meeting.report { parts.append(L("Report") + " · " + report.templateName) }
+        if !meeting.reports.isEmpty {
+            parts.append(L("Report") + " · " + meeting.reports.map(\.templateName).joined(separator: ", "))
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -2713,15 +2720,15 @@ private struct TranscriptPane: View {
     /// outline (design ReportTemplates: paneDone) — and, while there is
     /// none, where one stands: queued, being written, waiting for a
     /// connection, refused.
-    var report: MeetingReport? = nil
+    var reports: [MeetingReport] = []
     var reportPhase: MeetingReports.Phase? = nil
     /// Writes a report from the given template — "Write it now" after a
     /// failure, and the ⋯ menu's row.
     var onWriteReport: ((ReportTemplate) -> Void)? = nil
     /// The report is a file of its own too (Reports folder): open it, or
     /// show it in Finder.
-    var onOpenReport: (() -> Void)? = nil
-    var onRevealReport: (() -> Void)? = nil
+    var onOpenReport: ((MeetingReport) -> Void)? = nil
+    var onRevealReport: ((MeetingReport) -> Void)? = nil
     /// The templates a report can be written from, and whether the agent
     /// is there to write one. Empty templates with the agent on shows the
     /// way to Settings › Templates instead of a control that does nothing.
@@ -3410,70 +3417,82 @@ private struct TranscriptPane: View {
     /// template and time, Open and Show in Finder, then the fields.
     @ViewBuilder
     private var reportBlock: some View {
-        if live == nil, report != nil || reportPhase != nil {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(L("Report"))
-                    .font(DS.sectionLabel)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .kerning(0.3)
-                switch reportPhase {
-                case .queued, .writing:
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text(L("Writing · about a minute"))
-                            .font(.system(size: textScale.body))
+        if live == nil, !reports.isEmpty || reportPhase != nil {
+            VStack(alignment: .leading, spacing: 18) {
+                if let reportPhase {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L("Report"))
+                            .font(DS.sectionLabel)
                             .foregroundStyle(.secondary)
-                    }
-                case .failed(let kind):
-                    let provider = Settings.shared.askProvider ?? .anthropic
-                    Text(Lf("Not written: %@", MeetingReports.failureLine(kind, provider: provider)))
-                        .font(.system(size: textScale.body))
-                        .foregroundStyle(DS.warn)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if kind == .outOfCredit {
-                        Text(L("Nothing was retried. Fix it in your provider account, then write the report again."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                case nil:
-                    EmptyView()
-                }
-                if let report {
-                    HStack(alignment: .center, spacing: 10) {
-                        Text(report.written.map {
-                            report.templateName + " · " + $0.formatted(date: .abbreviated, time: .shortened)
-                        } ?? report.templateName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                        if let onOpenReport {
-                            Button(L("Open"), action: onOpenReport)
-                                .buttonStyle(.dsSmall)
-                                .controlSize(.small)
-                                .accessibilityLabel(L("Open report"))
-                        }
-                        if let onRevealReport {
-                            Button(L("Show in Finder"), action: onRevealReport)
-                                .buttonStyle(.dsSmall)
-                                .controlSize(.small)
-                        }
-                    }
-                    ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(answer.field)
-                                .font(.system(size: textScale.body, weight: .semibold))
-                            if answer.isEmpty {
-                                Text(L("Not discussed"))
+                            .textCase(.uppercase)
+                            .kerning(0.3)
+                        switch reportPhase {
+                        case .queued, .writing:
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text(L("Writing · about a minute"))
                                     .font(.system(size: textScale.body))
-                                    .foregroundStyle(.tertiary)
-                            } else {
-                                Text(answer.text)
-                                    .font(.system(size: textScale.body))
-                                    .lineSpacing(textScale.extraLeading / 2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        case .failed(let kind):
+                            let provider = Settings.shared.askProvider ?? .anthropic
+                            Text(Lf("Not written: %@", MeetingReports.failureLine(kind, provider: provider)))
+                                .font(.system(size: textScale.body))
+                                .foregroundStyle(DS.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if kind == .outOfCredit {
+                                Text(L("Nothing was retried. Fix it in your provider account, then write the report again."))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
-                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                // One block per report, one report per template: a meeting
+                // summary and its decisions are two documents, not one
+                // overwriting the other.
+                ForEach(Array(reports.enumerated()), id: \.offset) { _, report in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .center, spacing: 10) {
+                            Text(L("Report") + " · " + report.templateName)
+                                .font(DS.sectionLabel)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .kerning(0.3)
+                            if let written = report.written {
+                                Text(written.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Spacer(minLength: 0)
+                            if let onOpenReport {
+                                Button(L("Open")) { onOpenReport(report) }
+                                    .buttonStyle(.dsSmall)
+                                    .controlSize(.small)
+                                    .accessibilityLabel(L("Open report"))
+                            }
+                            if let onRevealReport {
+                                Button(L("Show in Finder")) { onRevealReport(report) }
+                                    .buttonStyle(.dsSmall)
+                                    .controlSize(.small)
+                            }
+                        }
+                        ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(answer.field)
+                                    .font(.system(size: textScale.body, weight: .semibold))
+                                if answer.isEmpty {
+                                    Text(L("Not discussed"))
+                                        .font(.system(size: textScale.body))
+                                        .foregroundStyle(.tertiary)
+                                } else {
+                                    Text(answer.text)
+                                        .font(.system(size: textScale.body))
+                                        .lineSpacing(textScale.extraLeading / 2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .textSelection(.enabled)
+                                }
                             }
                         }
                     }
@@ -3497,7 +3516,8 @@ private struct TranscriptPane: View {
                 Text(L("Writing…")).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         } else {
-            PopupTrigger(label: report == nil ? L("Write report") : L("Report"),
+            let replacing = pendingTemplate.map { hasReport(from: $0) } ?? false
+            PopupTrigger(label: reports.isEmpty ? L("Write report") : L("Report"),
                          icon: "doc.text") { templateChooserOpen.toggle() }
                 // Its own width, whatever the title does: in the head's
                 // cluster a two-line title squeezed the label to nothing
@@ -3505,17 +3525,20 @@ private struct TranscriptPane: View {
                 .fixedSize()
                 .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
                     VStack(alignment: .leading, spacing: 0) {
-                        if report != nil {
-                            PopupRow(title: L("Open report"), icon: "doc.text", selected: false) {
-                                templateChooserOpen = false
-                                onOpenReport?()
+                        if !reports.isEmpty {
+                            ForEach(Array(reports.enumerated()), id: \.offset) { _, report in
+                                PopupRow(title: report.templateName, subtitle: L("Open report"),
+                                         icon: "doc.text", selected: false) {
+                                    templateChooserOpen = false
+                                    onOpenReport?(report)
+                                }
                             }
                             PopupRow(title: L("Show in Finder"), icon: "folder", selected: false) {
                                 templateChooserOpen = false
-                                onRevealReport?()
+                                if let first = reports.first { onRevealReport?(first) }
                             }
                             Divider().padding(.vertical, 4)
-                            Text(L("Write again with"))
+                            Text(L("Write with"))
                                 .font(DS.sectionLabel)
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 8)
@@ -3530,7 +3553,9 @@ private struct TranscriptPane: View {
                         } else {
                             ForEach(reportTemplates) { template in
                                 PopupRow(title: template.name,
-                                         subtitle: Lf("%d fields", template.usableFields.count),
+                                         subtitle: hasReport(from: template)
+                                            ? L("Written · replaces it")
+                                            : Lf("%d fields", template.usableFields.count),
                                          selected: false) {
                                     templateChooserOpen = false
                                     pendingTemplate = template
@@ -3542,25 +3567,31 @@ private struct TranscriptPane: View {
                     .frame(width: 260)
                 }
                 .accessibilityLabel(L("Write report"))
-                .confirmationDialog(report == nil
-                                    ? Lf("Write a “%@” report?", pendingTemplate?.name ?? "")
-                                    : Lf("Replace the report with a new “%@” one?", pendingTemplate?.name ?? ""),
+                .confirmationDialog(replacing
+                                    ? Lf("Replace the report with a new “%@” one?", pendingTemplate?.name ?? "")
+                                    : Lf("Write a “%@” report?", pendingTemplate?.name ?? ""),
                                     isPresented: Binding(get: { pendingTemplate != nil },
                                                          set: { if !$0 { pendingTemplate = nil } }),
                                     titleVisibility: .visible) {
-                    Button(report == nil ? L("Write report") : L("Replace report")) {
+                    Button(replacing ? L("Replace report") : L("Write report")) {
                         if let template = pendingTemplate { onWriteReport?(template) }
                         pendingTemplate = nil
                     }
                     Button(L("Cancel"), role: .cancel) { pendingTemplate = nil }
                 } message: {
-                    Text(report == nil
-                         ? Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
+                    Text(replacing
+                         ? Lf("The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName)
-                         : Lf("The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.",
+                         : Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName))
                 }
         }
+    }
+
+    /// Whether this meeting already carries a report from the template —
+    /// writing again then replaces that one and nothing else.
+    private func hasReport(from template: ReportTemplate) -> Bool {
+        reports.contains { $0.templateID == template.id }
     }
 
     private func isBusy(_ phase: MeetingReports.Phase?) -> Bool {

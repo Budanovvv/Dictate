@@ -101,9 +101,9 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// recorded before the field existed and for unidentified browser calls —
     /// the library's "other" bucket.
     var source: String? = nil
-    /// The report written from a template, when there is one — read from
+    /// The reports written from templates — one per template — read from
     /// the file like everything else here.
-    var report: MeetingReport? = nil
+    var reports: [MeetingReport] = []
 
     /// What this meeting IS, independent of the objects carrying it.
     ///
@@ -117,7 +117,7 @@ struct ArchivedMeeting: Identifiable, Hashable {
     func sameContent(as other: ArchivedMeeting) -> Bool {
         url == other.url && title == other.title && summary == other.summary
             && tags == other.tags && sections == other.sections
-            && report == other.report
+            && reports == other.reports
             && entries.count == other.entries.count
             && zip(entries, other.entries).allSatisfy {
                 $0.time == $1.time && $0.speaker == $1.speaker && $0.text == $1.text
@@ -592,7 +592,7 @@ enum MeetingArchive {
                                        sections: parseSections(markdown: text),
                                        tags: MeetingTags.parse(markdown: text),
                                        source: parseSource(markdown: text),
-                                       report: parseReport(markdown: text))
+                                       reports: parseReports(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }

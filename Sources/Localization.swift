@@ -750,7 +750,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Отправляет этот транскрипт в %@ на вашем ключе. Отчёт ложится в файл встречи.",
         "Set up templates…": "Настроить шаблоны…",
         "The templates have their own tab, next to this one.": "У шаблонов своя вкладка, рядом с этой.",
-        "Write again": "Написать заново",
         "Write report": "Написать отчёт",
         "Written reports": "Написанные отчёты",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ ограничивает частоту запросов. Ничего не потеряно — попробуйте через минуту.",
@@ -760,7 +759,6 @@ extension Localization {
         "Open": "Открыть",
         "Open report": "Открыть отчёт",
         "Write a “%@” report?": "Написать отчёт «%@»?",
-        "Write again with": "Написать заново по шаблону",
         "Action items": "Задачи",
         "Dates and deadlines": "Даты и сроки",
         "Decisions": "Решения",
@@ -789,6 +787,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Заменить отчёт новым по шаблону «%@»?",
         "Replace report": "Заменить отчёт",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Уже написанный отчёт будет заменён, его PDF тоже. Транскрипт уйдёт в %@ на вашем ключе.",
+        "Copy report · %@": "Скопировать отчёт · %@",
+        "Export report · %@…": "Экспортировать отчёт · %@…",
+        "Write with": "Написать по шаблону",
+        "Written · replaces it": "Есть · будет заменён",
     ]
 
     static let uk: [String: String] = [
@@ -1380,7 +1382,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Надсилає цей транскрипт до %@ на вашому ключі. Звіт лягає у файл зустрічі.",
         "Set up templates…": "Налаштувати шаблони…",
         "The templates have their own tab, next to this one.": "У шаблонів своя вкладка, поруч із цією.",
-        "Write again": "Написати заново",
         "Write report": "Написати звіт",
         "Written reports": "Написані звіти",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ обмежує частоту запитів. Нічого не втрачено — спробуйте за хвилину.",
@@ -1390,7 +1391,6 @@ extension Localization {
         "Open": "Відкрити",
         "Open report": "Відкрити звіт",
         "Write a “%@” report?": "Написати звіт «%@»?",
-        "Write again with": "Написати заново за шаблоном",
         "Action items": "Завдання",
         "Dates and deadlines": "Дати й терміни",
         "Decisions": "Рішення",
@@ -1419,6 +1419,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Замінити звіт новим за шаблоном «%@»?",
         "Replace report": "Замінити звіт",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Уже написаний звіт буде замінено, його PDF теж. Транскрипт піде до %@ на вашому ключі.",
+        "Copy report · %@": "Скопіювати звіт · %@",
+        "Export report · %@…": "Експортувати звіт · %@…",
+        "Write with": "Написати за шаблоном",
+        "Written · replaces it": "Є · буде замінено",
     ]
 
     static let es: [String: String] = [
@@ -2019,7 +2023,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Envía esta transcripción a %@ con su clave. El informe queda en el archivo de la reunión.",
         "Set up templates…": "Configurar plantillas…",
         "The templates have their own tab, next to this one.": "Las plantillas tienen su propia pestaña, junto a esta.",
-        "Write again": "Escribir de nuevo",
         "Write report": "Escribir informe",
         "Written reports": "Informes escritos",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ está limitando las solicitudes. No se perdió nada: inténtelo de nuevo en un minuto.",
@@ -2029,7 +2032,6 @@ extension Localization {
         "Open": "Abrir",
         "Open report": "Abrir el informe",
         "Write a “%@” report?": "¿Escribir un informe “%@”?",
-        "Write again with": "Escribir de nuevo con",
         "Action items": "Tareas",
         "Dates and deadlines": "Fechas y plazos",
         "Decisions": "Decisiones",
@@ -2058,6 +2060,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "¿Sustituir el informe por uno nuevo “%@”?",
         "Replace report": "Sustituir informe",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "El informe ya escrito se sustituye, y su PDF también. Envía esta transcripción a %@ con su clave.",
+        "Copy report · %@": "Copiar informe · %@",
+        "Export report · %@…": "Exportar informe · %@…",
+        "Write with": "Escribir con",
+        "Written · replaces it": "Escrito · se sustituye",
     ]
 
     static let pt: [String: String] = [
@@ -2658,7 +2664,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Envia esta transcrição para %@ com a sua chave. O relatório fica no arquivo da reunião.",
         "Set up templates…": "Configurar modelos…",
         "The templates have their own tab, next to this one.": "Os modelos têm uma aba própria, ao lado desta.",
-        "Write again": "Escrever de novo",
         "Write report": "Escrever relatório",
         "Written reports": "Relatórios escritos",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ está limitando as solicitações. Nada foi perdido: tente de novo em um minuto.",
@@ -2668,7 +2673,6 @@ extension Localization {
         "Open": "Abrir",
         "Open report": "Abrir o relatório",
         "Write a “%@” report?": "Escrever um relatório “%@”?",
-        "Write again with": "Escrever de novo com",
         "Action items": "Tarefas",
         "Dates and deadlines": "Datas e prazos",
         "Decisions": "Decisões",
@@ -2697,6 +2701,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Substituir o relatório por um novo “%@”?",
         "Replace report": "Substituir relatório",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "O relatório já escrito é substituído, e o PDF também. Envia esta transcrição para %@ com a sua chave.",
+        "Copy report · %@": "Copiar relatório · %@",
+        "Export report · %@…": "Exportar relatório · %@…",
+        "Write with": "Escrever com",
+        "Written · replaces it": "Escrito · será substituído",
     ]
 
     static let fr: [String: String] = [
@@ -3297,7 +3305,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Envoie cette transcription à %@ avec votre clé. Le rapport est enregistré dans le fichier de la réunion.",
         "Set up templates…": "Configurer les modèles…",
         "The templates have their own tab, next to this one.": "Les modèles ont leur propre onglet, à côté de celui-ci.",
-        "Write again": "Rédiger à nouveau",
         "Write report": "Rédiger le rapport",
         "Written reports": "Rapports rédigés",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ limite le débit des requêtes. Rien n’est perdu : réessayez dans une minute.",
@@ -3307,7 +3314,6 @@ extension Localization {
         "Open": "Ouvrir",
         "Open report": "Ouvrir le rapport",
         "Write a “%@” report?": "Rédiger un rapport « %@ » ?",
-        "Write again with": "Rédiger à nouveau avec",
         "Action items": "Actions",
         "Dates and deadlines": "Dates et échéances",
         "Decisions": "Décisions",
@@ -3336,6 +3342,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Remplacer le rapport par un nouveau « %@ » ?",
         "Replace report": "Remplacer le rapport",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Le rapport déjà rédigé est remplacé, son PDF aussi. Envoie cette transcription à %@ avec votre clé.",
+        "Copy report · %@": "Copier le rapport · %@",
+        "Export report · %@…": "Exporter le rapport · %@…",
+        "Write with": "Rédiger avec",
+        "Written · replaces it": "Rédigé · sera remplacé",
     ]
 
     static let de: [String: String] = [
@@ -3936,7 +3946,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Sendet dieses Transkript mit Ihrem Schlüssel an %@. Der Bericht landet in der Datei des Meetings.",
         "Set up templates…": "Vorlagen einrichten…",
         "The templates have their own tab, next to this one.": "Die Vorlagen haben einen eigenen Tab, direkt neben diesem.",
-        "Write again": "Erneut schreiben",
         "Write report": "Bericht schreiben",
         "Written reports": "Geschriebene Berichte",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ drosselt die Anfragen. Nichts ist verloren – versuchen Sie es in einer Minute erneut.",
@@ -3946,7 +3955,6 @@ extension Localization {
         "Open": "Öffnen",
         "Open report": "Bericht öffnen",
         "Write a “%@” report?": "Bericht „%@“ schreiben?",
-        "Write again with": "Erneut schreiben mit",
         "Action items": "Aufgaben",
         "Dates and deadlines": "Termine und Fristen",
         "Decisions": "Entscheidungen",
@@ -3975,6 +3983,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Bericht durch einen neuen „%@“-Bericht ersetzen?",
         "Replace report": "Bericht ersetzen",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Der bereits geschriebene Bericht wird ersetzt, sein PDF ebenfalls. Sendet dieses Transkript mit Ihrem Schlüssel an %@.",
+        "Copy report · %@": "Bericht kopieren · %@",
+        "Export report · %@…": "Bericht exportieren · %@…",
+        "Write with": "Schreiben mit",
+        "Written · replaces it": "Geschrieben · wird ersetzt",
     ]
 
     static let zh: [String: String] = [
@@ -4575,7 +4587,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "用你的密钥把此转录发送给 %@。报告会写入会议文件。",
         "Set up templates…": "设置模板…",
         "The templates have their own tab, next to this one.": "模板有自己的标签页，就在这一页旁边。",
-        "Write again": "重新写",
         "Write report": "写报告",
         "Written reports": "已写的报告",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ 正在限制请求频率。没有任何丢失，请一分钟后再试。",
@@ -4585,7 +4596,6 @@ extension Localization {
         "Open": "打开",
         "Open report": "打开报告",
         "Write a “%@” report?": "写一份“%@”报告？",
-        "Write again with": "用以下模板重新写",
         "Action items": "行动项",
         "Dates and deadlines": "日期与截止期限",
         "Decisions": "决定",
@@ -4614,6 +4624,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "用新的“%@”报告替换现有报告？",
         "Replace report": "替换报告",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "已写好的报告及其 PDF 将被替换。会用你的密钥把此转录发送给 %@。",
+        "Copy report · %@": "复制报告 · %@",
+        "Export report · %@…": "导出报告 · %@…",
+        "Write with": "用模板撰写",
+        "Written · replaces it": "已写 · 将被替换",
     ]
 
     static let ja: [String: String] = [
@@ -5214,7 +5228,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "この文字起こしをあなたのキーで %@ に送ります。レポートはミーティングのファイルに保存されます。",
         "Set up templates…": "テンプレートを設定…",
         "The templates have their own tab, next to this one.": "テンプレートには専用のタブがあり、このタブの隣にあります。",
-        "Write again": "もう一度書く",
         "Write report": "レポートを書く",
         "Written reports": "書いたレポート",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ がリクエストを制限しています。何も失われていません。1 分後にもう一度お試しください。",
@@ -5224,7 +5237,6 @@ extension Localization {
         "Open": "開く",
         "Open report": "レポートを開く",
         "Write a “%@” report?": "「%@」レポートを書きますか？",
-        "Write again with": "次のテンプレートでもう一度書く",
         "Action items": "アクション項目",
         "Dates and deadlines": "日付と期限",
         "Decisions": "決定事項",
@@ -5253,6 +5265,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "レポートを新しい「%@」レポートに置き換えますか？",
         "Replace report": "レポートを置き換える",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "すでに書かれたレポートと PDF は置き換えられます。この文字起こしをあなたのキーで %@ に送ります。",
+        "Copy report · %@": "レポートをコピー · %@",
+        "Export report · %@…": "レポートを書き出す · %@…",
+        "Write with": "テンプレートで書く",
+        "Written · replaces it": "作成済み · 置き換えます",
     ]
 
     static let ko: [String: String] = [
@@ -5853,7 +5869,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "이 전사를 내 키로 %@에 보냅니다. 보고서는 회의 파일에 저장됩니다.",
         "Set up templates…": "템플릿 설정…",
         "The templates have their own tab, next to this one.": "템플릿은 이 탭 옆에 별도의 탭이 있습니다.",
-        "Write again": "다시 쓰기",
         "Write report": "보고서 쓰기",
         "Written reports": "작성된 보고서",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@에서 요청 속도를 제한하고 있습니다. 잃은 것은 없으니 1분 뒤에 다시 시도하세요.",
@@ -5863,7 +5878,6 @@ extension Localization {
         "Open": "열기",
         "Open report": "보고서 열기",
         "Write a “%@” report?": "“%@” 보고서를 쓸까요?",
-        "Write again with": "다음 템플릿으로 다시 쓰기",
         "Action items": "실행 항목",
         "Dates and deadlines": "날짜와 기한",
         "Decisions": "결정 사항",
@@ -5892,6 +5906,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "보고서를 새 “%@” 보고서로 대체할까요?",
         "Replace report": "보고서 대체",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "이미 작성된 보고서와 PDF가 대체됩니다. 이 전사를 내 키로 %@에 보냅니다.",
+        "Copy report · %@": "보고서 복사 · %@",
+        "Export report · %@…": "보고서 내보내기 · %@…",
+        "Write with": "템플릿으로 쓰기",
+        "Written · replaces it": "작성됨 · 대체됩니다",
     ]
 
     static let vi: [String: String] = [
@@ -6492,7 +6510,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Gửi bản ghi này tới %@ bằng khóa của bạn. Báo cáo được lưu vào tệp cuộc họp.",
         "Set up templates…": "Thiết lập mẫu…",
         "The templates have their own tab, next to this one.": "Các mẫu có thẻ riêng, ngay cạnh thẻ này.",
-        "Write again": "Viết lại",
         "Write report": "Viết báo cáo",
         "Written reports": "Báo cáo đã viết",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ đang giới hạn tần suất yêu cầu. Không mất gì cả — hãy thử lại sau một phút.",
@@ -6502,7 +6519,6 @@ extension Localization {
         "Open": "Mở",
         "Open report": "Mở báo cáo",
         "Write a “%@” report?": "Viết báo cáo “%@”?",
-        "Write again with": "Viết lại với",
         "Action items": "Việc cần làm",
         "Dates and deadlines": "Ngày và hạn chót",
         "Decisions": "Quyết định",
@@ -6531,6 +6547,10 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Thay báo cáo bằng báo cáo “%@” mới?",
         "Replace report": "Thay báo cáo",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Báo cáo đã viết sẽ bị thay thế, cả PDF của nó. Gửi bản ghi này tới %@ bằng khóa của bạn.",
+        "Copy report · %@": "Sao chép báo cáo · %@",
+        "Export report · %@…": "Xuất báo cáo · %@…",
+        "Write with": "Viết bằng",
+        "Written · replaces it": "Đã viết · sẽ thay thế",
     ]
 
     static let tl: [String: String] = [
@@ -7131,7 +7151,6 @@ extension Localization {
         "Sends this transcript to %@ on your key. The report lands in the meeting’s file.": "Ipinapadala ang transcript na ito sa %@ gamit ang key mo. Mapupunta ang report sa file ng meeting.",
         "Set up templates…": "I-set up ang mga template…",
         "The templates have their own tab, next to this one.": "May sariling tab ang mga template, katabi nito.",
-        "Write again": "Isulat muli",
         "Write report": "Isulat ang report",
         "Written reports": "Mga naisulat na report",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "Nililimitahan ng %@ ang dalas ng mga request. Walang nawala — subukan ulit sa loob ng isang minuto.",
@@ -7141,7 +7160,6 @@ extension Localization {
         "Open": "Buksan",
         "Open report": "Buksan ang report",
         "Write a “%@” report?": "Isulat ang report na “%@”?",
-        "Write again with": "Isulat muli gamit ang",
         "Action items": "Mga aksyon",
         "Dates and deadlines": "Mga petsa at deadline",
         "Decisions": "Mga desisyon",
@@ -7170,5 +7188,9 @@ extension Localization {
         "Replace the report with a new “%@” one?": "Palitan ang report ng bagong “%@”?",
         "Replace report": "Palitan ang report",
         "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Papalitan ang naisulat nang report, pati ang PDF nito. Ipinapadala ang transcript na ito sa %@ gamit ang key mo.",
+        "Copy report · %@": "Kopyahin ang report · %@",
+        "Export report · %@…": "I-export ang report · %@…",
+        "Write with": "Isulat gamit ang",
+        "Written · replaces it": "Naisulat na · papalitan",
     ]
 }

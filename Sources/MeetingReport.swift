@@ -113,35 +113,52 @@ extension MeetingArchive {
         return out.joined(separator: "\n")
     }
 
-    /// Where the report block sits in `lines`: from the marker to the line
-    /// before whatever follows it — the contents block, the first entry, a
-    /// heading that is not one of the report's own.
-    private static func reportRange(in lines: [String]) -> Range<Int>? {
-        guard let start = lines.firstIndex(where: isReportMarker) else { return nil }
-        var end = start + 1
+    /// Where each report block sits in `lines`: from its marker to the line
+    /// before whatever follows it — the next report, the contents block,
+    /// the first entry, a heading that is not one of the report's own.
+    private static func reportRanges(in lines: [String]) -> [(range: Range<Int>, id: UUID?)] {
+        var out: [(Range<Int>, UUID?)] = []
+        var start: Int? = nil
         var sawHeading = false
-        while end < lines.count {
-            let line = lines[end].trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("**[") || isSectionLine(line) { break }
-            if line.hasPrefix("## ") {
-                if sawHeading { break }
-                sawHeading = true
-            } else if line.hasPrefix("# ") || isReportMarker(line) {
-                break
+        func close(_ end: Int) {
+            guard let from = start else { return }
+            var to = end
+            while to > from + 1, lines[to - 1].trimmingCharacters(in: .whitespaces).isEmpty { to -= 1 }
+            out.append((from..<to, parseReportMarker(lines[from])?.id))
+            start = nil
+        }
+        for (index, raw) in lines.enumerated() {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if isReportMarker(line) {
+                close(index)
+                start = index
+                sawHeading = false
+                continue
             }
-            end += 1
+            guard start != nil else { continue }
+            if line.hasPrefix("**[") || isSectionLine(line) || line.hasPrefix("# ") {
+                close(index)
+            } else if line.hasPrefix("## ") {
+                if sawHeading { close(index) } else { sawHeading = true }
+            }
         }
-        // Trailing blank lines belong to the spacing, not the block.
-        while end > start + 1, lines[end - 1].trimmingCharacters(in: .whitespaces).isEmpty {
-            end -= 1
-        }
-        return start..<end
+        close(lines.count)
+        return out
     }
 
-    static func parseReport(markdown: String) -> MeetingReport? {
+    /// Every report in the file, in the order they were written.
+    static func parseReports(markdown: String) -> [MeetingReport] {
         let lines = markdown.components(separatedBy: .newlines)
-        guard let range = reportRange(in: lines),
-              let marker = parseReportMarker(lines[range.lowerBound]) else { return nil }
+        return reportRanges(in: lines).compactMap { parseReport(lines: lines, in: $0.range) }
+    }
+
+    /// The first report in the file, when there is one.
+    static func parseReport(markdown: String) -> MeetingReport? {
+        parseReports(markdown: markdown).first
+    }
+
+    private static func parseReport(lines: [String], in range: Range<Int>) -> MeetingReport? {
+        guard let marker = parseReportMarker(lines[range.lowerBound]) else { return nil }
         var answers: [MeetingReport.Answer] = []
         var field: String?
         var body: [String] = []
@@ -168,20 +185,25 @@ extension MeetingArchive {
                              writer: marker.writer, written: marker.written, answers: answers)
     }
 
-    /// Writes the report block, replacing one already there. It goes after
-    /// the summary and before the contents block — everything that
-    /// describes the meeting as a whole, then the report, then the map of
-    /// the transcript, then the transcript.
+    /// Writes the report block. A report from the same template replaces
+    /// the one already there; a report from another template goes in after
+    /// the last one — a meeting can carry one report per template. The
+    /// first block goes after the summary and before the contents block:
+    /// everything that describes the meeting as a whole, then the reports,
+    /// then the map of the transcript, then the transcript.
     static func applying(report: MeetingReport, heading: String, to markdown: String) -> String {
         var lines = markdown.components(separatedBy: .newlines)
         let block = reportBlock(report, heading: heading)
-        if let old = reportRange(in: lines) {
-            lines.replaceSubrange(old, with: block)
+        let existing = reportRanges(in: lines)
+        if let same = existing.first(where: { $0.id != nil && $0.id == report.templateID }) {
+            lines.replaceSubrange(same.range, with: block)
             return lines.joined(separator: "\n")
         }
         guard let h1 = lines.firstIndex(where: { $0.hasPrefix("# ") }) else { return markdown }
         var at = lines.count
-        if let bullet = lines.indices.first(where: { isSectionLine(lines[$0]) }) {
+        if let last = existing.last {
+            at = last.range.upperBound
+        } else if let bullet = lines.indices.first(where: { isSectionLine(lines[$0]) }) {
             var above = bullet - 1
             while above > h1, lines[above].trimmingCharacters(in: .whitespaces).isEmpty { above -= 1 }
             at = lines[above].hasPrefix("#") && above > h1 ? above : bullet
@@ -197,14 +219,22 @@ extension MeetingArchive {
         return lines.joined(separator: "\n")
     }
 
-    static func removingReport(from markdown: String) -> String {
+    /// Removes one template's report, or every report when `templateID`
+    /// is nil.
+    static func removingReport(from markdown: String, templateID: UUID? = nil) -> String {
         var lines = markdown.components(separatedBy: .newlines)
-        guard let range = reportRange(in: lines) else { return markdown }
-        var upper = range.upperBound
-        while upper < lines.count, lines[upper].trimmingCharacters(in: .whitespaces).isEmpty {
-            upper += 1
+        let ranges = reportRanges(in: lines)
+            .filter { templateID == nil || $0.id == templateID }
+            .map(\.range)
+            .sorted { $0.lowerBound > $1.lowerBound }
+        guard !ranges.isEmpty else { return markdown }
+        for range in ranges {
+            var upper = range.upperBound
+            while upper < lines.count, lines[upper].trimmingCharacters(in: .whitespaces).isEmpty {
+                upper += 1
+            }
+            lines.removeSubrange(range.lowerBound..<upper)
         }
-        lines.removeSubrange(range.lowerBound..<upper)
         return lines.joined(separator: "\n")
     }
 
@@ -217,9 +247,9 @@ extension MeetingArchive {
     }
 
     @discardableResult
-    static func removeReport(in url: URL) -> Bool {
+    static func removeReport(in url: URL, templateID: UUID? = nil) -> Bool {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
-        let updated = removingReport(from: text)
+        let updated = removingReport(from: text, templateID: templateID)
         guard updated != text else { return true }
         return rewrite(url, with: updated)
     }
