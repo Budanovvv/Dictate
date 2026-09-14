@@ -238,7 +238,30 @@ struct HoverEmphasis: ViewModifier {
     }
 }
 
+/// The design's drawn text field (t14/hero): a quiet fill and a hairline
+/// around a `.plain` TextField. The agent's composer, the template editor's
+/// fields — one chrome, wherever text is typed. Padding is the caller's:
+/// a one-line field and a five-line composer breathe differently.
+struct DSFieldChrome: ViewModifier {
+    var radius: CGFloat = 10
+    /// The quiet fill: the composer's wash on a white pane; on a grouped
+    /// form's grey card the same wash reads as a dark slab, so a field
+    /// there takes the control background and keeps only the hairline.
+    var onCard = false
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(onCard ? AnyShapeStyle(Color(nsColor: .controlBackgroundColor))
+                             : AnyShapeStyle(.quaternary.opacity(0.5))))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.1)))
+    }
+}
+
 extension View {
+    func dsFieldChrome(radius: CGFloat = 10, onCard: Bool = false) -> some View {
+        modifier(DSFieldChrome(radius: radius, onCard: onCard))
+    }
     func hoverHighlight(radius: CGFloat = DS.radius) -> some View {
         modifier(HoverHighlight(radius: radius))
     }

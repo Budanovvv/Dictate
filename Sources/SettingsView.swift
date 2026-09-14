@@ -1072,9 +1072,8 @@ struct SettingsView: View {
                 LabeledContent {
                     TextField("", text: templateBinding(draft, \.name), prompt: Text(L("Template name")))
                         .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.leading)
-                        .frame(width: 260)
+                        .templateField()
+                        .frame(width: 260, alignment: .leading)
                         .accessibilityLabel(L("Template name"))
                 } label: {
                     rowLabel(L("Name"), nil)
@@ -1086,8 +1085,8 @@ struct SettingsView: View {
                     TextField("", text: templateBinding(draft, \.context),
                               prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
                         .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
                         .lineLimit(2...4)
+                        .templateField()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel(L("Context"))
                 }
@@ -1144,14 +1143,14 @@ struct SettingsView: View {
                 HStack(spacing: 6) {
                     TextField("", text: fieldBinding(field.id, \.name), prompt: Text(L("Field name")))
                         .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
+                        .templateField()
                         .frame(width: 190)
                         .focused($focusedTemplateField, equals: field.id)
                         .accessibilityLabel(L("Field name"))
                     TextField("", text: fieldBinding(field.id, \.instruction),
                               prompt: Text(L("Instruction (optional)")))
                         .labelsHidden()
-                        .textFieldStyle(.roundedBorder)
+                        .templateField()
                         .frame(maxWidth: .infinity)
                         .accessibilityLabel(L("Instruction (optional)"))
                     HStack(spacing: 2) {
@@ -1213,8 +1212,14 @@ struct SettingsView: View {
         guard var updated = templateDraft,
               let index = updated.fields.firstIndex(where: { $0.id == id }),
               updated.fields.indices.contains(index + offset) else { return }
+        // The focused field commits through AppKit's field editor when it
+        // loses focus; taking the focus away BEFORE the rows move keeps that
+        // commit on the row it belongs to.
+        focusedTemplateField = nil
         updated.fields.swapAt(index, index + offset)
-        templateDraft = updated
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { templateDraft = updated }
     }
 
     private func templateBinding<T>(_ template: ReportTemplate,
@@ -1681,5 +1686,20 @@ private struct KeyRecorder: View {
                 .help(L("Remove"))
             }
         }
+    }
+}
+
+
+private extension View {
+    /// A template's text field in the agent composer's own chrome (design
+    /// t14): plain field, quiet fill, hairline — not the stock rounded
+    /// border, which is a different species of control in this window.
+    func templateField() -> some View {
+        self.textFieldStyle(.plain)
+            .multilineTextAlignment(.leading)
+            .font(.system(size: 13))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .dsFieldChrome(radius: 8, onCard: true)
     }
 }

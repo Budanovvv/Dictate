@@ -707,10 +707,7 @@ struct AnswerPane: View {
             .padding(.vertical, 5)
             // The drawn field (design t14/hero): quiet fill, hairline, the
             // send control INSIDE — one object, whatever the state.
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.quaternary.opacity(0.5)))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.1)))
+            .dsFieldChrome()
             if !draft.isEmpty {
                 HStack {
                     Text(L("Return sends · Shift-Return adds a line · Esc clears"))
