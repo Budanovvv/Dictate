@@ -918,11 +918,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     // MARK: - Sparkle: the manual probe's verdicts
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        // Progress shows only for a download the person asked for; the
+        // scheduled silent one stays silent (owner, 2026-09-14).
+        guard manualUpdateProbe else { return }
         let version = item.displayVersionString
+        manualUpdateCycle = true
         DispatchQueue.main.async { [weak self] in
             self?.statusController.updateProgress = Lf("Downloading update %@…", version)
         }
-        guard manualUpdateProbe else { return }
         manualUpdateProbe = false
         startDownloadAfterProbe = true
         DispatchQueue.main.async {
@@ -933,6 +936,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
+        guard manualUpdateCycle else { return }
         let version = item.displayVersionString
         DispatchQueue.main.async { [weak self] in
             self?.statusController.updateProgress = Lf("Preparing update %@…", version)
@@ -940,6 +944,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        manualUpdateCycle = false
         DispatchQueue.main.async { [weak self] in
             Log.d("updates: aborted — \(error.localizedDescription)")
             self?.statusController.updateProgress = nil
@@ -1003,6 +1008,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             guard let self else { return }
             Log.d("update: v\(item.displayVersionString) staged — waiting for an idle moment to relaunch")
             self.pendingUpdateInstall = immediateInstallHandler
+            self.manualUpdateCycle = false
             self.statusController.updateProgress = nil
             // Say so in the menu: the newer version already sits on disk
             // while every surface still describes the old process — the gap
@@ -1258,6 +1264,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// it opens on another Space, invisible, and runModal blocks the whole
     /// app until someone dismisses a window they cannot see. The probe uses
     /// the same appcast; the delegate callbacks below carry the verdict.
+    /// True from a manual check that found an update until it is staged
+    /// or fails — the only cycle whose progress the menu shows.
+    private var manualUpdateCycle = false
+
     private func manualUpdateCheck() {
         guard !manualUpdateProbe else { return }
         // A second press while the silent download runs used to start a new
