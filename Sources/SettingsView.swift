@@ -1014,57 +1014,56 @@ struct SettingsView: View {
     @ViewBuilder
     private var templatesSection: some View {
         Section {
-            LabeledContent {
-                HStack(spacing: 10) {
-                    if !templateStore.templates.isEmpty {
-                        PopupTrigger(label: templateDraft?.name ?? L("Choose a template")) {
-                            templateChooserOpen.toggle()
-                        }
-                        .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(templateStore.templates) { template in
-                                    PopupRow(title: template.name,
-                                             subtitle: Lf("%d fields", template.usableFields.count),
-                                             selected: template.id == templateID) {
-                                        templateID = template.id
-                                        templateChooserOpen = false
-                                    }
-                                }
+            // The templates as a visible list (design: Settings › Agent,
+            // turn 3), not a popup: which forms exist is the first thing a
+            // person looks for here. The chosen one is tinted the way the
+            // sidebar tints its row, and its editor opens below.
+            VStack(alignment: .leading, spacing: 10) {
+                // The section header already says "Templates"; the row
+                // needs only the sentence.
+                Text(L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !templateStore.templates.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(Array(templateStore.templates.enumerated()), id: \.element.id) { index, template in
+                            templateListRow(template, selected: template.id == templateID)
+                            if index < templateStore.templates.count - 1 {
+                                Divider().padding(.leading, 10)
                             }
-                            .padding(6)
-                            .frame(width: 240)
                         }
                     }
-                    Button(L("New template…")) { starterChooserOpen.toggle() }
-                        .buttonStyle(.dsSmall)
-                        .controlSize(.small)
-                        .popover(isPresented: $starterChooserOpen, arrowEdge: .bottom) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                ForEach(ReportTemplate.StarterKind.allCases, id: \.self) { kind in
-                                    let starter = ReportTemplate.starter(kind)
-                                    PopupRow(title: starter.name,
-                                             subtitle: kind == .blank ? L("One empty field. You name it.")
-                                                : starter.fields.map(\.name).joined(separator: " · "),
-                                             selected: false) {
-                                        templateStore.save(starter)
-                                        templateID = starter.id
-                                        starterChooserOpen = false
-                                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .dsFieldChrome(radius: 8, onCard: true)
+                    .frame(maxWidth: 420)
+                }
+                Button(L("New template…")) { starterChooserOpen.toggle() }
+                    .buttonStyle(.dsSmall)
+                    .controlSize(.small)
+                    .popover(isPresented: $starterChooserOpen, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(ReportTemplate.StarterKind.allCases, id: \.self) { kind in
+                                let starter = ReportTemplate.starter(kind)
+                                PopupRow(title: starter.name,
+                                         subtitle: kind == .blank ? L("One empty field. You name it.")
+                                            : starter.fields.map(\.name).joined(separator: " · "),
+                                         selected: false) {
+                                    templateStore.save(starter)
+                                    templateID = starter.id
+                                    starterChooserOpen = false
                                 }
                             }
-                            .padding(6)
-                            .frame(width: 300)
                         }
+                        .padding(6)
+                        .frame(width: 300)
+                    }
+                if askProvider == nil {
+                    Text(L("Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then."))
+                        .font(.caption).foregroundStyle(DS.warn)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            } label: {
-                rowLabel(L("Template"),
-                         L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
             }
-            if askProvider == nil {
-                Text(L("Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then."))
-                    .font(.caption).foregroundStyle(DS.warn)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         } header: { Text(L("Templates")) }
 
         if let draft = templateDraft {
@@ -1135,6 +1134,39 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    /// One template in the list: its name, how many fields, and the
+    /// sidebar's own selection — an accent edge and a tint, never a filled
+    /// row — with the hover wash every row in this app has.
+    private func templateListRow(_ template: ReportTemplate, selected: Bool) -> some View {
+        Button {
+            templateID = template.id
+        } label: {
+            HStack(spacing: 8) {
+                Text(template.name.isEmpty ? L("New template") : template.name)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(Lf("%d fields", template.usableFields.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            HStack(spacing: 0) {
+                if selected {
+                    RoundedRectangle(cornerRadius: 1.5).fill(DS.accent).frame(width: DS.selectionEdge)
+                }
+                Rectangle().fill(selected ? DS.selectionTint : .clear)
+            }
+        )
+        .hoverHighlight(radius: 0)
+        .accessibilityLabel(template.name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func templateFields(_ template: ReportTemplate) -> some View {
