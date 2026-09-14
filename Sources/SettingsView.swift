@@ -300,6 +300,7 @@ struct SettingsView: View {
                             .frame(width: 16)
                             .foregroundStyle(tab == candidate ? DS.accentText : .secondary)
                         Text(tabTitle(candidate)).lineLimit(1)
+                        if candidate == .templates, WhatsNew.pending { NewBadge() }
                         Spacer(minLength: 0)
                     }
                     .padding(.vertical, 5)

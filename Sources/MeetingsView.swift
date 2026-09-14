@@ -36,6 +36,9 @@ struct MeetingsView: View {
     /// something to say where it had nothing.
     @ObservedObject private var summaries = MeetingSummaries.shared
     @ObservedObject private var reports = MeetingReports.shared
+    /// The release notes sheet, and the strip's dismissal this session.
+    @State private var showWhatsNew = false
+    @State private var whatsNewDismissed = false
     /// Contents blocks arriving for older meetings — each one turns a
     /// fifty-minute transcript into a dozen findable moments.
     @ObservedObject private var sections = MeetingSections.shared
@@ -277,6 +280,9 @@ struct MeetingsView: View {
         // A contents block landed. Same story, and just as rare: only while
         // the backfill runs, and nothing here ticks.
         .onChange(of: sections.written) { reload() }
+        .sheet(isPresented: $showWhatsNew, onDismiss: { whatsNewDismissed = true }) {
+            WhatsNewSheet()
+        }
         .sheet(isPresented: $showConnect) {
             AgentConnectSheet(question: connectQuestion, onConnected: {
                 showConnect = false
@@ -423,6 +429,10 @@ struct MeetingsView: View {
             cornerRow(L("Storage & models")) { openSettingsWindow(tab: "thismac") }
             cornerRow(L("Agent & reports")) { openSettingsWindow(tab: "agent") }
             Divider().padding(.vertical, 4)
+            cornerRow(L("What’s new")) {
+                settingsMenuOpen = false
+                showWhatsNew = true
+            }
             cornerRow(L("Check for updates")) {
                 settingsMenuOpen = false
                 NotificationCenter.default.post(name: .init("dictate.checkUpdates"), object: nil)
@@ -544,6 +554,39 @@ struct MeetingsView: View {
                                                       readMeetings: Settings.shared.readMeetings,
                                                       sizeText: LocalTextModelFile.sizeText))
                 }
+            }
+            // The update happened silently; this is where the person learns
+            // what it brought — once, the first time the library opens on
+            // the new version, in the list column's own notice chassis.
+            if WhatsNew.pending, !whatsNewDismissed, !session.isActive {
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DS.accentText)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Lf("Dictate updated to %@.", WhatsNew.currentVersion))
+                            .font(.system(size: 11.5))
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 10) {
+                            Button(L("See what’s new")) { showWhatsNew = true }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(DS.accentText)
+                            Button(L("Dismiss")) {
+                                WhatsNew.markSeen()
+                                whatsNewDismissed = true
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .overlay(alignment: .bottom) { Divider() }
             }
             if download.paused == .memory, Settings.shared.readMeetings, !session.isActive {
                 HStack(alignment: .top, spacing: 9) {
@@ -3593,6 +3636,7 @@ private struct TranscriptPane: View {
             }
         } else {
             let replacing = pendingTemplate.map { hasReport(from: $0) } ?? false
+            if WhatsNew.pending { NewBadge() }
             PopupTrigger(label: reports.isEmpty ? L("Write report") : L("Report"),
                          icon: "doc.text") { templateChooserOpen.toggle() }
                 // Its own width, whatever the title does: in the head's

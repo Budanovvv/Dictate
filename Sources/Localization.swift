@@ -790,6 +790,19 @@ extension Localization {
         "Export report · %@…": "Экспортировать отчёт · %@…",
         "Write with": "Написать по шаблону",
         "Written · replaces it": "Есть · будет заменён",
+        "Dictate updated to %@.": "Dictate обновился до %@.",
+        "Dismiss": "Закрыть",
+        "New": "Новое",
+        "New in this version": "Новое в этой версии",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Откройте встречу, нажмите Write report в её шапке и выберите шаблон. Отчёт ляжет на карточку и PDF-файлом в Dictate Meetings › Reports.",
+        "Reports from templates": "Отчёты по шаблонам",
+        "See what’s new": "Что нового",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Settings › Meetings › Write summaries and reports in: саммари и все отчёты пишутся на языке, на котором вы читаете, на каком бы языке ни шёл звонок.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Settings › Templates: начните с «Итоги встречи» или «Решения и задачи» либо назовите свои поля и опишите модели, что писать под каждым.",
+        "Summaries in your language": "Саммари на вашем языке",
+        "What’s new": "Что нового",
+        "What’s new in Dictate %@": "Что нового в Dictate %@",
+        "Your own templates": "Свои шаблоны",
     ]
 
     static let uk: [String: String] = [
@@ -1421,6 +1434,19 @@ extension Localization {
         "Export report · %@…": "Експортувати звіт · %@…",
         "Write with": "Написати за шаблоном",
         "Written · replaces it": "Є · буде замінено",
+        "Dictate updated to %@.": "Dictate оновився до %@.",
+        "Dismiss": "Закрити",
+        "New": "Нове",
+        "New in this version": "Нове в цій версії",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Відкрийте зустріч, натисніть Write report у її шапці та оберіть шаблон. Звіт ляже на картку та PDF-файлом у Dictate Meetings › Reports.",
+        "Reports from templates": "Звіти за шаблонами",
+        "See what’s new": "Що нового",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Settings › Meetings › Write summaries and reports in: підсумок і всі звіти пишуться мовою, якою ви читаєте, якою б мовою не йшов дзвінок.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Settings › Templates: почніть із «Підсумки зустрічі» або «Рішення та завдання» або назвіть власні поля й опишіть моделі, що писати під кожним.",
+        "Summaries in your language": "Підсумки вашою мовою",
+        "What’s new": "Що нового",
+        "What’s new in Dictate %@": "Що нового в Dictate %@",
+        "Your own templates": "Власні шаблони",
     ]
 
     static let es: [String: String] = [
@@ -2061,6 +2087,19 @@ extension Localization {
         "Export report · %@…": "Exportar informe · %@…",
         "Write with": "Escribir con",
         "Written · replaces it": "Escrito · se sustituye",
+        "Dictate updated to %@.": "Dictate se actualizó a %@.",
+        "Dismiss": "Cerrar",
+        "New": "Nuevo",
+        "New in this version": "Nuevo en esta versión",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Abra una reunión, pulse Write report en su cabecera y elija una plantilla. El informe aparece en la tarjeta y como PDF en Dictate Meetings › Reports.",
+        "Reports from templates": "Informes con plantillas",
+        "See what’s new": "Ver novedades",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Ajustes › Reuniones › Escribir resúmenes e informes en: el resumen y todos los informes llegan en el idioma en que usted lee, sea cual sea el idioma de la llamada.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Ajustes › Plantillas: empiece con Resumen de la reunión o Decisiones y tareas, o nombre sus propios campos y diga al modelo qué va debajo de cada uno.",
+        "Summaries in your language": "Resúmenes en su idioma",
+        "What’s new": "Novedades",
+        "What’s new in Dictate %@": "Novedades de Dictate %@",
+        "Your own templates": "Sus propias plantillas",
     ]
 
     static let pt: [String: String] = [
@@ -2701,6 +2740,19 @@ extension Localization {
         "Export report · %@…": "Exportar relatório · %@…",
         "Write with": "Escrever com",
         "Written · replaces it": "Escrito · será substituído",
+        "Dictate updated to %@.": "O Dictate foi atualizado para %@.",
+        "Dismiss": "Fechar",
+        "New": "Novo",
+        "New in this version": "Novo nesta versão",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Abra uma reunião, pressione Write report no cabeçalho e escolha um modelo. O relatório aparece no cartão e como PDF em Dictate Meetings › Reports.",
+        "Reports from templates": "Relatórios a partir de modelos",
+        "See what’s new": "Ver novidades",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Ajustes › Reuniões › Escrever resumos e relatórios em: o resumo e todos os relatórios vêm no idioma em que você lê, seja qual for o idioma da chamada.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Ajustes › Modelos: comece pelo Resumo da reunião ou Decisões e tarefas, ou nomeie seus próprios campos e diga ao modelo o que vai embaixo de cada um.",
+        "Summaries in your language": "Resumos no seu idioma",
+        "What’s new": "Novidades",
+        "What’s new in Dictate %@": "Novidades do Dictate %@",
+        "Your own templates": "Seus próprios modelos",
     ]
 
     static let fr: [String: String] = [
@@ -3341,6 +3393,19 @@ extension Localization {
         "Export report · %@…": "Exporter le rapport · %@…",
         "Write with": "Rédiger avec",
         "Written · replaces it": "Rédigé · sera remplacé",
+        "Dictate updated to %@.": "Dictate est passé à la version %@.",
+        "Dismiss": "Fermer",
+        "New": "Nouveau",
+        "New in this version": "Nouveau dans cette version",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Ouvrez une réunion, cliquez sur Write report dans son en-tête, puis choisissez un modèle. Le rapport apparaît sur la fiche et en PDF dans Dictate Meetings › Reports.",
+        "Reports from templates": "Des rapports à partir de modèles",
+        "See what’s new": "Voir les nouveautés",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Réglages › Réunions › Rédiger les résumés et rapports en : le résumé et chaque rapport arrivent dans la langue que vous lisez, quelle que soit celle de l’appel.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Réglages › Modèles : partez du Compte rendu de réunion ou de Décisions et actions, ou nommez vos propres champs et dites au modèle ce qui va sous chacun.",
+        "Summaries in your language": "Des résumés dans votre langue",
+        "What’s new": "Nouveautés",
+        "What’s new in Dictate %@": "Nouveautés de Dictate %@",
+        "Your own templates": "Vos propres modèles",
     ]
 
     static let de: [String: String] = [
@@ -3981,6 +4046,19 @@ extension Localization {
         "Export report · %@…": "Bericht exportieren · %@…",
         "Write with": "Schreiben mit",
         "Written · replaces it": "Geschrieben · wird ersetzt",
+        "Dictate updated to %@.": "Dictate wurde auf %@ aktualisiert.",
+        "Dismiss": "Schließen",
+        "New": "Neu",
+        "New in this version": "Neu in dieser Version",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Öffnen Sie ein Meeting, klicken Sie oben auf Write report und wählen Sie eine Vorlage. Der Bericht erscheint auf der Karte und als PDF unter Dictate Meetings › Reports.",
+        "Reports from templates": "Berichte aus Vorlagen",
+        "See what’s new": "Neuigkeiten ansehen",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Einstellungen › Meetings › Zusammenfassungen und Berichte schreiben auf: Zusammenfassung und Berichte kommen in der Sprache, die Sie lesen – egal, in welcher Sprache das Gespräch war.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Einstellungen › Vorlagen: Beginnen Sie mit Meeting-Zusammenfassung oder Entscheidungen und Aufgaben, oder benennen Sie eigene Felder und sagen Sie dem Modell, was darunter gehört.",
+        "Summaries in your language": "Zusammenfassungen in Ihrer Sprache",
+        "What’s new": "Neuigkeiten",
+        "What’s new in Dictate %@": "Neu in Dictate %@",
+        "Your own templates": "Eigene Vorlagen",
     ]
 
     static let zh: [String: String] = [
@@ -4621,6 +4699,19 @@ extension Localization {
         "Export report · %@…": "导出报告 · %@…",
         "Write with": "用模板撰写",
         "Written · replaces it": "已写 · 将被替换",
+        "Dictate updated to %@.": "Dictate 已更新到 %@。",
+        "Dismiss": "关闭",
+        "New": "新",
+        "New in this version": "本版本新增",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "打开一个会议，点击标题栏中的 Write report，然后选择模板。报告会出现在卡片上，并以 PDF 形式保存在 Dictate Meetings › Reports。",
+        "Reports from templates": "模板报告",
+        "See what’s new": "查看新功能",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "设置 › 会议 › 摘要和报告的语言：无论通话使用什么语言，摘要和所有报告都用你阅读的语言生成。",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "设置 › 模板：从“会议纪要”或“决定与行动项”开始，或自定义字段并告诉模型每个字段下写什么。",
+        "Summaries in your language": "用你的语言写摘要",
+        "What’s new": "新功能",
+        "What’s new in Dictate %@": "Dictate %@ 新功能",
+        "Your own templates": "你自己的模板",
     ]
 
     static let ja: [String: String] = [
@@ -5261,6 +5352,19 @@ extension Localization {
         "Export report · %@…": "レポートを書き出す · %@…",
         "Write with": "テンプレートで書く",
         "Written · replaces it": "作成済み · 置き換えます",
+        "Dictate updated to %@.": "Dictate は %@ に更新されました。",
+        "Dismiss": "閉じる",
+        "New": "New",
+        "New in this version": "このバージョンの新機能",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "ミーティングを開き、ヘッダーの Write report を押してテンプレートを選びます。レポートはカードに表示され、PDF として Dictate Meetings › Reports に保存されます。",
+        "Reports from templates": "テンプレートからレポート",
+        "See what’s new": "新機能を見る",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "設定 › ミーティング › 要約とレポートを書く言語：通話の言語にかかわらず、要約とすべてのレポートがあなたの読む言語で届きます。",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "設定 › テンプレート：「ミーティング要約」や「決定事項とアクション」から始めるか、独自の項目を名付けて、その下に何を書くかをモデルに伝えます。",
+        "Summaries in your language": "あなたの言語で要約",
+        "What’s new": "新機能",
+        "What’s new in Dictate %@": "Dictate %@ の新機能",
+        "Your own templates": "自分のテンプレート",
     ]
 
     static let ko: [String: String] = [
@@ -5901,6 +6005,19 @@ extension Localization {
         "Export report · %@…": "보고서 내보내기 · %@…",
         "Write with": "템플릿으로 쓰기",
         "Written · replaces it": "작성됨 · 대체됩니다",
+        "Dictate updated to %@.": "Dictate가 %@(으)로 업데이트되었습니다.",
+        "Dismiss": "닫기",
+        "New": "새로움",
+        "New in this version": "이 버전의 새 기능",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "회의를 열고 머리글의 Write report를 누른 뒤 템플릿을 고르세요. 보고서는 카드에 표시되고 Dictate Meetings › Reports에 PDF로 저장됩니다.",
+        "Reports from templates": "템플릿으로 보고서 작성",
+        "See what’s new": "새 기능 보기",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "설정 › 회의 › 요약과 보고서 작성 언어: 통화가 어떤 언어였든 요약과 모든 보고서가 내가 읽는 언어로 작성됩니다.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "설정 › 템플릿: 회의 요약이나 결정과 실행 항목으로 시작하거나, 직접 항목을 정하고 각 항목 아래에 무엇을 쓸지 모델에게 알려 주세요.",
+        "Summaries in your language": "내 언어로 된 요약",
+        "What’s new": "새 기능",
+        "What’s new in Dictate %@": "Dictate %@의 새 기능",
+        "Your own templates": "나만의 템플릿",
     ]
 
     static let vi: [String: String] = [
@@ -6541,6 +6658,19 @@ extension Localization {
         "Export report · %@…": "Xuất báo cáo · %@…",
         "Write with": "Viết bằng",
         "Written · replaces it": "Đã viết · sẽ thay thế",
+        "Dictate updated to %@.": "Dictate đã cập nhật lên %@.",
+        "Dismiss": "Đóng",
+        "New": "Mới",
+        "New in this version": "Mới trong phiên bản này",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Mở một cuộc họp, bấm Write report ở phần đầu rồi chọn mẫu. Báo cáo xuất hiện trên thẻ và dưới dạng PDF trong Dictate Meetings › Reports.",
+        "Reports from templates": "Báo cáo từ mẫu",
+        "See what’s new": "Xem có gì mới",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Cài đặt › Cuộc họp › Viết tóm tắt và báo cáo bằng: tóm tắt và mọi báo cáo được viết bằng ngôn ngữ bạn đọc, bất kể cuộc gọi dùng ngôn ngữ nào.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Cài đặt › Mẫu: bắt đầu từ Tóm tắt cuộc họp hoặc Quyết định và việc cần làm, hoặc tự đặt tên các trường và cho mô hình biết cần viết gì dưới mỗi trường.",
+        "Summaries in your language": "Tóm tắt bằng ngôn ngữ của bạn",
+        "What’s new": "Có gì mới",
+        "What’s new in Dictate %@": "Có gì mới trong Dictate %@",
+        "Your own templates": "Mẫu của riêng bạn",
     ]
 
     static let tl: [String: String] = [
@@ -7181,5 +7311,18 @@ extension Localization {
         "Export report · %@…": "I-export ang report · %@…",
         "Write with": "Isulat gamit ang",
         "Written · replaces it": "Naisulat na · papalitan",
+        "Dictate updated to %@.": "Na-update ang Dictate sa %@.",
+        "Dismiss": "Isara",
+        "New": "Bago",
+        "New in this version": "Bago sa bersyong ito",
+        "Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.": "Buksan ang isang meeting, pindutin ang Write report sa header nito, at pumili ng template. Lalabas ang report sa card at bilang PDF sa Dictate Meetings › Reports.",
+        "Reports from templates": "Mga report mula sa mga template",
+        "See what’s new": "Tingnan ang bago",
+        "Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.": "Settings › Meetings › Isulat ang mga buod at report sa: ang buod at bawat report ay darating sa wikang binabasa mo, anuman ang wika ng tawag.",
+        "Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.": "Settings › Templates: magsimula sa Buod ng meeting o Mga desisyon at aksyon, o pangalanan ang sarili mong mga field at sabihin sa model kung ano ang isusulat sa ilalim ng bawat isa.",
+        "Summaries in your language": "Mga buod sa iyong wika",
+        "What’s new": "Ano ang bago",
+        "What’s new in Dictate %@": "Ano ang bago sa Dictate %@",
+        "Your own templates": "Sarili mong mga template",
     ]
 }

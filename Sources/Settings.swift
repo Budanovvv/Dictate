@@ -209,6 +209,15 @@ final class Settings: @unchecked Sendable {
     /// offering the ask row; it does not care with whom.
     var askArchive: Bool { askProvider != nil }
 
+    /// The version whose "what's new" the person has seen (or dismissed).
+    var whatsNewShownVersion: String? {
+        get { d.string(forKey: "whatsNewShownVersion") }
+        set {
+            if let newValue { d.set(newValue, forKey: "whatsNewShownVersion") }
+            else { d.removeObject(forKey: "whatsNewShownVersion") }
+        }
+    }
+
     // MARK: Reports
 
     /// The language reports are written in. nil means "same as Dictate" —
