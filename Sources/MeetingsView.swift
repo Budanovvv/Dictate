@@ -3348,40 +3348,23 @@ private struct TranscriptPane: View {
         .padding(.bottom, 10)
     }
 
-    /// The report between the summary and the outline: the finished one, or
-    /// where it stands, and — with the agent on — the control that writes
-    /// one: the template, chosen here, and the button. Absent for a live
-    /// call and while the agent is off.
+    /// The report between the summary and the outline. The header row is
+    /// the control: the template popup and the button, always there while
+    /// the agent is on, so writing one is a visible act and not a hunt
+    /// through a menu. Under it, the report itself when there is one — its
+    /// template and time, Open and Show in Finder, then the fields.
     @ViewBuilder
     private var reportBlock: some View {
         if live == nil, reportsAvailable || report != nil || reportPhase != nil {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(report.map { L("Report") + " · " + $0.templateName } ?? L("Report"))
+                HStack(alignment: .center, spacing: 10) {
+                    Text(L("Report"))
                         .font(DS.sectionLabel)
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                         .kerning(0.3)
-                    if let report, let written = report.written {
-                        Text(Lf("Written by %@, %@", report.writer,
-                                written.formatted(date: .abbreviated, time: .shortened)))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
                     Spacer(minLength: 0)
-                    if report != nil {
-                        if let onOpenReport {
-                            Button(L("Open"), action: onOpenReport)
-                                .buttonStyle(.dsSmall)
-                                .controlSize(.small)
-                                .accessibilityLabel(L("Open report"))
-                        }
-                        if let onRevealReport {
-                            Button(L("Show in Finder"), action: onRevealReport)
-                                .buttonStyle(.dsSmall)
-                                .controlSize(.small)
-                        }
-                    }
+                    reportWriter
                 }
                 switch reportPhase {
                 case .queued, .writing:
@@ -3407,6 +3390,25 @@ private struct TranscriptPane: View {
                     EmptyView()
                 }
                 if let report {
+                    HStack(alignment: .center, spacing: 10) {
+                        Text(report.written.map {
+                            report.templateName + " · " + $0.formatted(date: .abbreviated, time: .shortened)
+                        } ?? report.templateName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        if let onOpenReport {
+                            Button(L("Open"), action: onOpenReport)
+                                .buttonStyle(.dsSmall)
+                                .controlSize(.small)
+                                .accessibilityLabel(L("Open report"))
+                        }
+                        if let onRevealReport {
+                            Button(L("Show in Finder"), action: onRevealReport)
+                                .buttonStyle(.dsSmall)
+                                .controlSize(.small)
+                        }
+                    }
                     ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(answer.field)
@@ -3424,40 +3426,32 @@ private struct TranscriptPane: View {
                             }
                         }
                     }
-                    .frame(maxWidth: DS.readingMeasure, alignment: .leading)
-                }
-                if reportsAvailable, reportPhase == nil || isFailed(reportPhase) {
-                    reportWriter
+                } else if reportsAvailable, reportPhase == nil, !reportTemplates.isEmpty {
+                    Text(Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
+                            (Settings.shared.askProvider ?? .anthropic).vendorName))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: DS.readingMeasure, alignment: .leading)
         }
     }
 
-    private func isFailed(_ phase: MeetingReports.Phase?) -> Bool {
-        if case .failed = phase { return true }
-        return false
-    }
-
-    /// The template popup and the button. The popup is the app's own
-    /// PopupTrigger, the button its small style — nothing here is a new
-    /// species of control.
+    /// The header's control: the template popup and the button, in the
+    /// app's own PopupTrigger and button styles. Absent while a report is
+    /// being written; a way to Settings when there is no template yet.
     @ViewBuilder
     private var reportWriter: some View {
-        if reportTemplates.isEmpty {
-            HStack(spacing: 10) {
-                Text(L("No templates yet."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        if reportsAvailable, !isBusy(reportPhase) {
+            if reportTemplates.isEmpty {
                 if let onOpenTemplates {
                     Button(L("Set up templates…"), action: onOpenTemplates)
                         .buttonStyle(.dsSmall)
                         .controlSize(.small)
                 }
-            }
-        } else {
-            let chosen = reportTemplates.first { $0.id == chosenTemplate } ?? reportTemplates.first!
-            HStack(spacing: 10) {
+            } else {
+                let chosen = reportTemplates.first { $0.id == chosenTemplate } ?? reportTemplates.first!
                 PopupTrigger(label: chosen.name) { templateChooserOpen.toggle() }
                     .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
                         VStack(alignment: .leading, spacing: 0) {
@@ -3474,18 +3468,22 @@ private struct TranscriptPane: View {
                         .frame(width: 240)
                     }
                 if let onWriteReport {
-                    Button(report == nil ? L("Write report") : L("Write again")) { onWriteReport(chosen) }
-                        .buttonStyle(.dsSmall)
-                        .controlSize(.small)
+                    if report == nil {
+                        Button(L("Write report")) { onWriteReport(chosen) }
+                            .buttonStyle(.dsPrimary)
+                    } else {
+                        Button(L("Write again")) { onWriteReport(chosen) }
+                            .buttonStyle(.dsRegular)
+                    }
                 }
             }
-            if report == nil {
-                Text(Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
-                        (Settings.shared.askProvider ?? .anthropic).vendorName))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        }
+    }
+
+    private func isBusy(_ phase: MeetingReports.Phase?) -> Bool {
+        switch phase {
+        case .queued, .writing: return true
+        default: return false
         }
     }
 
