@@ -49,50 +49,46 @@ struct ReportTemplate: Codable, Identifiable, Equatable, Sendable {
 
     // MARK: - Starters
 
-    /// The templates a new one starts from. Field names and instructions
-    /// are written in English on purpose: they are the person's to edit,
-    /// and a starter that arrived translated would be harder to recognise
-    /// against the documentation than one that reads the same everywhere.
-    /// The report language is a separate setting and applies to the bodies.
+    /// The templates a new one starts from: the two most recordings need
+    /// — a structured account of a meeting, and the short minutes of
+    /// decisions and tasks — and a blank. Field names and instructions are
+    /// shown in the interface language; the report language is a separate
+    /// setting and applies to the bodies.
     static func starter(_ kind: StarterKind) -> ReportTemplate {
         switch kind {
-        case .sales:
+        case .summary:
             return ReportTemplate(
-                name: L("Sales call"),
-                context: L("We are a sales agency; the client is always the other party."),
+                name: L("Meeting summary"),
+                context: L("We are the team on this call; the reader took part in it."),
                 fields: [
-                    ReportField(name: L("Client profile"),
-                                instruction: L("Who the client is: company, role, how they found us")),
-                    ReportField(name: L("What they need"),
-                                instruction: L("The problem in their words, and how urgent it is")),
-                    ReportField(name: L("Objections")),
-                    ReportField(name: L("Next steps"),
-                                instruction: L("Who does what, by when")),
+                    ReportField(name: L("Purpose"),
+                                instruction: L("Why we met and what we set out to settle")),
+                    ReportField(name: L("Key points"),
+                                instruction: L("The main arguments and facts, with the numbers, names and dates that were said")),
+                    ReportField(name: L("Decisions"),
+                                instruction: L("What was decided, by whom, and what it replaces")),
+                    ReportField(name: L("Action items"),
+                                instruction: L("Who does what, by when — one line per task")),
+                    ReportField(name: L("Open questions"),
+                                instruction: L("What was raised and not settled, and who owns it")),
+                    ReportField(name: L("Risks and concerns"),
+                                instruction: L("What could go wrong, who raised it, how serious it sounded")),
+                    ReportField(name: L("Next step"),
+                                instruction: L("The next meeting or checkpoint, if one was agreed")),
                 ])
-        case .hiring:
+        case .actions:
             return ReportTemplate(
-                name: L("Hiring interview"),
-                context: L("We are hiring; the candidate is the other party."),
+                name: L("Decisions & actions"),
+                context: L("We are the team on this call; the reader took part in it."),
                 fields: [
-                    ReportField(name: L("Background"),
-                                instruction: L("Current role, years of experience, what they built")),
-                    ReportField(name: L("Evidence for the role"),
-                                instruction: L("Concrete examples that show they can do this job")),
-                    ReportField(name: L("Concerns")),
-                    ReportField(name: L("Recommendation"),
-                                instruction: L("Proceed, hold or pass, and why")),
-                ])
-        case .support:
-            return ReportTemplate(
-                name: L("Support call"),
-                context: L("We are the support team; the customer is the other party."),
-                fields: [
-                    ReportField(name: L("The problem"),
-                                instruction: L("What is broken, since when, and what it blocks")),
-                    ReportField(name: L("What we tried")),
-                    ReportField(name: L("Resolved or open")),
-                    ReportField(name: L("Follow-up owed"),
-                                instruction: L("What we promised, to whom, by when")),
+                    ReportField(name: L("Decisions"),
+                                instruction: L("What was decided, by whom, and what it replaces")),
+                    ReportField(name: L("Action items"),
+                                instruction: L("Who does what, by when — one line per task")),
+                    ReportField(name: L("Dates and deadlines"),
+                                instruction: L("Every date, deadline or time window that was mentioned, and what it is for")),
+                    ReportField(name: L("Waiting on"),
+                                instruction: L("What each side is waiting for from the other")),
                 ])
         case .blank:
             return ReportTemplate(name: L("New template"), fields: [ReportField(name: "")])
@@ -100,7 +96,7 @@ struct ReportTemplate: Codable, Identifiable, Equatable, Sendable {
     }
 
     enum StarterKind: CaseIterable {
-        case sales, hiring, support, blank
+        case summary, actions, blank
     }
 }
 
