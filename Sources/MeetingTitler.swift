@@ -1168,6 +1168,39 @@ final class MeetingSections: ObservableObject {
                 written += 1
             }
             if redo { UserDefaults.standard.removeObject(forKey: Self.redoKey) }
+            // Second pass: the outline's top level for meetings that already
+            // HAVE a contents block. The block is one granularity (the
+            // standard one, as a rule); Fewer needs the coarse cut too, and
+            // until now it was made only when somebody opened the meeting —
+            // eight to twelve seconds of shimmer per meeting, the same eight
+            // seconds every time it looked like "the outline is missing"
+            // (owner, 2026-09-14). Seven calls per meeting, paced like the
+            // rest, once per archive.
+            for meeting in meetings where !meeting.sections.isEmpty && !meeting.entries.isEmpty {
+                guard allowed() else {
+                    Log.d("sections: backfill paused — a meeting is being recorded")
+                    return
+                }
+                guard !refused.contains(meeting.url),
+                      SectionCache.cut(meeting.url, meeting.entries, .coarse) == nil,
+                      MeetingArchive.sectionRanges(of: meeting.entries, detail: .coarse).count >= 3
+                else { continue }
+                try? await Task.sleep(for: breather)
+                switch await MeetingSectioner.sectionsOutcome(for: meeting.entries,
+                                                              detail: .coarse, progress: { [weak self] in
+                    guard let self else { return false }
+                    try? await Task.sleep(for: self.pause)
+                    return allowed()
+                }) {
+                case .sections(let cut):
+                    guard !cut.isEmpty else { refused.insert(meeting.url); continue }
+                    SectionCache.remember(cut, for: meeting.url, meeting.entries, .coarse)
+                    written += 1
+                case .deferred(let why):
+                    Log.d("sections: backfill paused — \(why)")
+                    return
+                }
+            }
             Log.d("sections: backfill done")
         }
     }

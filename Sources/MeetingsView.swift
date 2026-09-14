@@ -44,6 +44,14 @@ struct MeetingsView: View {
     @ObservedObject private var offer = LocalTextModelOffer.shared
     @ObservedObject private var download = LocalTextModelDownload.shared
     @ObservedObject private var smallMacNote = SmallMacNote.shared
+    /// Bumped whenever a cut lands in SectionCache. The cache is a file, not
+    /// state: reload() deliberately keeps the meeting instances the archive
+    /// still agrees with, so a cut made for an OPEN meeting changed nothing
+    /// SwiftUI could see, and the outline kept its one level with the second
+    /// already on disk (log 2026-09-14: "7 of 7 in 11.8s" and, five seconds
+    /// later, "outline: … levels 1"). Reading this in the body makes the
+    /// `cuts` closure run again.
+    @State private var cutRevision = 0
     let onStop: () -> Void
     /// Starts a meeting recording through the owner's consent-aware path —
     /// the same flow the menu bar uses (first-run consent alert included).
@@ -260,6 +268,7 @@ struct MeetingsView: View {
         // Only ever a handful of times, and only while the backfill runs —
         // there is nothing here that ticks.
         .onChange(of: summaries.written) { reload() }
+        .onChange(of: sections.written) { cutRevision += 1; reload() }
         // The model arrived or was removed: which engine reads changed.
         .onChange(of: download.state) { engineStatus = MeetingTextEngines.status }
         // A contents block landed. Same story, and just as rare: only while
@@ -1499,6 +1508,7 @@ struct MeetingsView: View {
                                recutLevels: SectionCache.levels(for: meeting.url,
                                                                 entries: meeting.entries),
                                cuts: {
+                                   _ = cutRevision
                                    var out: [MeetingPolicy.SectionDetail: [TranscriptSection]] = [:]
                                    for level in MeetingPolicy.SectionDetail.allCases {
                                        if let cut = SectionCache.cut(meeting.url, meeting.entries, level) {
@@ -1812,6 +1822,7 @@ struct MeetingsView: View {
             let sections = await MeetingSectioner.sections(for: meeting.entries, detail: detail)
             if !sections.isEmpty {
                 SectionCache.remember(sections, for: meeting.url, meeting.entries, detail)
+                cutRevision += 1
             }
             reload()
             done(!sections.isEmpty)
@@ -1835,6 +1846,7 @@ struct MeetingsView: View {
             let sections = await MeetingSectioner.sections(for: meeting.entries, detail: detail)
             guard !sections.isEmpty else { return }
             SectionCache.remember(sections, for: meeting.url, meeting.entries, detail)
+            cutRevision += 1
             _ = MeetingArchive.setSections(sections, heading: L("Contents"), in: meeting.url)
             sectionLevel[meeting.url] = detail
             reload()
@@ -3267,7 +3279,11 @@ private struct TranscriptPane: View {
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
                         .kerning(0.3)
-                    if !outlineFolded {
+                    // The depth control only where there are two depths to
+                    // choose from: a meeting too short for a coarse cut has
+                    // one level, and Fewer/More that show the same lines read
+                    // as broken (owner, 2026-09-14).
+                    if !outlineFolded, outline.levels >= 2 {
                         DSSegmented(options: [
                             (OutlineDepth.fewer, L("Fewer")),
                             (OutlineDepth.more, L("More")),
@@ -3323,7 +3339,10 @@ private struct TranscriptPane: View {
     /// next missing granularity in the background.
     private func growForDepth(_ outline: MeetingOutlineModel) {
         guard let onGrow, !growingOutline else { return }
-        let want = min(outlineDepth.rawValue, allowedDepth)
+        // Both levels, whatever depth is chosen: Fewer with only the file's
+        // standard cut on hand showed twelve leaves where seven sections
+        // belonged, until More happened to be clicked (2026-09-14).
+        let want = allowedDepth
         guard outline.levels < want else { return }
         let order: [MeetingPolicy.SectionDetail] = [.coarse, .standard]
         guard let missing = order.first(where: {
