@@ -982,7 +982,7 @@ struct MeetingsView: View {
         switch reports.phases[meeting.url] {
         case .queued, .writing: facts.append(L("Writing…"))
         case .failed: facts.append(L("Report not written"))
-        case nil: if !meeting.reports.isEmpty { facts.append(L("Reported")) }
+        case nil: if !meeting.reports.isEmpty { facts.append(meeting.reports.map(\.templateName).joined(separator: ", ")) }
         }
         return facts
     }
@@ -1070,6 +1070,7 @@ struct MeetingsView: View {
                 starredOnly = false
                 recentOnly = false
                 reportsOnly = false
+                reportTemplateFilter = nil
                 sourceFilter = nil
                 if selection == .ask, let newest = meetings.first {
                     selection = .archived(newest.url)
@@ -1080,14 +1081,14 @@ struct MeetingsView: View {
                 navRow(icon: starredOnly ? "star.fill" : "star", title: L("Starred"),
                        count: starredCount, selected: starredOnly) {
                     starredOnly.toggle()
-                    if starredOnly { recentOnly = false; sourceFilter = nil; reportsOnly = false }
+                    if starredOnly { recentOnly = false; sourceFilter = nil; reportsOnly = false; reportTemplateFilter = nil }
                     leaveAsk()
                 }
             }
             navRow(icon: "clock", title: L("Recently Added"),
                    selected: recentOnly) {
                 recentOnly.toggle()
-                if recentOnly { starredOnly = false; sourceFilter = nil; reportsOnly = false }
+                if recentOnly { starredOnly = false; sourceFilter = nil; reportsOnly = false; reportTemplateFilter = nil }
                 leaveAsk()
             }
             // The meetings with a report — the reports are meeting-bound
@@ -1096,10 +1097,29 @@ struct MeetingsView: View {
             let reportedCount = meetings.filter { !$0.reports.isEmpty }.count
             if reportedCount > 0 || reportsOnly {
                 navRow(icon: "doc.text", title: L("Reports"),
-                       count: reportedCount, selected: reportsOnly) {
-                    reportsOnly.toggle()
+                       count: reportedCount, selected: reportsOnly && reportTemplateFilter == nil) {
+                    reportsOnly = !(reportsOnly && reportTemplateFilter == nil)
+                    reportTemplateFilter = nil
                     if reportsOnly { starredOnly = false; recentOnly = false; sourceFilter = nil }
                     leaveAsk()
+                }
+                // By template, the way Sources lists platforms: a report is
+                // found by its kind as much as by its meeting (design, the
+                // smart-folder rule). One sub-row per template in use.
+                ForEach(reportTemplatesPresent, id: \.name) { kind in
+                    navRow(icon: "doc.text", title: kind.name, count: kind.count,
+                           selected: reportTemplateFilter == kind.name) {
+                        if reportTemplateFilter == kind.name {
+                            reportTemplateFilter = nil
+                            reportsOnly = false
+                        } else {
+                            reportTemplateFilter = kind.name
+                            reportsOnly = true
+                            starredOnly = false; recentOnly = false; sourceFilter = nil
+                        }
+                        leaveAsk()
+                    }
+                    .padding(.leading, 14)
                 }
             }
             let sources = sourcesPresent
@@ -1119,7 +1139,7 @@ struct MeetingsView: View {
                            title: name, count: source.count,
                            selected: sourceFilter == source.name) {
                         sourceFilter = sourceFilter == source.name ? nil : source.name
-                        if sourceFilter != nil { starredOnly = false; recentOnly = false }
+                        if sourceFilter != nil { starredOnly = false; recentOnly = false; reportsOnly = false; reportTemplateFilter = nil }
                         leaveAsk()
                     }
                 }
@@ -1594,6 +1614,7 @@ struct MeetingsView: View {
                                overviewSummary: meeting.summary,
                                overviewSections: meeting.sections,
                                reports: meeting.reports,
+                               preferredReport: reportTemplateFilter,
                                reportPhase: reports.phases[meeting.url],
                                onWriteReport: { reports.write(meeting.url, with: $0) },
                                onOpenReport: { report in
@@ -1868,6 +1889,9 @@ struct MeetingsView: View {
         var out = MeetingSearch.literal(meetings, query: query)
         if starredOnly { out = out.filter { MeetingStars.isStarred($0.started) } }
         if reportsOnly { out = out.filter { !$0.reports.isEmpty } }
+        if let kind = reportTemplateFilter {
+            out = out.filter { $0.reports.contains { $0.templateName == kind } }
+        }
         if recentOnly {
             let cutoff = Date().addingTimeInterval(-7 * 86400)
             out = out.filter { $0.started >= cutoff }
@@ -1876,6 +1900,17 @@ struct MeetingsView: View {
             out = out.filter { ($0.source ?? Self.otherSourcesBucket) == sourceFilter }
         }
         return out
+    }
+
+    /// Templates with a report in the archive, most-used first — the
+    /// sub-rows under Reports.
+    private var reportTemplatesPresent: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for meeting in meetings {
+            for name in Set(meeting.reports.map(\.templateName)) { counts[name, default: 0] += 1 }
+        }
+        return counts.map { (name: $0.key, count: $0.value) }
+            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
     }
 
     /// The bucket every un-attributed call falls into ("Other browser calls"
@@ -1975,6 +2010,8 @@ struct MeetingsView: View {
     /// The sidebar's Recently Added filter (design): the last seven days.
     @State private var recentOnly = false
     @State private var reportsOnly = false
+    /// One template's reports only, chosen from the sub-rows under Reports.
+    @State private var reportTemplateFilter: String?
     @State private var sourceFilter: String?
 
     /// The connect sheet, and the question that opened it — asked the moment
@@ -2721,6 +2758,8 @@ private struct TranscriptPane: View {
     /// none, where one stands: queued, being written, waiting for a
     /// connection, refused.
     var reports: [MeetingReport] = []
+    /// The template the library was filtered by — the report to show first.
+    var preferredReport: String? = nil
     var reportPhase: MeetingReports.Phase? = nil
     /// Writes a report from the given template — "Write it now" after a
     /// failure, and the ⋯ menu's row.
@@ -2798,6 +2837,9 @@ private struct TranscriptPane: View {
     @State private var templateChooserOpen = false
     /// Whether a long call's folded voices are all on show.
     @State private var voicesExpanded = false
+    /// Which of several reports the card shows (design: one document, a
+    /// template switch — Fathom's and Granola's answer, not a stack).
+    @State private var shownReport: String?
     /// The template chosen from the pull-down, awaiting the person's yes.
     @State private var pendingTemplate: ReportTemplate?
     /// Granularities a grow came back empty for (too short to cut, or the
@@ -3063,7 +3105,7 @@ private struct TranscriptPane: View {
                 }
             }
             .padding(.bottom, 14)
-            .onChange(of: title) { voicesExpanded = false }
+            .onChange(of: title) { voicesExpanded = false; shownReport = nil }
         }
         .padding(.top, 16)
         .padding(.horizontal, 24)
@@ -3449,13 +3491,12 @@ private struct TranscriptPane: View {
                         }
                     }
                 }
-                // One block per report, one report per template: a meeting
-                // summary and its decisions are two documents, not one
-                // overwriting the other.
-                ForEach(Array(reports.enumerated()), id: \.offset) { _, report in
+                // One block, one report on show: with several, a switch
+                // names them and the card stays a page, not a stack.
+                if let report = reportOnShow {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .center, spacing: 10) {
-                            Text(L("Report") + " · " + report.templateName)
+                            Text(reports.count == 1 ? L("Report") + " · " + report.templateName : L("Report"))
                                 .font(DS.sectionLabel)
                                 .foregroundStyle(.secondary)
                                 .textCase(.uppercase)
@@ -3477,6 +3518,16 @@ private struct TranscriptPane: View {
                                     .buttonStyle(.dsSmall)
                                     .controlSize(.small)
                             }
+                        }
+                        // The switch on its own line, at its own width: in
+                        // the header row it shared with two buttons and a
+                        // date, the template names lost their second word.
+                        if reports.count > 1 {
+                            DSSegmented(options: reports.map { ($0.templateName, $0.templateName) },
+                                        selection: Binding(
+                                            get: { report.templateName },
+                                            set: { shownReport = $0 }))
+                                .fixedSize()
                         }
                         ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
                             VStack(alignment: .leading, spacing: 4) {
@@ -3586,6 +3637,14 @@ private struct TranscriptPane: View {
                               (Settings.shared.askProvider ?? .anthropic).vendorName))
                 }
         }
+    }
+
+    /// The report the card shows: the one chosen with the switch, else the
+    /// one the library was filtered by, else the first.
+    private var reportOnShow: MeetingReport? {
+        reports.first { $0.templateName == shownReport }
+            ?? reports.first { $0.templateName == preferredReport }
+            ?? reports.first
     }
 
     /// Whether this meeting already carries a report from the template —
