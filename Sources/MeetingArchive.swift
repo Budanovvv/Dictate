@@ -101,6 +101,9 @@ struct ArchivedMeeting: Identifiable, Hashable {
     /// recorded before the field existed and for unidentified browser calls —
     /// the library's "other" bucket.
     var source: String? = nil
+    /// The report written from a template, when there is one — read from
+    /// the file like everything else here.
+    var report: MeetingReport? = nil
 
     /// What this meeting IS, independent of the objects carrying it.
     ///
@@ -114,6 +117,7 @@ struct ArchivedMeeting: Identifiable, Hashable {
     func sameContent(as other: ArchivedMeeting) -> Bool {
         url == other.url && title == other.title && summary == other.summary
             && tags == other.tags && sections == other.sections
+            && report == other.report
             && entries.count == other.entries.count
             && zip(entries, other.entries).allSatisfy {
                 $0.time == $1.time && $0.speaker == $1.speaker && $0.text == $1.text
@@ -587,7 +591,8 @@ enum MeetingArchive {
                                        summary: parseSummary(markdown: text),
                                        sections: parseSections(markdown: text),
                                        tags: MeetingTags.parse(markdown: text),
-                                       source: parseSource(markdown: text))
+                                       source: parseSource(markdown: text),
+                                       report: parseReport(markdown: text))
             }
             .sorted { $0.started > $1.started }
     }
@@ -721,7 +726,7 @@ enum MeetingArchive {
     /// be carried over deliberately — Finder sorts by it, and a transcript
     /// that claims to be from the moment it was retitled is a small lie about
     /// the user's own history.
-    private static func rewrite(_ url: URL, with updated: String) -> Bool {
+    static func rewrite(_ url: URL, with updated: String) -> Bool {
         let created = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
         guard (try? updated.write(to: url, atomically: true, encoding: .utf8)) != nil else {
             return false

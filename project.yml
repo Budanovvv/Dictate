@@ -147,6 +147,12 @@ targets:
       # and the vocabulary's only defence against drifting into synonyms.
       - path: Sources/MeetingTags.swift
       - path: Sources/MeetingArchive.swift
+      # The report block in the meeting file, the template model and the
+      # form the model is asked to fill — pure text and schema work, tested
+      # here without the network.
+      - path: Sources/MeetingReport.swift
+      - path: Sources/ReportTemplate.swift
+      - path: Sources/MeetingOracle.swift
       - path: Sources/TranscriptCleanup.swift
       - path: Sources/MeetingSearch.swift
       - path: Sources/TranscriptCopy.swift

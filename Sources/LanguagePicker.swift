@@ -291,3 +291,34 @@ private struct LanguagePopover: View {
         Divider().padding(.vertical, 4)
     }
 }
+
+/// The language reports are written in: "Same as Dictate" (the interface
+/// language, whatever it resolves to) or one named language. Field names are
+/// never translated, whichever is chosen.
+struct ReportLanguagePicker: View {
+    @Binding var selection: AppLanguage?
+
+    @State private var open = false
+
+    var body: some View {
+        PopupTrigger(label: selection?.label ?? L("Same as Dictate")) { open.toggle() }
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        PopupRow(title: L("Same as Dictate"), selected: selection == nil) {
+                            selection = nil
+                            open = false
+                        }
+                        ForEach(AppLanguage.allCases.filter { $0 != .system }) { lang in
+                            PopupRow(title: lang.label, selected: selection == lang) {
+                                selection = lang
+                                open = false
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+                .frame(width: 200, height: 320)
+            }
+    }
+}

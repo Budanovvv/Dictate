@@ -1371,6 +1371,12 @@ final class MeetingSession: ObservableObject {
                                                         title: title)
                 if self.fileURL == url { self.fileURL = renamed }
                 self.onFinished?(renamed)
+                // The automatic report, if there is one: the agent's work,
+                // over the network, from the finished file — after the
+                // title so the report is filed under the meeting's name.
+                MeetingReports.shared.callEnded(url: renamed)
+            } else {
+                MeetingReports.shared.callEnded(url: url)
             }
             // The call is over, its finishing touches are on disk, and the
             // model is still warm: the moment for the archive's missing

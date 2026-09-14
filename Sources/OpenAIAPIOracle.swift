@@ -193,6 +193,62 @@ struct OpenAIAPIOracle: MeetingOracle {
         return output
     }
 
+    /// Room for a report: several fields of a few paragraphs each, plus the
+    /// reasoning that counts against the same ceiling.
+    private let reportMaxTokens = 8192
+
+    func report(_ request: ReportRequest) async throws -> [String] {
+        guard let key = APIKey.current(.openai) else { throw Failure.noKey }
+        let tool: [String: Any] = [
+            "type": "function",
+            "name": ReportRequest.toolName,
+            "description": ReportRequest.toolDescription,
+            "parameters": request.schema(strict: true),
+            "strict": true,
+        ]
+        let body: [String: Any] = [
+            "model": model,
+            "instructions": request.instructions,
+            "input": [["role": "user", "content": request.transcript]],
+            "max_output_tokens": reportMaxTokens,
+            "store": false,
+            "reasoning": ["effort": effort],
+            "tools": [tool],
+            "tool_choice": ["type": "function", "name": ReportRequest.toolName],
+        ]
+        var req = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 180
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let response = try await Self.receive(req)
+        if let error = response["error"] as? [String: Any] {
+            throw Failure.failed(error["message"] as? String ?? "the model stopped")
+        }
+        let output = response["output"] as? [[String: Any]] ?? []
+        guard let call = output.first(where: {
+            $0["type"] as? String == "function_call" && $0["name"] as? String == ReportRequest.toolName
+        }), let raw = call["arguments"] as? String,
+              let arguments = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
+        else {
+            throw Failure.failed(L("The model returned no report."))
+        }
+        return request.answers(from: arguments)
+    }
+
+    /// One request, the whole reply as JSON. Same retry manners as `send`.
+    static func receive(_ request: URLRequest) async throws -> [String: Any] {
+        let bytes = try await send(request)
+        var data = Data()
+        for try await byte in bytes { data.append(byte) }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure.failed("unreadable response")
+        }
+        return json
+    }
+
     /// Sends one request, quietly retrying the refusals that are the server's
     /// weather rather than the user's mistake: rate limits, 5xx — and 404,
     /// which is normally permanent but was observed flapping for minutes

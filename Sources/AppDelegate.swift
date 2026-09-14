@@ -693,6 +693,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 TopNotice.show(L("Meeting model installed. New meetings get titles and summaries on this Mac."))
             }
         })
+        // The report queue exists from launch: a job left from a call that
+        // ended offline resumes now, and the notification delegate must be
+        // in place before a click on last night's notification arrives.
+        _ = MeetingReports.shared
+        // A macOS notification about a report was clicked: the meeting it
+        // names, in the library, whatever Space the window was left on.
+        menuObservers.append(NotificationCenter.default.addObserver(
+            forName: MeetingReports.open, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let url = note.userInfo?["url"] as? URL else { return }
+            MainActor.assumeIsolated { self?.showMeetingWindow(select: url, focus: true) }
+        })
         noticeModelBelowFloorOnce()
 
         applyDebugShot()

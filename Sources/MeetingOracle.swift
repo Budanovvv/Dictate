@@ -42,6 +42,64 @@ protocol MeetingOracle {
     /// machine.
     func answer(_ prompt: String, history: [AnswerExchange])
         -> AsyncThrowingStream<String, Error>
+
+    /// A report from one transcript, one answer per field of the template.
+    ///
+    /// One call, no tools, no conversation: the transcript goes out whole
+    /// and the model fills in a form. The form IS a tool — a function whose
+    /// parameters are the template's fields, which the model is made to
+    /// call — because that is the one way both vendors guarantee an answer
+    /// with exactly these fields, in this order, and nothing else. A
+    /// missing field comes back as an empty string, never as prose about
+    /// why it is missing.
+    func report(_ request: ReportRequest) async throws -> [String]
+}
+
+/// What a report call sends: the instructions, the transcript, and the
+/// fields to fill. Shared by both oracles so the two vendors are asked the
+/// same thing in the same words.
+struct ReportRequest: Sendable {
+    let instructions: String
+    let transcript: String
+    let fields: [ReportField]
+
+    static let toolName = "write_report"
+    static let toolDescription =
+        "Write the report for this transcript. Fill every field from what was actually said; leave a field empty if the conversation did not cover it."
+
+    /// The property keys are positional (`field_1`…): a field name is the
+    /// person's own text and may hold anything, and a JSON key that is
+    /// somebody's typo is a schema that fails validation.
+    static func key(_ index: Int) -> String { "field_\(index + 1)" }
+
+    /// The function's parameters. `strict` adds what OpenAI's strict mode
+    /// insists on and Anthropic's schema tolerates anyway.
+    func schema(strict: Bool) -> [String: Any] {
+        var properties: [String: Any] = [:]
+        for (index, field) in fields.enumerated() {
+            let instruction = field.instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+            var description = "\"\(field.name)\""
+            if !instruction.isEmpty { description += ": \(instruction)" }
+            description += ". Empty string if the conversation did not cover this."
+            properties[Self.key(index)] = ["type": "string", "description": description]
+        }
+        var schema: [String: Any] = [
+            "type": "object",
+            "properties": properties,
+            "required": fields.indices.map(Self.key),
+        ]
+        if strict { schema["additionalProperties"] = false }
+        return schema
+    }
+
+    /// The answers in field order from the tool's arguments; a field the
+    /// model left out counts as not discussed.
+    func answers(from arguments: [String: Any]) -> [String] {
+        fields.indices.map { index in
+            (arguments[Self.key(index)] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+    }
 }
 
 /// One earlier round, exactly as it went over the wire: the user turn and

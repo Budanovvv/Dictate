@@ -190,6 +190,72 @@ struct ClaudeAPIOracle: MeetingOracle {
         }
     }
 
+    /// Room for a report: several fields of a few paragraphs each, plus the
+    /// thinking that counts against the same ceiling.
+    private let reportMaxTokens = 8192
+
+    func report(_ request: ReportRequest) async throws -> [String] {
+        guard let key = APIKey.current(.anthropic) else { throw Failure.noKey }
+        let tool: [String: Any] = [
+            "name": ReportRequest.toolName,
+            "description": ReportRequest.toolDescription,
+            "input_schema": request.schema(strict: false),
+        ]
+        var body: [String: Any] = [
+            "model": model,
+            "max_tokens": reportMaxTokens,
+            "system": request.instructions,
+            "output_config": ["effort": effort],
+            "messages": [["role": "user", "content": request.transcript]],
+            "tools": [tool],
+            "tool_choice": ["type": "tool", "name": ReportRequest.toolName],
+        ]
+
+        func post(_ body: [String: Any]) async throws -> [String: Any] {
+            var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.setValue(key, forHTTPHeaderField: "x-api-key")
+            req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            req.timeoutInterval = 180
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            return try await Self.receive(req)
+        }
+
+        var response: [String: Any]
+        do {
+            response = try await post(body)
+        } catch Failure.http(400, let text) where text.lowercased().contains("tool_choice") {
+            // A model that thinks before it answers may refuse to be FORCED
+            // into the tool; asked nicely, with the tool the only thing on
+            // the table, it still calls it.
+            Log.d("report: forced tool refused, asking instead")
+            body["tool_choice"] = ["type": "auto"]
+            response = try await post(body)
+        }
+        if let error = response["error"] as? [String: Any] {
+            throw Failure.failed(error["message"] as? String ?? "the model stopped")
+        }
+        let content = response["content"] as? [[String: Any]] ?? []
+        guard let use = content.first(where: {
+            $0["type"] as? String == "tool_use" && $0["name"] as? String == ReportRequest.toolName
+        }), let input = use["input"] as? [String: Any] else {
+            throw Failure.failed(L("The model returned no report."))
+        }
+        return request.answers(from: input)
+    }
+
+    /// One request, the whole reply as JSON. Same retry manners as `send`.
+    static func receive(_ request: URLRequest) async throws -> [String: Any] {
+        let bytes = try await send(request)
+        var data = Data()
+        for try await byte in bytes { data.append(byte) }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure.failed("unreadable response")
+        }
+        return json
+    }
+
     /// Sends one request, quietly retrying the refusals that are the server's
     /// weather rather than the user's mistake: rate limits, overloads, 5xx —
     /// and 404, which is normally permanent but was observed flapping for

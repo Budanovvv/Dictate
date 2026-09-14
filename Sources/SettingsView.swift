@@ -110,8 +110,19 @@ struct SettingsView: View {
     // used to sit under General, plus the ones the 8 GB MacBook taught us
     // to write (2026-09-13). Its own row so the meeting model is findable by
     // NAME in the sidebar, which is the shortest path to removing it.
-    private enum Tab: CaseIterable { case keys, languages, meetings, general, thisMac }
+    // Agent is the sixth (2026-09-14): everything that leaves this Mac on
+    // the person's key — the provider, the key, what is sent, and reports —
+    // in the one place the app already calls "Agent". Meetings is purely
+    // local again: calendar names, reading, the meeting model.
+    private enum Tab: CaseIterable { case keys, languages, meetings, agent, general, thisMac }
     @State private var tab: Tab = .keys
+    /// The report template editor, a sheet on this window.
+    @State private var showTemplateEditor = false
+    /// The ask-first card before macOS's own notification permission dialog.
+    @State private var askNotifications = false
+    @State private var reportAutomatic = Settings.shared.reportAutomatic
+    @State private var reportLanguage = Settings.shared.reportLanguage
+    @ObservedObject private var templateStore = ReportTemplateStore.shared
     /// The removal dialog for the meeting model.
     @State private var confirmRemoveModel = false
     /// The removal dialog for the debug audio dumps.
@@ -130,6 +141,7 @@ struct SettingsView: View {
         case .keys: return L("Keys")
         case .languages: return L("Languages")
         case .meetings: return L("Meetings")
+        case .agent: return L("Agent")
         case .general: return L("General")
         case .thisMac: return L("This Mac")
         }
@@ -140,6 +152,7 @@ struct SettingsView: View {
         case .keys: return "keyboard"
         case .languages: return "globe"
         case .meetings: return "video"
+        case .agent: return "sparkles"
         case .general: return "gearshape"
         case .thisMac: return "desktopcomputer"
         }
@@ -249,6 +262,21 @@ struct SettingsView: View {
             if nameFromCalendar != Settings.shared.nameMeetingsFromCalendar {
                 nameFromCalendar = Settings.shared.nameMeetingsFromCalendar
             }
+            if reportAutomatic != Settings.shared.reportAutomatic { reportAutomatic = Settings.shared.reportAutomatic }
+            if askProvider != Settings.shared.askProvider { askProvider = Settings.shared.askProvider }
+        }
+        .sheet(isPresented: $showTemplateEditor) {
+            ReportTemplateEditor()
+        }
+        .sheet(isPresented: $askNotifications) {
+            ReportNotificationAskCard()
+        }
+        // The Meetings window asks for the editor by name (its first-run
+        // card, its Agent empty state).
+        .onReceive(NotificationCenter.default.publisher(
+            for: .init("dictate.editReportTemplates")).receive(on: RunLoop.main)) { _ in
+            tab = .agent
+            showTemplateEditor = true
         }
         .onDisappear {
             captureMain.cancel()
@@ -309,6 +337,7 @@ struct SettingsView: View {
         case .keys: Form { keysSection }.formStyle(.grouped)
         case .languages: Form { languagesSection }.formStyle(.grouped)
         case .meetings: Form { meetingsSection }.formStyle(.grouped)
+        case .agent: Form { agentSection }.formStyle(.grouped)
         case .general: Form { generalSection }.formStyle(.grouped)
         case .thisMac: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
         }
@@ -706,47 +735,13 @@ struct SettingsView: View {
                     }
                 }
 
-                // The AI agent — deliberately NOT inside the local-model test
-                // above: this runs on the user's API key in the vendor's
-                // cloud, so a Mac too small for a local 4B model can still
-                // turn on the one capability that does not need it.
-                //
-                // One control answers both questions — is this on, and with
-                // whom. A toggle that then revealed a provider choice would
-                // make the person say "yes" before they know to whom; a
-                // chooser whose first option is Off keeps consent and choice
-                // as the single decision they actually are. The same
-                // PopupTrigger as the language rows — a bare Picker rendered
-                // as a different species of control here (see LanguagePicker).
-                LabeledContent {
-                    AskProviderPicker(selection: $askProvider)
-                        .onChange(of: askProvider) { _, v in
-                            Settings.shared.askProvider = v
-                            // A half-typed key for one vendor is not a draft
-                            // for the other.
-                            keyDraft = ""
-                        }
-                } label: {
-                    rowLabel(L("The agent uses"),
-                             L("Connect one to analyze your meetings."))
-                }
-                // The key row belongs to the chosen provider — it appears
-                // with the choice, labelled with the vendor's name, because a
-                // field for a credential nobody can use yet is a question
-                // with no reason behind it.
-                if let provider = askProvider {
-                    LabeledContent {
-                        apiKeyControl(for: provider)
-                    } label: {
-                        rowLabel(provider.keyLabel, L("Your account, your usage"))
-                    }
-                }
             } header: { Text(L("Meetings")) } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    // The privacy line answers for the whole section: with
-                    // asking off, "nothing leaves this Mac" covers the calendar
-                    // and the local model too — both read and write here only.
-                    Text(askFooter)
+                    // The privacy line answers for the whole section: the
+                    // calendar and the local model read and write here only.
+                    // The agent, which does send, has its own tab and its
+                    // own footer.
+                    Text(L("Everything here runs on this Mac and nothing leaves it. What the agent sends, on your key, is on the Agent tab."))
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     // The hardware caveats used to repeat here; they live on
@@ -754,6 +749,180 @@ struct SettingsView: View {
                     // and in the offer at the moment of the decision.
                 }
             }
+    }
+
+    // MARK: - Agent
+
+    /// The agent and what it does: the connection, then reports. Reports sit
+    /// under the connection because they cannot exist without it, and the
+    /// off state points one row up instead of to another tab.
+    @ViewBuilder
+    private var agentSection: some View {
+        Section {
+            // One control answers both questions — is this on, and with
+            // whom. A toggle that then revealed a provider choice would
+            // make the person say "yes" before they know to whom; a
+            // chooser whose first option is Off keeps consent and choice
+            // as the single decision they actually are. Deliberately NOT
+            // gated by the local model: this runs on the user's API key in
+            // the vendor's cloud, so a Mac too small for a local 4B model
+            // can still turn on the one capability that does not need it.
+            LabeledContent {
+                VStack(alignment: .leading, spacing: 6) {
+                    AskProviderPicker(selection: $askProvider)
+                        .onChange(of: askProvider) { _, v in
+                            Settings.shared.askProvider = v
+                            // A half-typed key for one vendor is not a draft
+                            // for the other.
+                            keyDraft = ""
+                        }
+                    if askProvider == nil {
+                        Text(L("Off: transcripts, summaries and search work as before. The agent answers questions across your meetings and writes reports; it runs in the cloud on your own API key."))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } label: {
+                rowLabel(L("Answers with"), L("Questions across your meetings, and reports."))
+            }
+            // The key row belongs to the chosen provider — it appears
+            // with the choice, labelled with the vendor's name, because a
+            // field for a credential nobody can use yet is a question
+            // with no reason behind it.
+            if let provider = askProvider {
+                LabeledContent {
+                    apiKeyControl(for: provider)
+                } label: {
+                    rowLabel(provider.keyLabel, L("Your account, your usage"))
+                }
+            }
+            LabeledContent {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L("A structured write-up of each call under fields you define once, such as Objections or Next steps. A field the call did not cover reads “Not discussed”."))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let gate = reportsGateLine {
+                        Text(gate).font(.caption).foregroundStyle(DS.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } label: {
+                rowLabel(L("Reports"), nil)
+            }
+            LabeledContent {
+                templatesControl
+            } label: {
+                rowLabel(L("Templates"), nil)
+            }
+            LabeledContent {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $reportAutomatic) {
+                        Text(L("Report every call automatically"))
+                    }
+                    .toggleStyle(.switch)
+                    .disabled(askProvider == nil || templateStore.templates.isEmpty)
+                    .onChange(of: reportAutomatic) { _, on in
+                        Settings.shared.reportAutomatic = on
+                        // The app's first system notification is asked for
+                        // only after its own card has said why — once.
+                        if on, !Settings.shared.reportNotificationsAsked { askNotifications = true }
+                    }
+                    Text(reportAutoHelp)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if Settings.shared.reportsPausedForBilling, let provider = askProvider {
+                        Text(Lf("Paused: your %@ account refused the last report for billing reasons. Automatic reports resume once one succeeds.", provider.vendorName))
+                            .font(.caption).foregroundStyle(DS.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } label: {
+                rowLabel(L("Automatic"), nil)
+            }
+            LabeledContent {
+                ReportLanguagePicker(selection: $reportLanguage)
+                    .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
+            } label: {
+                rowLabel(L("Write reports in"),
+                         L("Field names stay exactly as typed; only the text under them is written in this language."))
+            }
+            if let provider = askProvider {
+                LabeledContent {
+                    Text(Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } label: {
+                    rowLabel(L("What is sent"), nil)
+                }
+            }
+        } header: { Text(L("Agent")) } footer: {
+            Text(askFooter)
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Why reports cannot run right now, when they cannot.
+    private var reportsGateLine: String? {
+        guard let provider = askProvider else {
+            return L("Reports need the agent, which is off. Choose Claude or ChatGPT above to turn them on; the templates keep until then.")
+        }
+        _ = keyRevision
+        guard APIKey.current(provider) != nil else {
+            return Lf("%@ is chosen but has no key. Add one above; reports start with the next call.", provider.productName)
+        }
+        return nil
+    }
+
+    private var reportAutoHelp: String {
+        if askProvider == nil { return L("Waiting on the agent above.") }
+        if templateStore.templates.isEmpty {
+            return L("Make a template first; the switch turns on once there is one to run.")
+        }
+        guard reportAutomatic else {
+            return L("Off: no report is written unless you ask for one from a meeting’s ⋯ menu.")
+        }
+        let name = templateStore.automatic?.name ?? templateStore.templates.first?.name ?? ""
+        return Lf("After each call ends, the “%@” template is filled in from the transcript in the background. Meetings under 5 minutes are skipped.", name)
+    }
+
+    /// The templates, the dot for the automatic one, and the way into the
+    /// editor. The dot is subordinate to the switch: with automatic off it
+    /// draws dimmed, so nothing here suggests reports are being written.
+    private var templatesControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if templateStore.templates.isEmpty {
+                Text(L("No templates yet.")).font(.caption).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(templateStore.templates) { template in
+                        let marked = template.id == Settings.shared.reportAutomaticTemplateID
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(marked ? DS.accent : Color.clear)
+                                .overlay(Circle().strokeBorder(marked ? Color.clear : Color.primary.opacity(0.2), lineWidth: 1))
+                                .frame(width: 7, height: 7)
+                                .opacity(marked && !(reportAutomatic && askProvider != nil) ? 0.35 : 1)
+                            Text(template.name).lineLimit(1)
+                            Text(templateMeta(template, marked: marked))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                Button(L("Edit templates…")) { showTemplateEditor = true }
+                    .buttonStyle(.dsSmall).controlSize(.small)
+            }
+        }
+    }
+
+    private func templateMeta(_ template: ReportTemplate, marked: Bool) -> String {
+        var meta = Lf("%d fields", template.usableFields.count)
+        if marked {
+            meta += " · " + (reportAutomatic && askProvider != nil
+                             ? L("runs after every call") : L("marked automatic"))
+        }
+        return meta
     }
 
     @ViewBuilder
@@ -1247,6 +1416,7 @@ struct SettingsView: View {
         switch wanted {
         case "languages": tab = .languages
         case "meetings": tab = .meetings
+        case "agent": tab = .agent
         case "general": tab = .general
         case "thismac": tab = .thisMac
         default: tab = .keys

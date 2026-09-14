@@ -35,6 +35,11 @@ struct MeetingsView: View {
     /// Summaries arriving for older meetings — each one is a row that has
     /// something to say where it had nothing.
     @ObservedObject private var summaries = MeetingSummaries.shared
+    @ObservedObject private var reports = MeetingReports.shared
+    @ObservedObject private var templateStore = ReportTemplateStore.shared
+    /// The report offer card, dismissed this session (the setting is the
+    /// durable half; this redraws the pane).
+    @State private var reportOfferHidden = false
     /// Contents blocks arriving for older meetings — each one turns a
     /// fifty-minute transcript into a dozen findable moments.
     @ObservedObject private var sections = MeetingSections.shared
@@ -268,6 +273,8 @@ struct MeetingsView: View {
         // Only ever a handful of times, and only while the backfill runs —
         // there is nothing here that ticks.
         .onChange(of: summaries.written) { reload() }
+        // A report landed in one of the files: the same cue.
+        .onChange(of: reports.written) { reload() }
         .onChange(of: sections.written) { cutRevision += 1; reload() }
         // The model arrived or was removed: which engine reads changed.
         .onChange(of: download.state) { engineStatus = MeetingTextEngines.status }
@@ -418,6 +425,7 @@ struct MeetingsView: View {
             Divider().padding(.vertical, 4)
             cornerRow(L("Appearance"), trailing: appearanceValue) { openSettingsWindow(tab: "general") }
             cornerRow(L("Storage & models")) { openSettingsWindow(tab: "thismac") }
+            cornerRow(L("Agent & reports")) { openSettingsWindow(tab: "agent") }
             Divider().padding(.vertical, 4)
             cornerRow(L("Check for updates")) {
                 settingsMenuOpen = false
@@ -552,6 +560,27 @@ struct MeetingsView: View {
                         .lineSpacing(2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .overlay(alignment: .bottom) { Divider() }
+            }
+            // An archive-wide report run in progress (design ReportTemplates:
+            // progress): each report lands in its meeting as it finishes.
+            if let run = reports.archiveRun {
+                HStack(alignment: .top, spacing: 9) {
+                    ProgressView().controlSize(.small).padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(Lf("Writing “%@” reports: %d of %d.", run.templateName, run.done, run.total))
+                            .font(.system(size: 11.5))
+                            .lineSpacing(2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(L("Cancel · keeps the written")) { reports.cancelArchiveRun() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(DS.accentText)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -973,7 +1002,41 @@ struct MeetingsView: View {
         }
         // The platform, when the recording knew it ("· Google Meet").
         if let source = meeting.source { facts.append(source) }
+        // The report's state, so the queue is visible without opening
+        // anything (design Notices: list marks).
+        switch reports.phases[meeting.url] {
+        case .queued, .writing: facts.append(L("Writing…"))
+        case .waitingForConnection: facts.append(L("Report waiting for a connection"))
+        case .failed: facts.append(L("Report not written"))
+        case nil: if meeting.report != nil { facts.append(L("Reported")) }
+        }
         return facts
+    }
+
+    /// The ⋯ menu's report rows: one "Write a report" per template while
+    /// the agent is on — no threshold, on demand is the person's call — and
+    /// the copy and export of a report already written.
+    private func reportMenuActions(for meeting: ArchivedMeeting) -> [TranscriptMenuAction] {
+        var actions: [TranscriptMenuAction] = []
+        if Settings.shared.askArchive, !reports.isBusy(meeting.url) {
+            let templates = templateStore.templates.filter(\.isUsable)
+            for (index, template) in templates.enumerated() {
+                actions.append(TranscriptMenuAction(
+                    title: templates.count == 1 ? L("Write a report") : Lf("Write a report · %@", template.name),
+                    dividerBefore: index == 0) {
+                    reports.write(meeting.url, with: template)
+                })
+            }
+        }
+        if let report = meeting.report {
+            actions.append(TranscriptMenuAction(title: L("Copy report"), dividerBefore: actions.isEmpty) {
+                TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
+            })
+            actions.append(TranscriptMenuAction(title: L("Export report…")) {
+                ReportExport.exportOne(meeting)
+            })
+        }
+        return actions
     }
 
     // MARK: - Detail
@@ -1295,6 +1358,63 @@ struct MeetingsView: View {
 
     @ViewBuilder
     private var answerPane: some View {
+        VStack(spacing: 0) {
+            if reportOfferDue { reportOffer }
+            answerPaneBody
+        }
+    }
+
+    /// The first-run card for reports, in the Agent pane once the agent is
+    /// connected and no template exists yet (design ReportTemplates:
+    /// firstRun). Dismissed for good with Not now.
+    private var reportOfferDue: Bool {
+        Settings.shared.askArchive && templateStore.templates.isEmpty
+            && !Settings.shared.reportOfferDismissed && !reportOfferHidden
+    }
+
+    private var reportOffer: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "doc.text")
+                .foregroundStyle(DS.accent)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L("The agent can also write a report after every call, under fields you choose once."))
+                    .font(.system(size: 13, weight: .medium))
+                Text(L("Sales calls, interviews, support: each call ends with the same structure filled in from its transcript."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button(L("Set up a template")) {
+                        Settings.shared.reportOfferDismissed = true
+                        reportOfferHidden = true
+                        openSettingsWindow(tab: "agent")
+                        // A beat later: a Settings window created by the
+                        // line above has not subscribed yet.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            NotificationCenter.default.post(name: .init("dictate.editReportTemplates"), object: nil)
+                        }
+                    }
+                    .buttonStyle(.dsSmall).controlSize(.small)
+                    Button(L("Not now")) {
+                        Settings.shared.reportOfferDismissed = true
+                        reportOfferHidden = true
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .controlSize(.small)
+                }
+                .padding(.top, 4)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(DS.restingFill, in: DS.shape)
+        .padding(.horizontal, 16)
+        .padding(.top, 56)
+    }
+
+    private var answerPaneBody: some View {
         AnswerPane(answer: answer,
                    suggestions: askSuggestions,
                    headerNote: askHeaderNote,
@@ -1544,6 +1664,14 @@ struct MeetingsView: View {
                                jumpTo: selection?.time,
                                overviewSummary: meeting.summary,
                                overviewSections: meeting.sections,
+                               report: meeting.report,
+                               reportPhase: reports.phases[meeting.url],
+                               onWriteReport: { reports.write(meeting.url, with: $0) },
+                               onCopyReport: {
+                                   if let report = meeting.report {
+                                       TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
+                                   }
+                               },
                                onRecut: { recut(meeting, to: $0) },
                                onGrow: { detail, done in growCut(meeting, to: detail, done: done) },
                                recutting: recutting == meeting.url,
@@ -1597,6 +1725,7 @@ struct MeetingsView: View {
                                    TranscriptMenuAction(title: L("Export transcript…")) {
                                        exportTranscript(meeting)
                                    },
+                               ] + reportMenuActions(for: meeting) + [
                                    TranscriptMenuAction(title: L("Show in Finder")) {
                                        NSWorkspace.shared.activateFileViewerSelecting([meeting.url])
                                    },
@@ -2638,6 +2767,16 @@ private struct TranscriptPane: View {
     /// only searched. For an hour-long call it is the most useful thing in the
     /// file, and it only works if you can click it.
     var overviewSections: [TranscriptSection] = []
+    /// The report written from a template, between the summary and the
+    /// outline (design ReportTemplates: paneDone) — and, while there is
+    /// none, where one stands: queued, being written, waiting for a
+    /// connection, refused.
+    var report: MeetingReport? = nil
+    var reportPhase: MeetingReports.Phase? = nil
+    /// Writes a report from the given template — "Write it now" after a
+    /// failure, and the ⋯ menu's row.
+    var onWriteReport: ((ReportTemplate) -> Void)? = nil
+    var onCopyReport: (() -> Void)? = nil
     /// Recut this meeting's contents at a chosen granularity. nil where there
     /// is nothing to recut — a live call has no contents yet. The pane holds
     /// the control because that is where somebody is looking at the result;
@@ -3249,6 +3388,7 @@ private struct TranscriptPane: View {
                         .textSelection(.enabled)
                 }
             }
+            reportBlock
             outlineBlock(jump: jump)
             // Not a hairline. Above it is what this meeting WAS; below it
             // is what was said, and the eye should not have to work out
@@ -3260,6 +3400,102 @@ private struct TranscriptPane: View {
         }
         .padding(.top, 14)
         .padding(.bottom, 10)
+    }
+
+    /// The report between the summary and the outline: the finished one, or
+    /// where it stands. Absent — not an empty slot — for a meeting with
+    /// neither, so the archive is not papered with "no report" notices.
+    @ViewBuilder
+    private var reportBlock: some View {
+        if let report {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(L("Report") + " · " + report.templateName)
+                        .font(DS.sectionLabel)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .kerning(0.3)
+                    if let written = report.written {
+                        Text(Lf("Written by %@, %@", report.writer,
+                                written.formatted(date: .abbreviated, time: .shortened)))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer(minLength: 0)
+                    if let onCopyReport {
+                        Button(L("Copy"), action: onCopyReport)
+                            .buttonStyle(.dsSmall)
+                            .controlSize(.small)
+                            .accessibilityLabel(L("Copy report"))
+                    }
+                }
+                ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(answer.field)
+                            .font(.system(size: textScale.body, weight: .semibold))
+                        if answer.isEmpty {
+                            Text(L("Not discussed"))
+                                .font(.system(size: textScale.body))
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Text(answer.text)
+                                .font(.system(size: textScale.body))
+                                .lineSpacing(textScale.extraLeading / 2)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .frame(maxWidth: DS.readingMeasure, alignment: .leading)
+                Text(Lf("Filled only from the transcript. Written into this meeting’s file as “## Report · %@”, so it travels with the transcript.", report.templateName))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if let reportPhase {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L("Report"))
+                    .font(DS.sectionLabel)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .kerning(0.3)
+                switch reportPhase {
+                case .queued, .writing:
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(L("Writing · about a minute"))
+                            .font(.system(size: textScale.body))
+                            .foregroundStyle(.secondary)
+                    }
+                case .waitingForConnection:
+                    Text(L("Not written yet: this Mac was offline when the call ended."))
+                        .font(.system(size: textScale.body))
+                    Text(L("It is waiting for a connection and will be written then; a notification says when. The transcript and summary are complete."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .failed(let kind):
+                    let provider = Settings.shared.askProvider ?? .anthropic
+                    Text(Lf("Not written: %@", MeetingReports.failureLine(kind, provider: provider)))
+                        .font(.system(size: textScale.body))
+                        .foregroundStyle(DS.warn)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if kind == .outOfCredit {
+                        Text(L("Nothing was retried. Fix it in your provider account, then write the report from the ⋯ menu. Automatic reports pause until one succeeds."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let onWriteReport, let template = ReportTemplateStore.shared.automatic
+                        ?? ReportTemplateStore.shared.templates.first(where: \.isUsable) {
+                        Button(L("Write it now")) { onWriteReport(template) }
+                            .buttonStyle(.dsSmall)
+                            .controlSize(.small)
+                    }
+                }
+            }
+            .frame(maxWidth: DS.readingMeasure, alignment: .leading)
+        }
     }
 
     /// One outline row: the stamp in accent, the line, an optional trailing
