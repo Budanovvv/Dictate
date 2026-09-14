@@ -302,9 +302,16 @@ struct SettingsView: View {
                         Text(tabTitle(candidate)).lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .contentShape(Rectangle())
                     .padding(.vertical, 5)
                     .padding(.horizontal, 10)
+                    // The hit shape AFTER the padding: the clickable area is
+                    // the whole row the hover wash paints. Before, the top
+                    // and bottom 5 pt of every row — a third of it — lit up
+                    // on hover and swallowed the click; clicked at speed
+                    // that was one tab in three, in 3.2.6 exactly as in
+                    // 3.2.7 (traced 2026-09-14: every miss within 5 pt of a
+                    // row edge, every hit in the middle band).
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(tabTitle(candidate))

@@ -1031,8 +1031,8 @@ struct MeetingsView: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
-            .contentShape(Rectangle())
             .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .hoverHighlight()
@@ -1248,9 +1248,9 @@ struct MeetingsView: View {
                         .frame(width: 8, height: 8)
                 }
             }
-            .contentShape(Rectangle())
             .padding(.vertical, 6)
             .padding(.horizontal, 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
@@ -1294,9 +1294,14 @@ struct MeetingsView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .contentShape(Rectangle())
             .padding(.vertical, 4)
             .padding(.horizontal, 8)
+            // The hit shape AFTER the padding, so the clickable area is the
+            // whole row the hover wash paints — not the text band inside
+            // it. With it before, a click in the row's top or bottom 4 pt
+            // hit nothing, which at speed was one click in three (traced
+            // on the Settings sidebar, 2026-09-14; same rows everywhere).
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         // Said explicitly: a plain-style button with a composed label
@@ -5167,9 +5172,9 @@ private struct TagRow: View {
                             Spacer()
                             Text("\(item.count)").font(.caption).foregroundStyle(.secondary)
                         }
-                        .contentShape(Rectangle())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .hoverHighlight()

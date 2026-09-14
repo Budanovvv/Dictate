@@ -69,8 +69,8 @@ struct PopupRow: View {
                     Image(systemName: "checkmark").foregroundStyle(DS.accent)
                 }
             }
-            .contentShape(Rectangle())
             .padding(.vertical, 5).padding(.horizontal, 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(selected ? DS.selectionFill : .clear)
