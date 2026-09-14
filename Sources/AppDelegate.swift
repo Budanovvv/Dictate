@@ -299,10 +299,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if !Settings.shared.meetingConsentSeen {
             // The app's own consent card (design), NSAlert retired. Return
             // starts, Esc declines; the ring rests on Don't Record.
-            guard ConsentDialog.run() else { return }
-            // Only after they agreed: someone who cancels has not been told
-            // anything they acted on, and deserves the notice again.
-            Settings.shared.meetingConsentSeen = true
+            //
+            // On the NEXT turn of the runloop, never inline — and this is
+            // the difference between a dialog and a dead one. Two of the
+            // three ways here are SwiftUI buttons (the Record button in the
+            // meetings window, the pill's toggle). A modal loop started
+            // inside a SwiftUI action runs nested inside SwiftUI's own
+            // action dispatch, which stays locked until that action
+            // returns — so every click and every keyboard shortcut on the
+            // card's SwiftUI buttons was queued behind a call that was
+            // waiting for exactly them. The card could not be answered at
+            // all; only Force Quit ended it (owner, first record after a
+            // clean install, 2026-09-14). The menu-bar item never showed
+            // it because an NSMenuItem action is not a SwiftUI action.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.meeting.isActive else { return }
+                guard ConsentDialog.run() else { return }
+                // Only after they agreed: someone who cancels has not been
+                // told anything they acted on, and deserves the notice again.
+                Settings.shared.meetingConsentSeen = true
+                self.startMeetingSession(asPill: true)
+            }
+            return
         }
         // The menu too starts as the pill (owner's call, 2026-08-31: the
         // portal opened over his screen again) — the full window appears
