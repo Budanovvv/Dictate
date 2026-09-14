@@ -786,6 +786,7 @@ extension Localization {
         "%d more": "ещё %d",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Название остаётся на языке встречи; саммари и все отчёты пишутся на этом. Имена полей в отчёте остаются ровно как напечатаны.",
         "Write summaries and reports in": "Язык саммари и отчётов",
+        "About “%@”:": "По встрече «%@»:",
     ]
 
     static let uk: [String: String] = [
@@ -1413,6 +1414,7 @@ extension Localization {
         "%d more": "ще %d",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Назва лишається мовою зустрічі; підсумок і всі звіти пишуться цією. Назви полів у звіті лишаються рівно як надруковано.",
         "Write summaries and reports in": "Мова підсумків і звітів",
+        "About “%@”:": "Щодо зустрічі «%@»:",
     ]
 
     static let es: [String: String] = [
@@ -2049,6 +2051,7 @@ extension Localization {
         "%d more": "%d más",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "El título conserva el idioma de la reunión; el resumen y todos los informes se escriben en este. Los nombres de los campos de un informe se mantienen tal como se escribieron.",
         "Write summaries and reports in": "Escribir resúmenes e informes en",
+        "About “%@”:": "Sobre “%@”:",
     ]
 
     static let pt: [String: String] = [
@@ -2685,6 +2688,7 @@ extension Localization {
         "%d more": "mais %d",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "O título mantém o idioma da reunião; o resumo e todos os relatórios são escritos neste. Os nomes dos campos de um relatório ficam exatamente como digitados.",
         "Write summaries and reports in": "Escrever resumos e relatórios em",
+        "About “%@”:": "Sobre “%@”:",
     ]
 
     static let fr: [String: String] = [
@@ -3321,6 +3325,7 @@ extension Localization {
         "%d more": "%d de plus",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Le titre garde la langue de la réunion ; le résumé et chaque rapport sont rédigés dans celle-ci. Les noms des champs d’un rapport restent exactement tels que saisis.",
         "Write summaries and reports in": "Rédiger les résumés et rapports en",
+        "About “%@”:": "À propos de « %@ » :",
     ]
 
     static let de: [String: String] = [
@@ -3957,6 +3962,7 @@ extension Localization {
         "%d more": "%d weitere",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Der Titel behält die Sprache des Meetings; die Zusammenfassung und jeder Bericht werden in dieser geschrieben. Feldnamen in einem Bericht bleiben genau wie eingegeben.",
         "Write summaries and reports in": "Zusammenfassungen und Berichte schreiben auf",
+        "About “%@”:": "Zu „%@“:",
     ]
 
     static let zh: [String: String] = [
@@ -4593,6 +4599,7 @@ extension Localization {
         "%d more": "还有 %d 位",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "标题保留会议的语言；摘要和所有报告都用此语言撰写。报告中的字段名保持原样。",
         "Write summaries and reports in": "摘要和报告的语言",
+        "About “%@”:": "关于“%@”：",
     ]
 
     static let ja: [String: String] = [
@@ -5229,6 +5236,7 @@ extension Localization {
         "%d more": "他 %d 人",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "タイトルはミーティングの言語のまま、要約とすべてのレポートはこの言語で書かれます。レポートの項目名は入力したままです。",
         "Write summaries and reports in": "要約とレポートを書く言語",
+        "About “%@”:": "「%@」について：",
     ]
 
     static let ko: [String: String] = [
@@ -5865,6 +5873,7 @@ extension Localization {
         "%d more": "%d명 더",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "제목은 회의의 언어를 유지하고, 요약과 모든 보고서는 이 언어로 작성됩니다. 보고서의 항목 이름은 입력한 그대로 유지됩니다.",
         "Write summaries and reports in": "요약과 보고서 작성 언어",
+        "About “%@”:": "“%@”에 대해:",
     ]
 
     static let vi: [String: String] = [
@@ -6501,6 +6510,7 @@ extension Localization {
         "%d more": "%d nữa",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Tiêu đề giữ ngôn ngữ của cuộc họp; bản tóm tắt và mọi báo cáo được viết bằng ngôn ngữ này. Tên trường trong báo cáo giữ nguyên như đã nhập.",
         "Write summaries and reports in": "Viết tóm tắt và báo cáo bằng",
+        "About “%@”:": "Về “%@”:",
     ]
 
     static let tl: [String: String] = [
@@ -7137,5 +7147,6 @@ extension Localization {
         "%d more": "%d pa",
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Nananatili ang wika ng meeting sa pamagat; ang buod at bawat report ay isinusulat sa wikang ito. Nananatili ang mga pangalan ng field sa report gaya ng na-type.",
         "Write summaries and reports in": "Isulat ang mga buod at report sa",
+        "About “%@”:": "Tungkol sa “%@”:",
     ]
 }

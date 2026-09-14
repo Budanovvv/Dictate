@@ -53,6 +53,11 @@ final class MeetingAnswer: ObservableObject {
     /// fetched quietly after the answer lands, gone the moment a new
     /// question is asked. Never persisted: they are an offer, not content.
     @Published private(set) var suggested: [String] = []
+    /// A question's opening handed in from elsewhere — the meeting card's
+    /// "Ask your agent" names its meeting here — put into the composer the
+    /// moment the pane shows, then cleared. The person finishes the
+    /// sentence; nothing is sent on their behalf.
+    @Published var seed: String?
 
     private var progressObserver: NotificationToken?
 
@@ -489,6 +494,21 @@ struct AnswerPane: View {
     @State private var hadTurns = false
 
     var body: some View {
+        paneBody
+            // The card's "Ask your agent" hands over its meeting: the
+            // composer opens with the sentence begun and the cursor in it.
+            .onAppear { takeSeed() }
+            .onChange(of: answer.seed) { takeSeed() }
+    }
+
+    private func takeSeed() {
+        guard let seed = answer.seed else { return }
+        draft = seed
+        composerFocused = true
+        answer.seed = nil
+    }
+
+    private var paneBody: some View {
         VStack(spacing: 0) {
         // The pane's own 46 pt header (Composer.dc): what this surface is and
         // the honest line about who answers — present in every state, so an

@@ -1632,6 +1632,11 @@ struct MeetingsView: View {
                                // global Ask — the answer names the meeting
                                // itself in prose.
                                onAsk: Settings.shared.askArchive ? {
+                                   // The question starts with the meeting
+                                   // named, so the agent reads THIS one
+                                   // without being told which (owner,
+                                   // 2026-09-14: "it opens an empty window").
+                                   answer.seed = Lf("About “%@”:", meeting.title ?? dayAndTime(meeting.started)) + " "
                                    selection = .ask
                                } : nil,
                                starred: MeetingStars.isStarred(meeting.started),
