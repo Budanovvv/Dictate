@@ -1108,7 +1108,15 @@ final class MeetingSections: ObservableObject {
                 // has nothing else to do; the wait it removes is in front of
                 // somebody who is looking at the screen.
                 var cuts: [MeetingPolicy.SectionDetail: [TranscriptSection]] = [:]
-                for detail in MeetingPolicy.SectionDetail.allCases {
+                // The two the outline shows (sections and the moments inside
+                // them), plus whatever granularity the file's own block is
+                // written at. The fine cut used to be made for every meeting
+                // for a third outline level nobody wanted (2026-09-14) — a
+                // dozen model calls per meeting, gone.
+                let wanted = Array(Set([MeetingPolicy.SectionDetail.coarse, .standard,
+                                        Settings.shared.sectionDetail]))
+                    .sorted { $0.rawValue < $1.rawValue }
+                for detail in wanted {
                     guard allowed() else { return }
                     // Only granularities that would actually differ. Three
                     // views of a ten-minute call are three ways of saying the

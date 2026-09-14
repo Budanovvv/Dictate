@@ -1806,15 +1806,15 @@ struct MeetingsView: View {
     /// Generates a granularity into the cache WITHOUT touching the file —
     /// the outline's depth control needs the cut, not a rewritten document.
     private func growCut(_ meeting: ArchivedMeeting, to detail: MeetingPolicy.SectionDetail,
-                         done: @escaping () -> Void) {
-        if SectionCache.cut(meeting.url, meeting.entries, detail) != nil { done(); return }
+                         done: @escaping (Bool) -> Void) {
+        if SectionCache.cut(meeting.url, meeting.entries, detail) != nil { done(true); return }
         Task { @MainActor in
             let sections = await MeetingSectioner.sections(for: meeting.entries, detail: detail)
             if !sections.isEmpty {
                 SectionCache.remember(sections, for: meeting.url, meeting.entries, detail)
             }
             reload()
-            done()
+            done(!sections.isEmpty)
         }
     }
 
@@ -2588,7 +2588,9 @@ private struct TranscriptPane: View {
     var onRecut: ((MeetingPolicy.SectionDetail) -> Void)? = nil
     /// Fills a missing granularity into the cache (no file rewrite) and calls
     /// back when it is there — the depth control's background growth.
-    var onGrow: ((MeetingPolicy.SectionDetail, @escaping () -> Void) -> Void)? = nil
+    /// Called back with whether a cut was actually made — a level the
+    /// model produced nothing for must not be asked for again and again.
+    var onGrow: ((MeetingPolicy.SectionDetail, @escaping (Bool) -> Void) -> Void)? = nil
     /// True while that is happening, so the block can say so instead of
     /// looking broken for the twenty seconds a recut takes.
     var recutting = false
@@ -2637,13 +2639,19 @@ private struct TranscriptPane: View {
     @State private var textScale = DS.TextScale.current
     /// Fewer / Standard / More — how deep the tree SHOWS (owner's report:
     /// the control used to re-cut the file and visibly change nothing).
-    @State private var outlineDepth: OutlineDepth = .standard
+    @State private var outlineDepth: OutlineDepth = .more
+    /// Granularities a grow came back empty for (too short to cut, or the
+    /// model refused more than half) — skipped for the rest of this view's
+    /// life, or the depth control would ask for them on every turn.
+    @State private var grewNothing: Set<MeetingPolicy.SectionDetail> = []
     /// Which collapsed branches are open right now.
-    @State private var expandedBranches: Set<String> = []
     /// A missing granularity is being generated in the background.
     @State private var growingOutline = false
 
-    enum OutlineDepth: Int, CaseIterable { case fewer = 1, standard = 2, more = 3 }
+    /// Two depths, not three (owner, 2026-09-14: a third level was overkill
+    /// and the depth control had become a puzzle): Fewer is the sections
+    /// alone, More opens the moments inside them.
+    enum OutlineDepth: Int, CaseIterable { case fewer = 1, more = 2 }
     @State private var retitling = false
     @State private var titleDraft = ""
     /// The one-time voice explainer, mirrored from Settings so OK removes
@@ -3262,10 +3270,26 @@ private struct TranscriptPane: View {
                     if !outlineFolded {
                         DSSegmented(options: [
                             (OutlineDepth.fewer, L("Fewer")),
-                            (OutlineDepth.standard, L("Standard")),
                             (OutlineDepth.more, L("More")),
                         ], selection: $outlineDepth)
-                        .onChange(of: outlineDepth) { growForDepth(outline) }
+                        .onChange(of: outlineDepth) {
+                            // Which cuts the tree was built from, per level:
+                            // "0:7 1:12 2:21" reads coarse/standard/fine and
+                            // their section counts — the one line that tells
+                            // "the model has it" from "the view shows it".
+                            let have = effectiveCuts.map { "\($0.key.rawValue):\($0.value.count)" }
+                                .sorted().joined(separator: " ")
+                            Log.d("outline: depth \(outlineDepth.rawValue) levels \(outline.levels) cuts [\(have)] minutes \(durationMinutes)")
+                            growForDepth(outline)
+                        }
+                        // A grow just finished: ask again with the cuts as
+                        // they are now, until the chosen depth is served or
+                        // nothing is left to cut.
+                        .onChange(of: growingOutline) { _, growing in
+                            guard !growing else { return }
+                            growForDepth(MeetingOutlineModel.build(cuts: effectiveCuts,
+                                                                   minutes: durationMinutes))
+                        }
                         if growingOutline {
                             ProgressView().controlSize(.small).scaleEffect(0.6)
                         }
@@ -3292,9 +3316,8 @@ private struct TranscriptPane: View {
         }
     }
 
-    /// How deep the current duration is ALLOWED to go (design: two levels to
-    /// forty minutes, three past it).
-    private var allowedDepth: Int { durationMinutes > 40 ? 3 : 2 }
+    /// How deep the outline goes: sections, and the moments inside them.
+    private var allowedDepth: Int { 2 }
 
     /// The depth control asked for more than the cuts can serve — grow the
     /// next missing granularity in the background.
@@ -3302,11 +3325,20 @@ private struct TranscriptPane: View {
         guard let onGrow, !growingOutline else { return }
         let want = min(outlineDepth.rawValue, allowedDepth)
         guard outline.levels < want else { return }
-        let order: [MeetingPolicy.SectionDetail] = [.coarse, .standard, .fine]
-        guard let missing = order.first(where: { effectiveCuts[$0]?.isEmpty ?? true })
-        else { return }
+        let order: [MeetingPolicy.SectionDetail] = [.coarse, .standard]
+        guard let missing = order.first(where: {
+            (effectiveCuts[$0]?.isEmpty ?? true) && !grewNothing.contains($0)
+        }) else { return }
         growingOutline = true
-        onGrow(missing) { growingOutline = false }
+        onGrow(missing) { grew in
+            if !grew { grewNothing.insert(missing) }
+            // One level per call, and the NEXT one from here: "More" on a
+            // fifty-minute meeting with nothing cached used to grow the
+            // coarse level and stop, so the third level showed the same
+            // sections as the second (owner, 2026-09-14). The flip below
+            // is what `.onChange(of: growingOutline)` continues from.
+            growingOutline = false
+        }
     }
 
     /// Placeholder rows while a granularity is being cut (the design's
@@ -3343,14 +3375,15 @@ private struct TranscriptPane: View {
                     } else {
                         outlineRow(time: top.section.time, line: top.section.line,
                                    weight: .system(size: 13.5, weight: .semibold),
-                                   ink: .primary,
-                                   trailing: outline.levels == 3 ? top.span : nil) {
+                                   ink: .primary) {
                             jump(top.section.time)
                         }
                         if depth >= 2, !top.children.isEmpty {
                             rail {
                                 ForEach(top.children, id: \.section.time) { mid in
-                                    midBranch(mid, depth: depth, jump: jump)
+                                    outlineRow(time: mid.section.time, line: mid.section.line,
+                                               weight: .system(size: textScale.leaf),
+                                               ink: .secondary) { jump(mid.section.time) }
                                 }
                             }
                         }
@@ -3360,49 +3393,9 @@ private struct TranscriptPane: View {
         }
     }
 
-    @ViewBuilder
-    private func midBranch(_ mid: MeetingOutlineModel.Node, depth: Int,
-                           jump: @escaping (String) -> Void) -> some View {
-        if mid.children.isEmpty {
-            outlineRow(time: mid.section.time, line: mid.section.line,
-                       weight: .system(size: textScale.leaf),
-                       ink: .secondary) { jump(mid.section.time) }
-        } else if depth >= 3 || expandedBranches.contains(mid.section.time) {
-            VStack(alignment: .leading, spacing: 2) {
-                outlineRow(time: mid.section.time, line: mid.section.line,
-                           weight: .system(size: 12.5, weight: .medium),
-                           ink: .primary) {
-                    if depth >= 3 { jump(mid.section.time) }
-                    else {
-                        withAnimation(Animation.easeOut(duration: DS.fade)) {
-                            _ = expandedBranches.remove(mid.section.time)
-                        }
-                    }
-                }
-                rail {
-                    ForEach(mid.children, id: \.section.time) { leaf in
-                        outlineRow(time: leaf.section.time, line: leaf.section.line,
-                                   weight: .system(size: textScale.leaf),
-                                   ink: .secondary) { jump(leaf.section.time) }
-                    }
-                }
-            }
-        } else {
-            outlineRow(time: mid.section.time, line: mid.section.line,
-                       weight: .system(size: 12.5, weight: .medium),
-                       ink: .secondary,
-                       trailing: Lf("%d moments", mid.children.count)) {
-                withAnimation(Animation.easeOut(duration: DS.fade)) {
-                    _ = expandedBranches.insert(mid.section.time)
-                }
-            }
-        }
-    }
-
     private func outlineEyebrow(_ outline: MeetingOutlineModel) -> String {
         var parts = [L("Outline"), Lf("%d moments", outline.momentCount)]
-        if outline.levels == 3 { parts.append(L("three levels")) }
-        else if outline.levels == 2 { parts.append(L("two levels")) }
+        if outline.levels == 2 { parts.append(L("two levels")) }
         return parts.joined(separator: " · ")
     }
 
@@ -3551,7 +3544,6 @@ private struct TranscriptPane: View {
                 // A different meeting is a clean slate: nothing is selected,
                 // nothing is being dragged — and the outline folds again.
                 outlineFolded = true
-                expandedBranches = []
                 allSelected = false
                 interacting = false
                 hovered = nil
@@ -5083,10 +5075,9 @@ struct ListEmptyState<Actions: View>: View {
 /// model has already produced. Pure and deterministic:
 ///
 ///   < 10 min      — no outline: the summary IS the navigation.
-///   10–40 min     — two levels: the coarsest cut as sections, the next one
-///                   as the moments inside them.
-///   > 40 min      — three levels when three cuts exist; the middle level is
-///                   what collapses to "N moments".
+///   ≥ 10 min      — two levels: the coarsest cut as sections, the next one
+///                   as the moments inside them. (A third level existed
+///                   until 2026-09-14; the owner found it overkill.)
 ///
 /// A finer line that repeats its parent word for word is dropped — the model
 /// often opens a section with the same sentence at every granularity.
@@ -5094,8 +5085,6 @@ struct MeetingOutlineModel {
     struct Node {
         let section: TranscriptSection
         var children: [Node] = []
-        /// A top-level section's span ("23 min"), filled for 3-level trees.
-        var span: String?
     }
 
     let nodes: [Node]
@@ -5108,8 +5097,7 @@ struct MeetingOutlineModel {
         let order: [MeetingPolicy.SectionDetail] = [.coarse, .standard, .fine]
         let present = order.compactMap { cuts[$0].flatMap { $0.isEmpty ? nil : $0 } }
         guard let top = present.first else { return .init(nodes: [], levels: 0, momentCount: 0) }
-        let wantLevels = minutes > 40 ? 3 : 2
-        let used = Array(present.prefix(wantLevels))
+        let used = Array(present.prefix(2))
 
         func seconds(_ t: String) -> Int { MeetingArchive.seconds(fromClock: t) ?? 0 }
         func group(_ finer: [TranscriptSection], under parents: [TranscriptSection],
@@ -5128,25 +5116,10 @@ struct MeetingOutlineModel {
             var node = Node(section: sect)
             if used.count >= 2 {
                 let mids = group(used[1], under: top, parent: i)
-                if used.count == 3 {
-                    node.children = mids.enumerated().map { j, mid in
-                        var midNode = Node(section: mid)
-                        midNode.children = group(used[2], under: mids, parent: j)
-                            .map { Node(section: $0) }
-                        return midNode
-                    }
-                    moments += node.children.reduce(0) { $0 + max($1.children.count, 1) }
-                } else {
-                    node.children = mids.map { Node(section: $0) }
-                    moments += max(mids.count, 1)
-                }
+                node.children = mids.map { Node(section: $0) }
+                moments += max(mids.count, 1)
             } else {
                 moments += 1
-            }
-            if used.count == 3 {
-                let from = seconds(sect.time)
-                let to = i + 1 < top.count ? seconds(top[i + 1].time) : from
-                if to > from { node.span = Lf("%d min", max(1, (to - from) / 60)) }
             }
             nodes.append(node)
         }
