@@ -498,6 +498,49 @@ struct MeetingsView: View {
             // The helper is waiting for memory: the summaries are not
             // missing, they are late, and the list is where the person
             // looks for them (the pill is about the recording, not this).
+            // A meeting model on disk that this Mac may not run — a silent
+            // update raised the floor under it, or the data came from a
+            // bigger Mac. The top-of-screen notice is gone in eight seconds;
+            // this stays until the person acts, where the summaries it
+            // used to write are missed (owner, 2026-09-14: "a person may
+            // not notice"). Same words as the Settings row, and the same
+            // Remove.
+            if download.state == .installedNotRunnable, !session.isActive {
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DS.warn)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(TextModelRowCopy.rowHint(
+                            state: .installedNotRunnable,
+                            memoryGB: MachineProfile.current.memoryGB,
+                            appleIntelligence: MeetingTextEngines.appleIntelligence,
+                            readMeetings: Settings.shared.readMeetings,
+                            sizeText: LocalTextModelFile.sizeText, paused: nil))
+                            .font(.system(size: 11.5))
+                            .lineSpacing(2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(L("Remove…")) { confirmRemoveModel = true }
+                            .buttonStyle(.dsSmall)
+                            .controlSize(.small)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(DS.warn.opacity(0.08))
+                .overlay(alignment: .bottom) { Divider() }
+                .confirmationDialog(L("Remove the meeting model?"), isPresented: $confirmRemoveModel,
+                                    titleVisibility: .visible) {
+                    Button(L("Remove"), role: .destructive) { download.remove() }
+                    Button(L("Cancel"), role: .cancel) {}
+                } message: {
+                    Text(TextModelRowCopy.removalBody(appleIntelligence: MeetingTextEngines.appleIntelligence,
+                                                      readMeetings: Settings.shared.readMeetings,
+                                                      sizeText: LocalTextModelFile.sizeText))
+                }
+            }
             if download.paused == .memory, Settings.shared.readMeetings, !session.isActive {
                 HStack(alignment: .top, spacing: 9) {
                     Image(systemName: "hourglass")
@@ -1991,6 +2034,8 @@ struct MeetingsView: View {
     /// Which engine reads meetings on this Mac right now. Read when the
     /// window appears and when the model row changes; it asks the disk.
     @State private var engineStatus = MeetingTextEngines.status
+    /// The strip's removal dialog for a model this Mac may not run.
+    @State private var confirmRemoveModel = false
 
     /// The one-time sample (design section 9): a summary for THIS
     /// transcript, written on request, with every switch left exactly where
