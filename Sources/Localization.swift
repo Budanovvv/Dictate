@@ -759,7 +759,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Этот Mac офлайн. Ничего не отправлено — попробуйте, когда вернётся связь.",
         "Open": "Открыть",
         "Open report": "Открыть отчёт",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Отправляет этот транскрипт в %@ на вашем ключе и заменяет уже написанный отчёт.",
         "Write a “%@” report?": "Написать отчёт «%@»?",
         "Write again with": "Написать заново по шаблону",
         "Action items": "Задачи",
@@ -787,6 +786,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Название остаётся на языке встречи; саммари и все отчёты пишутся на этом. Имена полей в отчёте остаются ровно как напечатаны.",
         "Write summaries and reports in": "Язык саммари и отчётов",
         "About “%@”:": "По встрече «%@»:",
+        "Replace the report with a new “%@” one?": "Заменить отчёт новым по шаблону «%@»?",
+        "Replace report": "Заменить отчёт",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Уже написанный отчёт будет заменён, его PDF тоже. Транскрипт уйдёт в %@ на вашем ключе.",
     ]
 
     static let uk: [String: String] = [
@@ -1387,7 +1389,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Цей Mac офлайн. Нічого не надіслано — спробуйте, коли з’явиться зв’язок.",
         "Open": "Відкрити",
         "Open report": "Відкрити звіт",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Надсилає цей транскрипт до %@ на вашому ключі й замінює вже написаний звіт.",
         "Write a “%@” report?": "Написати звіт «%@»?",
         "Write again with": "Написати заново за шаблоном",
         "Action items": "Завдання",
@@ -1415,6 +1416,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Назва лишається мовою зустрічі; підсумок і всі звіти пишуться цією. Назви полів у звіті лишаються рівно як надруковано.",
         "Write summaries and reports in": "Мова підсумків і звітів",
         "About “%@”:": "Щодо зустрічі «%@»:",
+        "Replace the report with a new “%@” one?": "Замінити звіт новим за шаблоном «%@»?",
+        "Replace report": "Замінити звіт",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Уже написаний звіт буде замінено, його PDF теж. Транскрипт піде до %@ на вашому ключі.",
     ]
 
     static let es: [String: String] = [
@@ -2024,7 +2028,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está sin conexión. No se envió nada: inténtelo cuando vuelva la conexión.",
         "Open": "Abrir",
         "Open report": "Abrir el informe",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Envía esta transcripción a %@ con su clave y sustituye el informe ya escrito.",
         "Write a “%@” report?": "¿Escribir un informe “%@”?",
         "Write again with": "Escribir de nuevo con",
         "Action items": "Tareas",
@@ -2052,6 +2055,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "El título conserva el idioma de la reunión; el resumen y todos los informes se escriben en este. Los nombres de los campos de un informe se mantienen tal como se escribieron.",
         "Write summaries and reports in": "Escribir resúmenes e informes en",
         "About “%@”:": "Sobre “%@”:",
+        "Replace the report with a new “%@” one?": "¿Sustituir el informe por uno nuevo “%@”?",
+        "Replace report": "Sustituir informe",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "El informe ya escrito se sustituye, y su PDF también. Envía esta transcripción a %@ con su clave.",
     ]
 
     static let pt: [String: String] = [
@@ -2661,7 +2667,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está offline. Nada foi enviado: tente de novo quando a conexão voltar.",
         "Open": "Abrir",
         "Open report": "Abrir o relatório",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Envia esta transcrição para %@ com a sua chave e substitui o relatório já escrito.",
         "Write a “%@” report?": "Escrever um relatório “%@”?",
         "Write again with": "Escrever de novo com",
         "Action items": "Tarefas",
@@ -2689,6 +2694,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "O título mantém o idioma da reunião; o resumo e todos os relatórios são escritos neste. Os nomes dos campos de um relatório ficam exatamente como digitados.",
         "Write summaries and reports in": "Escrever resumos e relatórios em",
         "About “%@”:": "Sobre “%@”:",
+        "Replace the report with a new “%@” one?": "Substituir o relatório por um novo “%@”?",
+        "Replace report": "Substituir relatório",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "O relatório já escrito é substituído, e o PDF também. Envia esta transcrição para %@ com a sua chave.",
     ]
 
     static let fr: [String: String] = [
@@ -3298,7 +3306,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Ce Mac est hors ligne. Rien n’a été envoyé : réessayez quand la connexion sera revenue.",
         "Open": "Ouvrir",
         "Open report": "Ouvrir le rapport",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Envoie cette transcription à %@ avec votre clé et remplace le rapport déjà rédigé.",
         "Write a “%@” report?": "Rédiger un rapport « %@ » ?",
         "Write again with": "Rédiger à nouveau avec",
         "Action items": "Actions",
@@ -3326,6 +3333,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Le titre garde la langue de la réunion ; le résumé et chaque rapport sont rédigés dans celle-ci. Les noms des champs d’un rapport restent exactement tels que saisis.",
         "Write summaries and reports in": "Rédiger les résumés et rapports en",
         "About “%@”:": "À propos de « %@ » :",
+        "Replace the report with a new “%@” one?": "Remplacer le rapport par un nouveau « %@ » ?",
+        "Replace report": "Remplacer le rapport",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Le rapport déjà rédigé est remplacé, son PDF aussi. Envoie cette transcription à %@ avec votre clé.",
     ]
 
     static let de: [String: String] = [
@@ -3935,7 +3945,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Dieser Mac ist offline. Nichts wurde gesendet – versuchen Sie es erneut, sobald die Verbindung zurück ist.",
         "Open": "Öffnen",
         "Open report": "Bericht öffnen",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Sendet dieses Transkript mit Ihrem Schlüssel an %@ und ersetzt den bereits geschriebenen Bericht.",
         "Write a “%@” report?": "Bericht „%@“ schreiben?",
         "Write again with": "Erneut schreiben mit",
         "Action items": "Aufgaben",
@@ -3963,6 +3972,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Der Titel behält die Sprache des Meetings; die Zusammenfassung und jeder Bericht werden in dieser geschrieben. Feldnamen in einem Bericht bleiben genau wie eingegeben.",
         "Write summaries and reports in": "Zusammenfassungen und Berichte schreiben auf",
         "About “%@”:": "Zu „%@“:",
+        "Replace the report with a new “%@” one?": "Bericht durch einen neuen „%@“-Bericht ersetzen?",
+        "Replace report": "Bericht ersetzen",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Der bereits geschriebene Bericht wird ersetzt, sein PDF ebenfalls. Sendet dieses Transkript mit Ihrem Schlüssel an %@.",
     ]
 
     static let zh: [String: String] = [
@@ -4572,7 +4584,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "此 Mac 处于离线状态。未发送任何内容，请在恢复连接后再试。",
         "Open": "打开",
         "Open report": "打开报告",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "用你的密钥把此转录发送给 %@，并替换已写好的报告。",
         "Write a “%@” report?": "写一份“%@”报告？",
         "Write again with": "用以下模板重新写",
         "Action items": "行动项",
@@ -4600,6 +4611,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "标题保留会议的语言；摘要和所有报告都用此语言撰写。报告中的字段名保持原样。",
         "Write summaries and reports in": "摘要和报告的语言",
         "About “%@”:": "关于“%@”：",
+        "Replace the report with a new “%@” one?": "用新的“%@”报告替换现有报告？",
+        "Replace report": "替换报告",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "已写好的报告及其 PDF 将被替换。会用你的密钥把此转录发送给 %@。",
     ]
 
     static let ja: [String: String] = [
@@ -5209,7 +5223,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "この Mac はオフラインです。何も送信されていません。接続が戻ってからもう一度お試しください。",
         "Open": "開く",
         "Open report": "レポートを開く",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "この文字起こしをあなたのキーで %@ に送り、すでに書かれたレポートを置き換えます。",
         "Write a “%@” report?": "「%@」レポートを書きますか？",
         "Write again with": "次のテンプレートでもう一度書く",
         "Action items": "アクション項目",
@@ -5237,6 +5250,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "タイトルはミーティングの言語のまま、要約とすべてのレポートはこの言語で書かれます。レポートの項目名は入力したままです。",
         "Write summaries and reports in": "要約とレポートを書く言語",
         "About “%@”:": "「%@」について：",
+        "Replace the report with a new “%@” one?": "レポートを新しい「%@」レポートに置き換えますか？",
+        "Replace report": "レポートを置き換える",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "すでに書かれたレポートと PDF は置き換えられます。この文字起こしをあなたのキーで %@ に送ります。",
     ]
 
     static let ko: [String: String] = [
@@ -5846,7 +5862,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "이 Mac은 오프라인입니다. 아무것도 보내지 않았으니 연결이 돌아오면 다시 시도하세요.",
         "Open": "열기",
         "Open report": "보고서 열기",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "이 전사를 내 키로 %@에 보내고 이미 작성된 보고서를 대체합니다.",
         "Write a “%@” report?": "“%@” 보고서를 쓸까요?",
         "Write again with": "다음 템플릿으로 다시 쓰기",
         "Action items": "실행 항목",
@@ -5874,6 +5889,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "제목은 회의의 언어를 유지하고, 요약과 모든 보고서는 이 언어로 작성됩니다. 보고서의 항목 이름은 입력한 그대로 유지됩니다.",
         "Write summaries and reports in": "요약과 보고서 작성 언어",
         "About “%@”:": "“%@”에 대해:",
+        "Replace the report with a new “%@” one?": "보고서를 새 “%@” 보고서로 대체할까요?",
+        "Replace report": "보고서 대체",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "이미 작성된 보고서와 PDF가 대체됩니다. 이 전사를 내 키로 %@에 보냅니다.",
     ]
 
     static let vi: [String: String] = [
@@ -6483,7 +6501,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Mac này đang ngoại tuyến. Chưa gửi gì cả — hãy thử lại khi có kết nối.",
         "Open": "Mở",
         "Open report": "Mở báo cáo",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Gửi bản ghi này tới %@ bằng khóa của bạn và thay thế báo cáo đã viết.",
         "Write a “%@” report?": "Viết báo cáo “%@”?",
         "Write again with": "Viết lại với",
         "Action items": "Việc cần làm",
@@ -6511,6 +6528,9 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Tiêu đề giữ ngôn ngữ của cuộc họp; bản tóm tắt và mọi báo cáo được viết bằng ngôn ngữ này. Tên trường trong báo cáo giữ nguyên như đã nhập.",
         "Write summaries and reports in": "Viết tóm tắt và báo cáo bằng",
         "About “%@”:": "Về “%@”:",
+        "Replace the report with a new “%@” one?": "Thay báo cáo bằng báo cáo “%@” mới?",
+        "Replace report": "Thay báo cáo",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Báo cáo đã viết sẽ bị thay thế, cả PDF của nó. Gửi bản ghi này tới %@ bằng khóa của bạn.",
     ]
 
     static let tl: [String: String] = [
@@ -7120,7 +7140,6 @@ extension Localization {
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Offline ang Mac na ito. Walang ipinadala — subukan ulit kapag bumalik na ang koneksyon.",
         "Open": "Buksan",
         "Open report": "Buksan ang report",
-        "Sends this transcript to %@ on your key and replaces the report already written.": "Ipinapadala ang transcript na ito sa %@ gamit ang key mo at pinapalitan ang report na naisulat na.",
         "Write a “%@” report?": "Isulat ang report na “%@”?",
         "Write again with": "Isulat muli gamit ang",
         "Action items": "Mga aksyon",
@@ -7148,5 +7167,8 @@ extension Localization {
         "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Nananatili ang wika ng meeting sa pamagat; ang buod at bawat report ay isinusulat sa wikang ito. Nananatili ang mga pangalan ng field sa report gaya ng na-type.",
         "Write summaries and reports in": "Isulat ang mga buod at report sa",
         "About “%@”:": "Tungkol sa “%@”:",
+        "Replace the report with a new “%@” one?": "Palitan ang report ng bagong “%@”?",
+        "Replace report": "Palitan ang report",
+        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Papalitan ang naisulat nang report, pati ang PDF nito. Ipinapadala ang transcript na ito sa %@ gamit ang key mo.",
     ]
 }

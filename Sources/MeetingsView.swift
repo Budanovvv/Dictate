@@ -3542,11 +3542,13 @@ private struct TranscriptPane: View {
                     .frame(width: 260)
                 }
                 .accessibilityLabel(L("Write report"))
-                .confirmationDialog(Lf("Write a “%@” report?", pendingTemplate?.name ?? ""),
+                .confirmationDialog(report == nil
+                                    ? Lf("Write a “%@” report?", pendingTemplate?.name ?? "")
+                                    : Lf("Replace the report with a new “%@” one?", pendingTemplate?.name ?? ""),
                                     isPresented: Binding(get: { pendingTemplate != nil },
                                                          set: { if !$0 { pendingTemplate = nil } }),
                                     titleVisibility: .visible) {
-                    Button(report == nil ? L("Write report") : L("Write again")) {
+                    Button(report == nil ? L("Write report") : L("Replace report")) {
                         if let template = pendingTemplate { onWriteReport?(template) }
                         pendingTemplate = nil
                     }
@@ -3555,7 +3557,7 @@ private struct TranscriptPane: View {
                     Text(report == nil
                          ? Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName)
-                         : Lf("Sends this transcript to %@ on your key and replaces the report already written.",
+                         : Lf("The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName))
                 }
         }
