@@ -1153,6 +1153,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if !activating {
             window.styleMask.insert(.nonactivatingPanel)
             (window as? NSPanel)?.becomesKeyOnlyIfNeeded = false
+            // The same manners as the meetings window, the pill and the
+            // cards: an NSPanel hides itself the moment the app deactivates
+            // unless told otherwise, and this app is NOT active while the
+            // person is in another app's full-screen Space — which is where
+            // Settings, opened from the menu bar, kept vanishing 0.6 s after
+            // being ordered front (owner, 2026-09-14: "ordered front,
+            // occlusion NOT VISIBLE"). The other panels had the flag; this
+            // one did not.
+            (window as? NSPanel)?.hidesOnDeactivate = false
             // FLOATING, deterministically above the meetings panel (which is
             // .normal in library mode) — the end of the raise war of
             // 2026-08-31: ordering alone kept losing, because the corner
@@ -1181,6 +1190,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // Onboarding activates the app, and activation may switch
             // Spaces legitimately — coming to the user is fine there.
             window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        } else {
+            // The ONE flag, alone. Opened from the menu bar with the meetings
+            // window closed there is no anchor to ride, the panel never
+            // activates the app, and the compositor filed it on the app's
+            // own Space: "ordered front, occlusion NOT VISIBLE,
+            // onActiveSpace=false", rescue to the cursor's screen and all
+            // (owner, 2026-09-14, from a FULL-SCREEN Safari on the built-in
+            // display). A full-screen Space admits only auxiliary windows:
+            // `.moveToActiveSpace` alone changed nothing, and a child of the
+            // status item's window was refused the same way. The pair the
+            // top notice and the call card carry — every Space, full-screen
+            // included — is the one shape that reaches a person in a
+            // full-screen app; it reported "onActiveSpace=true".
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         }
         window.center()
         // Subscribe once per window here — present() runs on every reopen, and
