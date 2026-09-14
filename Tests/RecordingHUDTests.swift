@@ -45,9 +45,19 @@ final class RecordingHUDTests: XCTestCase {
         XCTAssertTrue(hud.pillIsOnScreen)
 
         hud.hide()
+        // Poll rather than sleep a fixed 0.4 s: the fade is 0.18 s, but on a
+        // loaded machine (a Release build compiling in the next terminal)
+        // the animation's completion landed later than that and the test
+        // flapped — on main as well as on every branch (2026-09-13).
         let settled = expectation(description: "fade completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) { settled.fulfill() }
-        wait(for: [settled], timeout: 2)
+        var ticks = 0
+        func poll() {
+            ticks += 1
+            if !hud.pillIsOnScreen || ticks >= 40 { settled.fulfill(); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { poll() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) { poll() }
+        wait(for: [settled], timeout: 3)
 
         XCTAssertFalse(hud.pillIsOnScreen, "an un-interrupted hide must order the pill out")
     }

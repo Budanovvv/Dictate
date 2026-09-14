@@ -334,6 +334,7 @@ struct MeetingsView: View {
                         .frame(height: 24)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L("Stop Recording"))
                 .background(DS.hoverFill,
                             in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 .hoverHighlight(radius: 7)
@@ -387,6 +388,7 @@ struct MeetingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L("Settings"))
         .hoverHighlight()
         .popover(isPresented: $settingsMenuOpen, arrowEdge: .top) {
             settingsCornerMenu
@@ -742,6 +744,7 @@ struct MeetingsView: View {
                 .textFieldStyle(.plain)
                 .font(.callout)
                 .focused($searchFocused)
+                .accessibilityLabel(L("Search transcripts"))
                 .help(L("Search transcripts"))
             if !query.isEmpty {
                 Button { query = "" } label: {
@@ -752,6 +755,7 @@ struct MeetingsView: View {
                 .foregroundStyle(.tertiary)
                 .hoverHighlight(radius: 6)
                 .padding(-2)
+                .accessibilityLabel(L("Clear search"))
                 .help(L("Clear search"))
             }
         }
@@ -1217,6 +1221,11 @@ struct MeetingsView: View {
             .padding(.horizontal, 8)
         }
         .buttonStyle(.plain)
+        // Said explicitly: a plain-style button with a composed label
+        // reached VoiceOver as "button" and nothing else (every sidebar
+        // button answered an AX probe with no title, 2026-09-14).
+        .accessibilityLabel(count.map { "\(title), \($0)" } ?? title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .pointerStyle(.link)
         .background(
             HStack(spacing: 0) {
@@ -2209,6 +2218,7 @@ private struct StopButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(DS.record)
+        .accessibilityLabel(L("Stop recording"))
         .help(L("Stop recording"))
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: DS.fade), value: hovering)
@@ -2785,6 +2795,7 @@ private struct TranscriptPane: View {
                         .hoverHighlight(radius: 5)
                         .pointerStyle(.link)
                         .padding(.horizontal, -4)
+                        .accessibilityLabel(L("Rename this meeting"))
                         .help(L("Rename this meeting"))
                         .popover(isPresented: $retitling, arrowEdge: .bottom) {
                             retitlePopover(onRetitle)
@@ -2846,6 +2857,7 @@ private struct TranscriptPane: View {
                                     .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(L("About voice separation"))
                             .help(L("About voice separation"))
                             .popover(isPresented: $voiceInfoShown,
                                      arrowEdge: .bottom) { voiceInfoPopover }
@@ -2900,6 +2912,7 @@ private struct TranscriptPane: View {
                     .hoverHighlight(radius: 5)
                     .pointerStyle(.link)
                     .padding(.horizontal, -4)
+                    .accessibilityLabel(L("Rename this meeting"))
                     .help(L("Rename this meeting"))
                     .popover(isPresented: $retitling, arrowEdge: .bottom) {
                         retitlePopover(onRetitle)
@@ -3063,6 +3076,7 @@ private struct TranscriptPane: View {
         .foregroundStyle(.secondary)
         .fixedSize()
         .onHover { menuHovering = $0 }
+        .accessibilityLabel(L("Meeting actions"))
         .help(L("Meeting actions"))
     }
 
@@ -3866,6 +3880,7 @@ private struct RecordBand: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L("Record this call"))
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: DS.fade), value: hovering)
         .help(L("Record this call"))
@@ -4457,6 +4472,7 @@ private struct TurnView: View, Equatable {
                 .hoverHighlight(radius: DS.radiusChip)
                 .pointerStyle(.link)
                 .padding(.horizontal, -3)
+                .accessibilityLabel(L("Rename this speaker"))
                 .help(L("Rename this speaker"))
                 .popover(isPresented: $renaming, arrowEdge: .bottom) {
                     renamePopover
@@ -4534,6 +4550,7 @@ private struct TurnView: View, Equatable {
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: DS.fade), value: hovering)
+        .accessibilityLabel(L("Copy text"))
         .help(L("Copy text"))
     }
 
@@ -4876,6 +4893,7 @@ private struct TagRow: View {
             .buttonStyle(.plain)
             .hoverHighlight(radius: 11)
             .pointerStyle(.link)
+            .accessibilityLabel(L("Add tag"))
             .help(L("Add tag"))
             .popover(isPresented: $adding, arrowEdge: .bottom) { addPopover }
             Spacer(minLength: 0)

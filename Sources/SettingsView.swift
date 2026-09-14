@@ -277,6 +277,8 @@ struct SettingsView: View {
                     .padding(.horizontal, 10)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(tabTitle(candidate))
+                .accessibilityAddTraits(tab == candidate ? .isSelected : [])
                 .background(
                     HStack(spacing: 0) {
                         if tab == candidate {
@@ -967,7 +969,10 @@ struct SettingsView: View {
     private var storageSection: some View {
         Section {
             LabeledContent {
-                Text(storage.map { MachineProfile.fileSizeText($0.speechModelBytes) } ?? "…")
+                // The nominal size the onboarding quoted (626 MB), not the
+                // allocated bytes on disk (629.5 with the tokenizer): one
+                // number for one thing, wherever it is named.
+                Text(MachineProfile.fileSizeText(Int64(ModelTier.fast.sizeMB) * 1_000_000))
                     .foregroundStyle(.secondary).monospacedDigit()
             } label: {
                 rowLabel(L("Speech model"), L("Required for dictation."))
@@ -1345,6 +1350,7 @@ private struct KeyRecorder: View {
                 .buttonStyle(.plain)
                 .hoverHighlight(radius: 6)
                 .padding(-2)
+                .accessibilityLabel(L("Remove"))
                 .help(L("Remove"))
             }
         }

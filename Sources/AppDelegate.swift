@@ -312,6 +312,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // all; only Force Quit ended it (owner, first record after a
             // clean install, 2026-09-14). The menu-bar item never showed
             // it because an NSMenuItem action is not a SwiftUI action.
+            // Activate NOW, on the turn of the click that carries the
+            // user's intent — macOS 14's cooperative activation grants it
+            // here and may refuse it later — and run the dialog on the next
+            // turn, once the activation has settled (the activateThenRun
+            // rule): without both, Return and Escape reach nothing.
+            NSApp.activate(ignoringOtherApps: true)
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.meeting.isActive else { return }
                 guard ConsentDialog.run() else { return }

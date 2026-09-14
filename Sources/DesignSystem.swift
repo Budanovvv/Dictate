@@ -324,6 +324,7 @@ struct DSTextSizeTray: View {
             .fill(.quaternary.opacity(0.5)))
         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .accessibilityLabel(L("Transcript text"))
         .help(L("Transcript text"))
     }
 
