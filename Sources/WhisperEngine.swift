@@ -109,13 +109,19 @@ actor WhisperEngine {
     /// Downloads (if needed) and loads the selected model. progress: 0…1.
     /// Concurrent calls coalesce into one load; only the first caller's
     /// progress closure reports (they all feed the same HUD anyway).
-    func prepare(tier: ModelTier, progress: @Sendable @escaping (Double) -> Void) async throws {
+    /// `caller` defaults to the call site — a default argument is expanded
+    /// where the call is written — so the log names who asked for a load:
+    /// the compile started 0.03 s after the onboarding download on
+    /// 2026-09-14 and nothing in the code admitted to it.
+    func prepare(tier: ModelTier, caller: String = "\(#fileID):\(#line)",
+                 progress: @Sendable @escaping (Double) -> Void) async throws {
         let variant = tier.variant
         if pipes[variant] != nil { return }
         if let inflight = preparing[variant] {
             try await inflight.value
             return
         }
+        Log.d("model: prepare requested by \(caller)")
         let task = Task { try await performPrepare(variant: variant, progress: progress) }
         preparing[variant] = task
         defer { preparing[variant] = nil }
