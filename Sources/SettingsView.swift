@@ -114,15 +114,21 @@ struct SettingsView: View {
     // the person's key — the provider, the key, what is sent, and reports —
     // in the one place the app already calls "Agent". Meetings is purely
     // local again: calendar names, reading, the meeting model.
-    // Templates is the seventh, and shows only once the agent is on: a
-    // report is the agent's work, and a tab for it with the agent off would
-    // be a door to a room with no floor.
+    // Templates is the seventh (2026-09-14): a report is a thing a person
+    // goes looking for by name, and would not find under Agent.
     private enum Tab: CaseIterable { case keys, languages, meetings, agent, templates, general, thisMac }
     @State private var tab: Tab = .keys
-
-    private var visibleTabs: [Tab] {
-        Tab.allCases.filter { $0 != .templates || askProvider != nil }
-    }
+    /// The Templates tab: which template is showing, and its working copy.
+    /// Every edit goes to the store at once (the list in memory) and to
+    /// disk a moment later — see ReportTemplateStore.save.
+    @State private var templateID: UUID?
+    @State private var templateDraft: ReportTemplate?
+    @State private var templateChooserOpen = false
+    @State private var starterChooserOpen = false
+    @State private var confirmRemoveTemplate = false
+    @State private var reportLanguage = Settings.shared.reportLanguage
+    @FocusState private var focusedTemplateField: UUID?
+    @ObservedObject private var templateStore = ReportTemplateStore.shared
     /// The removal dialog for the meeting model.
     @State private var confirmRemoveModel = false
     /// The removal dialog for the debug audio dumps.
@@ -266,9 +272,14 @@ struct SettingsView: View {
             }
             if askProvider != Settings.shared.askProvider { askProvider = Settings.shared.askProvider }
         }
-        // The Templates tab leaves with the agent: a tab that is showing
-        // when its reason goes away lands on the reason.
-        .onChange(of: askProvider) { _, now in if now == nil, tab == .templates { tab = .agent } }
+        // The Templates tab's working copy: loaded when the tab opens or the
+        // chosen template changes, saved as it is typed.
+        .onChange(of: tab) { _, now in if now == .templates { loadTemplate() } }
+        .onChange(of: templateID) { loadTemplate() }
+        .onChange(of: templateDraft) { _, now in
+            guard let now, now.id == templateID else { return }
+            templateStore.save(now)
+        }
         .onDisappear {
             captureMain.cancel()
             captureTranslate.cancel()
@@ -279,7 +290,7 @@ struct SettingsView: View {
     private var settingsSidebar: some View {
         VStack(alignment: .leading, spacing: 1) {
             Color.clear.frame(height: 40)   // the traffic lights' band
-            ForEach(visibleTabs, id: \.self) { candidate in
+            ForEach(Tab.allCases, id: \.self) { candidate in
                 Button {
                     tab = candidate
                 } label: {
@@ -329,7 +340,7 @@ struct SettingsView: View {
         case .languages: Form { languagesSection }.formStyle(.grouped)
         case .meetings: Form { meetingsSection }.formStyle(.grouped)
         case .agent: Form { agentSection }.formStyle(.grouped)
-        case .templates: Form { ReportTemplatesSection() }.formStyle(.grouped)
+        case .templates: Form { templatesSection }.formStyle(.grouped)
         case .general: Form { generalSection }.formStyle(.grouped)
         case .thisMac: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
         }
@@ -781,9 +792,10 @@ struct SettingsView: View {
             // with the choice, labelled with the vendor's name, because a
             // field for a credential nobody can use yet is a question
             // with no reason behind it.
+            let storedKey = storedKey
             if let provider = askProvider {
                 LabeledContent {
-                    apiKeyControl(for: provider)
+                    apiKeyControl(for: provider, stored: storedKey)
                 } label: {
                     rowLabel(provider.keyLabel, L("Your account, your usage"))
                 }
@@ -792,7 +804,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let gate = reportsGateLine(hasKey: hasKey) {
+                    if let gate = reportsGateLine(hasKey: storedKey != nil) {
                         Text(gate).font(.caption).foregroundStyle(DS.warn)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
@@ -803,7 +815,7 @@ struct SettingsView: View {
             } label: {
                 rowLabel(L("Reports"), nil)
             }
-            if let provider = askProvider, hasKey {
+            if let provider = askProvider, storedKey != nil {
                 LabeledContent {
                     Text(Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
                         .font(.caption).foregroundStyle(.secondary)
@@ -821,10 +833,10 @@ struct SettingsView: View {
 
     /// One Keychain read per render of the section, not one per row: the
     /// query is not free, and the window redraws on every keystroke.
-    private var hasKey: Bool {
+    private var storedKey: String? {
         _ = keyRevision
-        guard let provider = askProvider else { return false }
-        return APIKey.current(provider) != nil
+        guard let provider = askProvider else { return nil }
+        return APIKey.current(provider)
     }
 
     /// Why reports cannot run right now, when they cannot.
@@ -998,6 +1010,217 @@ struct SettingsView: View {
         // become a false privacy claim (review find, 2026-08-31).
         return Lf("Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.",
                   provider.vendorName)
+    }
+
+    // MARK: - Templates
+
+    /// A template is a form the agent fills in from a transcript. Rows like
+    /// every other tab: which template, its name, its Context, its fields.
+    /// With the agent off the tab stays and says so in one line — a tab
+    /// that comes and goes is a control nobody can find twice.
+    @ViewBuilder
+    private var templatesSection: some View {
+        Section {
+            LabeledContent {
+                HStack(spacing: 10) {
+                    if !templateStore.templates.isEmpty {
+                        PopupTrigger(label: templateDraft?.name ?? L("Choose a template")) {
+                            templateChooserOpen.toggle()
+                        }
+                        .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(templateStore.templates) { template in
+                                    PopupRow(title: template.name,
+                                             subtitle: Lf("%d fields", template.usableFields.count),
+                                             selected: template.id == templateID) {
+                                        templateID = template.id
+                                        templateChooserOpen = false
+                                    }
+                                }
+                            }
+                            .padding(6)
+                            .frame(width: 240)
+                        }
+                    }
+                    Button(L("New template…")) { starterChooserOpen.toggle() }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                        .popover(isPresented: $starterChooserOpen, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(ReportTemplate.StarterKind.allCases, id: \.self) { kind in
+                                    let starter = ReportTemplate.starter(kind)
+                                    PopupRow(title: starter.name,
+                                             subtitle: kind == .blank ? L("One empty field. You name it.")
+                                                : starter.fields.map(\.name).joined(separator: " · "),
+                                             selected: false) {
+                                        templateStore.save(starter)
+                                        templateID = starter.id
+                                        starterChooserOpen = false
+                                    }
+                                }
+                            }
+                            .padding(6)
+                            .frame(width: 300)
+                        }
+                }
+            } label: {
+                rowLabel(L("Template"),
+                         L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
+            }
+            if askProvider == nil {
+                Text(L("Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then."))
+                    .font(.caption).foregroundStyle(DS.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: { Text(L("Templates")) }
+
+        if let draft = templateDraft {
+            Section {
+                LabeledContent {
+                    TextField("", text: templateBinding(draft, \.name), prompt: Text(L("Template name")))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 260)
+                        .accessibilityLabel(L("Template name"))
+                } label: {
+                    rowLabel(L("Name"), nil)
+                }
+                LabeledContent {
+                    TextField("", text: templateBinding(draft, \.context),
+                              prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(2...4)
+                        .frame(maxWidth: 420)
+                        .accessibilityLabel(L("Context"))
+                } label: {
+                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.”"))
+                }
+                LabeledContent {
+                    templateFields(draft)
+                } label: {
+                    rowLabel(L("Fields"),
+                             L("A field with no instruction goes by its name alone. A field the call did not cover reads “Not discussed”."))
+                }
+            } header: { Text(draft.name.isEmpty ? L("New template") : draft.name) }
+
+            Section {
+                LabeledContent {
+                    ReportLanguagePicker(selection: $reportLanguage)
+                        .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
+                } label: {
+                    rowLabel(L("Write reports in"),
+                             L("Field names stay exactly as typed; only the text under them is written in this language."))
+                }
+                LabeledContent {
+                    HStack(spacing: 10) {
+                        Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
+                            .buttonStyle(.dsSmall).controlSize(.small)
+                        Button(L("Remove template…")) { confirmRemoveTemplate = true }
+                            .buttonStyle(.dsSmall).controlSize(.small)
+                    }
+                    .confirmationDialog(Lf("Remove “%@”?", draft.name), isPresented: $confirmRemoveTemplate,
+                                        titleVisibility: .visible) {
+                        Button(L("Remove template"), role: .destructive) {
+                            templateStore.remove(id: draft.id)
+                            templateID = templateStore.templates.first?.id
+                        }
+                        Button(L("Cancel"), role: .cancel) {}
+                    } message: {
+                        Text(L("Reports already written with it stay in their meetings."))
+                    }
+                } label: {
+                    rowLabel(L("Written reports"),
+                             L("Every report written with this template, one file per meeting: Markdown, plain text or PDF, plus a CSV table."))
+                }
+            }
+        }
+    }
+
+    private func templateFields(_ template: ReportTemplate) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(template.fields.enumerated()), id: \.element.id) { index, field in
+                HStack(spacing: 6) {
+                    TextField("", text: fieldBinding(index, \.name), prompt: Text(L("Field name")))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 150)
+                        .focused($focusedTemplateField, equals: field.id)
+                        .accessibilityLabel(L("Field name"))
+                    TextField("", text: fieldBinding(index, \.instruction),
+                              prompt: Text(L("Instruction (optional)")))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 180)
+                        .accessibilityLabel(L("Instruction (optional)"))
+                    Button { moveTemplateField(index, by: -1) } label: {
+                        Image(systemName: "chevron.up").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .disabled(index == 0)
+                    .accessibilityLabel(L("Move up"))
+                    Button { moveTemplateField(index, by: 1) } label: {
+                        Image(systemName: "chevron.down").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .disabled(index == template.fields.count - 1)
+                    .accessibilityLabel(L("Move down"))
+                    Button {
+                        var updated = template
+                        updated.fields.removeAll { $0.id == field.id }
+                        templateDraft = updated
+                    } label: {
+                        Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L("Remove field"))
+                }
+            }
+            Button {
+                var updated = template
+                let field = ReportField(name: "")
+                updated.fields.append(field)
+                templateDraft = updated
+                focusedTemplateField = field.id
+            } label: {
+                Label(L("Add field"), systemImage: "plus")
+            }
+            .buttonStyle(.dsSmall)
+            .controlSize(.small)
+            .padding(.top, 2)
+        }
+    }
+
+    private func loadTemplate() {
+        if templateID == nil || !templateStore.templates.contains(where: { $0.id == templateID }) {
+            templateID = templateStore.templates.first?.id
+        }
+        templateDraft = templateID.flatMap { templateStore.template(id: $0) }
+    }
+
+    private func moveTemplateField(_ index: Int, by offset: Int) {
+        guard var updated = templateDraft, updated.fields.indices.contains(index),
+              updated.fields.indices.contains(index + offset) else { return }
+        updated.fields.swapAt(index, index + offset)
+        templateDraft = updated
+    }
+
+    private func templateBinding<T>(_ template: ReportTemplate,
+                                    _ path: WritableKeyPath<ReportTemplate, T>) -> Binding<T> {
+        Binding(
+            get: { templateDraft?[keyPath: path] ?? template[keyPath: path] },
+            set: { value in templateDraft?[keyPath: path] = value }
+        )
+    }
+
+    private func fieldBinding(_ index: Int, _ path: WritableKeyPath<ReportField, String>) -> Binding<String> {
+        Binding(
+            get: {
+                guard let draft = templateDraft, draft.fields.indices.contains(index) else { return "" }
+                return draft.fields[index][keyPath: path]
+            },
+            set: { value in
+                guard var updated = templateDraft, updated.fields.indices.contains(index) else { return }
+                updated.fields[index][keyPath: path] = value
+                templateDraft = updated
+            }
+        )
     }
 
     // MARK: - This Mac
@@ -1207,8 +1430,8 @@ struct SettingsView: View {
     /// key is the one step of this feature that happens outside the app, and
     /// the old UI left the person to go and find it.
     @ViewBuilder
-    private func apiKeyControl(for provider: AIProvider) -> some View {
-        if let stored = APIKey.current(provider), keyDraft.isEmpty {
+    private func apiKeyControl(for provider: AIProvider, stored: String?) -> some View {
+        if let stored, keyDraft.isEmpty {
             HStack(spacing: 8) {
                 statusBadge(ok: true, text: APIKey.masked(stored))
                 Button(L("Remove")) {

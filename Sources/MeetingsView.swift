@@ -36,10 +36,6 @@ struct MeetingsView: View {
     /// something to say where it had nothing.
     @ObservedObject private var summaries = MeetingSummaries.shared
     @ObservedObject private var reports = MeetingReports.shared
-    @ObservedObject private var templateStore = ReportTemplateStore.shared
-    /// The report offer card, dismissed this session (the setting is the
-    /// durable half; this redraws the pane).
-    @State private var reportOfferHidden = false
     /// Contents blocks arriving for older meetings — each one turns a
     /// fifty-minute transcript into a dozen findable moments.
     @ObservedObject private var sections = MeetingSections.shared
@@ -565,27 +561,6 @@ struct MeetingsView: View {
                 .padding(.vertical, 9)
                 .overlay(alignment: .bottom) { Divider() }
             }
-            // An archive-wide report run in progress (design ReportTemplates:
-            // progress): each report lands in its meeting as it finishes.
-            if let run = reports.archiveRun {
-                HStack(alignment: .top, spacing: 9) {
-                    ProgressView().controlSize(.small).padding(.top, 1)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(Lf("Writing “%@” reports: %d of %d.", run.templateName, run.done, run.total))
-                            .font(.system(size: 11.5))
-                            .lineSpacing(2)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Button(L("Cancel · keeps the written")) { reports.cancelArchiveRun() }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(DS.accentText)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .overlay(alignment: .bottom) { Divider() }
-            }
             // A Mac that cannot be offered the model, with reading on and
             // Apple Intelligence doing the reading: the one line that
             // explains why there is no download card here when a bigger Mac
@@ -1006,7 +981,6 @@ struct MeetingsView: View {
         // anything (design Notices: list marks).
         switch reports.phases[meeting.url] {
         case .queued, .writing: facts.append(L("Writing…"))
-        case .waitingForConnection: facts.append(L("Report waiting for a connection"))
         case .failed: facts.append(L("Report not written"))
         case nil: if meeting.report != nil { facts.append(L("Reported")) }
         }
@@ -1347,58 +1321,6 @@ struct MeetingsView: View {
 
     @ViewBuilder
     private var answerPane: some View {
-        VStack(spacing: 0) {
-            if reportOfferDue { reportOffer }
-            answerPaneBody
-        }
-    }
-
-    /// The first-run card for reports, in the Agent pane once the agent is
-    /// connected and no template exists yet (design ReportTemplates:
-    /// firstRun). Dismissed for good with Not now.
-    private var reportOfferDue: Bool {
-        Settings.shared.askArchive && templateStore.templates.isEmpty
-            && !Settings.shared.reportOfferDismissed && !reportOfferHidden
-    }
-
-    private var reportOffer: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "doc.text")
-                .foregroundStyle(DS.accent)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L("The agent can also write a report after every call, under fields you choose once."))
-                    .font(.system(size: 13, weight: .medium))
-                Text(L("Sales calls, interviews, support: each call ends with the same structure filled in from its transcript."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
-                    Button(L("Set up a template")) {
-                        Settings.shared.reportOfferDismissed = true
-                        reportOfferHidden = true
-                        openSettingsWindow(tab: "templates")
-                    }
-                    .buttonStyle(.dsSmall).controlSize(.small)
-                    Button(L("Not now")) {
-                        Settings.shared.reportOfferDismissed = true
-                        reportOfferHidden = true
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .controlSize(.small)
-                }
-                .padding(.top, 4)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(DS.restingFill, in: DS.shape)
-        .padding(.horizontal, 16)
-        .padding(.top, 56)
-    }
-
-    private var answerPaneBody: some View {
         AnswerPane(answer: answer,
                    suggestions: askSuggestions,
                    headerNote: askHeaderNote,
@@ -1656,7 +1578,7 @@ struct MeetingsView: View {
                                        TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
                                    }
                                },
-                               reportTemplates: templateStore.templates.filter(\.isUsable),
+                               reportTemplates: ReportTemplateStore.shared.templates.filter(\.isUsable),
                                reportsAvailable: Settings.shared.askArchive,
                                onOpenTemplates: { openSettingsWindow(tab: "templates") },
                                onRecut: { recut(meeting, to: $0) },
@@ -3434,13 +3356,6 @@ private struct TranscriptPane: View {
                             .font(.system(size: textScale.body))
                             .foregroundStyle(.secondary)
                     }
-                case .waitingForConnection:
-                    Text(L("Not written yet: this Mac was offline when the call ended."))
-                        .font(.system(size: textScale.body))
-                    Text(L("It is waiting for a connection and will be written then; a notification says when. The transcript and summary are complete."))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 case .failed(let kind):
                     let provider = Settings.shared.askProvider ?? .anthropic
                     Text(Lf("Not written: %@", MeetingReports.failureLine(kind, provider: provider)))
@@ -3448,7 +3363,7 @@ private struct TranscriptPane: View {
                         .foregroundStyle(DS.warn)
                         .fixedSize(horizontal: false, vertical: true)
                     if kind == .outOfCredit {
-                        Text(L("Nothing was retried. Fix it in your provider account, then write the report again once it is."))
+                        Text(L("Nothing was retried. Fix it in your provider account, then write the report again."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

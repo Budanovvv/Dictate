@@ -211,23 +211,6 @@ final class Settings: @unchecked Sendable {
 
     // MARK: Reports
 
-    /// The master switch: a report after every call, written by the agent
-    /// from the automatic template. Off, reports are still written on
-    /// demand from a meeting's ⋯ menu.
-    var reportAutomatic: Bool {
-        get { d.bool(forKey: "reportAutomatic") }
-        set { d.set(newValue, forKey: "reportAutomatic") }
-    }
-
-    /// Which template runs after every call. nil when there is none.
-    var reportAutomaticTemplateID: UUID? {
-        get { d.string(forKey: "reportAutomaticTemplate").flatMap(UUID.init(uuidString:)) }
-        set {
-            if let newValue { d.set(newValue.uuidString, forKey: "reportAutomaticTemplate") }
-            else { d.removeObject(forKey: "reportAutomaticTemplate") }
-        }
-    }
-
     /// The language reports are written in. nil means "same as Dictate" —
     /// the interface language, system-resolved.
     var reportLanguage: AppLanguage? {
@@ -236,28 +219,6 @@ final class Settings: @unchecked Sendable {
             if let newValue { d.set(newValue.rawValue, forKey: "reportLanguage") }
             else { d.removeObject(forKey: "reportLanguage") }
         }
-    }
-
-    /// Set when the provider refused a report for billing reasons; automatic
-    /// reports wait until one succeeds, so a stuck account does not fail
-    /// once per call.
-    var reportsPausedForBilling: Bool {
-        get { d.bool(forKey: "reportsPausedForBilling") }
-        set { d.set(newValue, forKey: "reportsPausedForBilling") }
-    }
-
-    /// Whether the ask-first card for macOS notifications has been shown.
-    /// "Not now" there means macOS is never asked, so this is the card's
-    /// one-shot, not the permission's state.
-    var reportNotificationsAsked: Bool {
-        get { d.bool(forKey: "reportNotificationsAsked") }
-        set { d.set(newValue, forKey: "reportNotificationsAsked") }
-    }
-
-    /// The first-run card in the Agent pane offering to set up a template.
-    var reportOfferDismissed: Bool {
-        get { d.bool(forKey: "reportOfferDismissed") }
-        set { d.set(newValue, forKey: "reportOfferDismissed") }
     }
 
     var meetingConsentSeen: Bool {

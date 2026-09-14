@@ -108,8 +108,8 @@ struct ReportTemplate: Codable, Identifiable, Equatable, Sendable {
 /// and rewritten whole on every change. NOT in the meeting archive, whose
 /// reader treats every file there as a transcript.
 ///
-/// @MainActor: every caller is the editor or the settings pane, and the
-/// file is a few kilobytes.
+/// @MainActor: every caller is the Templates tab or a meeting's card, and
+/// the file is a few kilobytes.
 @MainActor
 final class ReportTemplateStore: ObservableObject {
     static let shared = ReportTemplateStore()
@@ -126,44 +126,38 @@ final class ReportTemplateStore: ObservableObject {
         load()
     }
 
-    /// The template that runs after every call, when there is one. The
-    /// choice is a setting rather than a flag on the template so that
-    /// "exactly one automatic" is a property of the store, not something
-    /// every write has to keep consistent.
-    var automatic: ReportTemplate? {
-        guard let id = Settings.shared.reportAutomaticTemplateID else { return nil }
-        return templates.first { $0.id == id }
-    }
-
     func template(id: UUID) -> ReportTemplate? {
         templates.first { $0.id == id }
     }
 
-    /// Adds or replaces. A first template becomes the automatic one on its
-    /// own — the person who just made one expects it to be used.
+    /// Adds or replaces. Called on every keystroke of the editor: the list
+    /// in memory changes at once, the file follows a moment later.
     func save(_ template: ReportTemplate) {
         if let index = templates.firstIndex(where: { $0.id == template.id }) {
+            guard templates[index] != template else { return }
             templates[index] = template
         } else {
             templates.append(template)
-            if Settings.shared.reportAutomaticTemplateID == nil {
-                Settings.shared.reportAutomaticTemplateID = template.id
-            }
         }
-        persist()
+        persistSoon()
     }
 
     func remove(id: UUID) {
         templates.removeAll { $0.id == id }
-        if Settings.shared.reportAutomaticTemplateID == id {
-            Settings.shared.reportAutomaticTemplateID = templates.first?.id
-        }
         persist()
     }
 
-    func setAutomatic(id: UUID?) {
-        Settings.shared.reportAutomaticTemplateID = id
-        objectWillChange.send()
+    /// One write for a burst of typing: the file is rewritten whole, and a
+    /// name typed letter by letter is not twelve files.
+    private var pendingWrite: Task<Void, Never>?
+
+    private func persistSoon() {
+        pendingWrite?.cancel()
+        pendingWrite = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.persist()
+        }
     }
 
     private func load() {
