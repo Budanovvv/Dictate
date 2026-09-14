@@ -668,7 +668,6 @@ extension Localization {
         "Concerns": "Сомнения",
         "Concrete examples that show they can do this job": "Конкретные примеры, показывающие, что кандидат справится с этой работой",
         "Context": "Контекст",
-        "Copy": "Копировать",
         "Copy report": "Копировать отчёт",
         "Current role, years of experience, what they built": "Текущая роль, стаж, что построил",
         "Date": "Дата",
@@ -759,6 +758,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Повторов не было. Исправьте это в аккаунте провайдера и напишите отчёт снова.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Отчётам нужен агент, а он выключен. Выберите Claude или ChatGPT на вкладке Agent — шаблоны никуда не денутся.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Этот Mac офлайн. Ничего не отправлено — попробуйте, когда вернётся связь.",
+        "Open": "Открыть",
+        "Open report": "Открыть отчёт",
     ]
 
     static let uk: [String: String] = [
@@ -1298,7 +1299,6 @@ extension Localization {
         "Concerns": "Сумніви",
         "Concrete examples that show they can do this job": "Конкретні приклади, які показують, що кандидат впорається з цією роботою",
         "Context": "Контекст",
-        "Copy": "Копіювати",
         "Copy report": "Копіювати звіт",
         "Current role, years of experience, what they built": "Поточна роль, стаж, що збудував",
         "Date": "Дата",
@@ -1389,6 +1389,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Повторів не було. Виправте це в акаунті провайдера і напишіть звіт знову.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Звітам потрібен агент, а він вимкнений. Оберіть Claude або ChatGPT на вкладці Agent — шаблони нікуди не дінуться.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Цей Mac офлайн. Нічого не надіслано — спробуйте, коли з’явиться зв’язок.",
+        "Open": "Відкрити",
+        "Open report": "Відкрити звіт",
     ]
 
     static let es: [String: String] = [
@@ -1937,7 +1939,6 @@ extension Localization {
         "Concerns": "Reservas",
         "Concrete examples that show they can do this job": "Ejemplos concretos que demuestran que puede hacer este trabajo",
         "Context": "Contexto",
-        "Copy": "Copiar",
         "Copy report": "Copiar informe",
         "Current role, years of experience, what they built": "Puesto actual, años de experiencia, qué ha construido",
         "Date": "Fecha",
@@ -2028,6 +2029,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "No se reintentó nada. Corríjalo en la cuenta de su proveedor y vuelva a escribir el informe.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Los informes necesitan el agente, que está apagado. Elija Claude o ChatGPT en la pestaña Agente para activarlos; las plantillas se conservan mientras tanto.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está sin conexión. No se envió nada: inténtelo cuando vuelva la conexión.",
+        "Open": "Abrir",
+        "Open report": "Abrir el informe",
     ]
 
     static let pt: [String: String] = [
@@ -2576,7 +2579,6 @@ extension Localization {
         "Concerns": "Ressalvas",
         "Concrete examples that show they can do this job": "Exemplos concretos que mostram que a pessoa dá conta deste trabalho",
         "Context": "Contexto",
-        "Copy": "Copiar",
         "Copy report": "Copiar relatório",
         "Current role, years of experience, what they built": "Cargo atual, anos de experiência, o que construiu",
         "Date": "Data",
@@ -2667,6 +2669,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Nada foi repetido. Corrija na conta do seu provedor e escreva o relatório de novo.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Os relatórios precisam do agente, que está desligado. Escolha Claude ou ChatGPT na aba Agente para ativá-los; os modelos ficam guardados até lá.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está offline. Nada foi enviado: tente de novo quando a conexão voltar.",
+        "Open": "Abrir",
+        "Open report": "Abrir o relatório",
     ]
 
     static let fr: [String: String] = [
@@ -3215,7 +3219,6 @@ extension Localization {
         "Concerns": "Réserves",
         "Concrete examples that show they can do this job": "Des exemples concrets montrant qu'il ou elle peut faire ce travail",
         "Context": "Contexte",
-        "Copy": "Copier",
         "Copy report": "Copier le rapport",
         "Current role, years of experience, what they built": "Poste actuel, années d'expérience, ce qu'il ou elle a construit",
         "Date": "Date",
@@ -3306,6 +3309,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Rien n’a été retenté. Corrigez le problème dans le compte de votre fournisseur, puis rédigez le rapport à nouveau.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Les rapports ont besoin de l’agent, qui est désactivé. Choisissez Claude ou ChatGPT dans l’onglet Agent pour les activer ; les modèles restent en place d’ici là.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Ce Mac est hors ligne. Rien n’a été envoyé : réessayez quand la connexion sera revenue.",
+        "Open": "Ouvrir",
+        "Open report": "Ouvrir le rapport",
     ]
 
     static let de: [String: String] = [
@@ -3854,7 +3859,6 @@ extension Localization {
         "Concerns": "Bedenken",
         "Concrete examples that show they can do this job": "Konkrete Beispiele, die zeigen, dass die Person diesen Job kann",
         "Context": "Kontext",
-        "Copy": "Kopieren",
         "Copy report": "Bericht kopieren",
         "Current role, years of experience, what they built": "Aktuelle Rolle, Jahre Erfahrung, was die Person aufgebaut hat",
         "Date": "Datum",
@@ -3945,6 +3949,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Nichts wurde wiederholt. Beheben Sie es im Konto Ihres Anbieters und schreiben Sie den Bericht dann erneut.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Berichte brauchen den Agenten, und der ist aus. Wählen Sie im Tab „Agent“ Claude oder ChatGPT, um sie einzuschalten; die Vorlagen bleiben bis dahin erhalten.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Dieser Mac ist offline. Nichts wurde gesendet – versuchen Sie es erneut, sobald die Verbindung zurück ist.",
+        "Open": "Öffnen",
+        "Open report": "Bericht öffnen",
     ]
 
     static let zh: [String: String] = [
@@ -4493,7 +4499,6 @@ extension Localization {
         "Concerns": "顾虑",
         "Concrete examples that show they can do this job": "能证明其胜任这份工作的具体例子",
         "Context": "背景说明",
-        "Copy": "拷贝",
         "Copy report": "拷贝报告",
         "Current role, years of experience, what they built": "目前职位、工作年限、做过什么",
         "Date": "日期",
@@ -4584,6 +4589,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "未重试。请在服务商账户中修复后，再重新写报告。",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "报告需要代理，而代理已关闭。在“代理”标签页选择 Claude 或 ChatGPT 即可开启；在此之前模板会一直保留。",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "此 Mac 处于离线状态。未发送任何内容，请在恢复连接后再试。",
+        "Open": "打开",
+        "Open report": "打开报告",
     ]
 
     static let ja: [String: String] = [
@@ -5132,7 +5139,6 @@ extension Localization {
         "Concerns": "懸念点",
         "Concrete examples that show they can do this job": "この仕事ができることを示す具体的な例",
         "Context": "コンテキスト",
-        "Copy": "コピー",
         "Copy report": "レポートをコピー",
         "Current role, years of experience, what they built": "現在の役職、経験年数、これまでに作ったもの",
         "Date": "日付",
@@ -5223,6 +5229,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "再試行はしていません。プロバイダのアカウントで解決してから、レポートをもう一度書いてください。",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "レポートにはエージェントが必要ですが、オフになっています。「エージェント」タブで Claude か ChatGPT を選ぶと有効になります。テンプレートはそれまで保持されます。",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "この Mac はオフラインです。何も送信されていません。接続が戻ってからもう一度お試しください。",
+        "Open": "開く",
+        "Open report": "レポートを開く",
     ]
 
     static let ko: [String: String] = [
@@ -5771,7 +5779,6 @@ extension Localization {
         "Concerns": "우려 사항",
         "Concrete examples that show they can do this job": "이 일을 해낼 수 있음을 보여주는 구체적 사례",
         "Context": "맥락",
-        "Copy": "복사",
         "Copy report": "보고서 복사",
         "Current role, years of experience, what they built": "현재 직무, 경력 연차, 만든 것",
         "Date": "날짜",
@@ -5862,6 +5869,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "재시도하지 않았습니다. 제공업체 계정에서 문제를 해결한 뒤 보고서를 다시 쓰세요.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "보고서에는 에이전트가 필요한데 꺼져 있습니다. 에이전트 탭에서 Claude 또는 ChatGPT를 선택하면 켜집니다. 템플릿은 그때까지 보관됩니다.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "이 Mac은 오프라인입니다. 아무것도 보내지 않았으니 연결이 돌아오면 다시 시도하세요.",
+        "Open": "열기",
+        "Open report": "보고서 열기",
     ]
 
     static let vi: [String: String] = [
@@ -6410,7 +6419,6 @@ extension Localization {
         "Concerns": "Mối lo ngại",
         "Concrete examples that show they can do this job": "Ví dụ cụ thể cho thấy họ làm được công việc này",
         "Context": "Bối cảnh",
-        "Copy": "Sao chép",
         "Copy report": "Sao chép báo cáo",
         "Current role, years of experience, what they built": "Vai trò hiện tại, số năm kinh nghiệm, những gì họ đã xây dựng",
         "Date": "Ngày",
@@ -6501,6 +6509,8 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Không thử lại. Hãy sửa trong tài khoản nhà cung cấp, rồi viết lại báo cáo.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Báo cáo cần tác nhân, mà tác nhân đang tắt. Chọn Claude hoặc ChatGPT ở thẻ Tác nhân để bật; các mẫu vẫn được giữ cho đến lúc đó.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Mac này đang ngoại tuyến. Chưa gửi gì cả — hãy thử lại khi có kết nối.",
+        "Open": "Mở",
+        "Open report": "Mở báo cáo",
     ]
 
     static let tl: [String: String] = [
@@ -7049,7 +7059,6 @@ extension Localization {
         "Concerns": "Mga alalahanin",
         "Concrete examples that show they can do this job": "Mga konkretong halimbawa na nagpapakitang kaya nila ang trabahong ito",
         "Context": "Konteksto",
-        "Copy": "Kopyahin",
         "Copy report": "Kopyahin ang report",
         "Current role, years of experience, what they built": "Kasalukuyang posisyon, taon ng karanasan, mga nagawa nila",
         "Date": "Petsa",
@@ -7140,5 +7149,7 @@ extension Localization {
         "Nothing was retried. Fix it in your provider account, then write the report again.": "Walang inulit. Ayusin ito sa account ng provider mo, pagkatapos ay isulat muli ang report.",
         "Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.": "Kailangan ng mga report ang agent, na naka-off. Piliin ang Claude o ChatGPT sa tab na Agent para i-on ang mga ito; mananatili ang mga template hanggang doon.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Offline ang Mac na ito. Walang ipinadala — subukan ulit kapag bumalik na ang koneksyon.",
+        "Open": "Buksan",
+        "Open report": "Buksan ang report",
     ]
 }

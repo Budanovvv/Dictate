@@ -1578,9 +1578,14 @@ struct MeetingsView: View {
                                report: meeting.report,
                                reportPhase: reports.phases[meeting.url],
                                onWriteReport: { reports.write(meeting.url, with: $0) },
-                               onCopyReport: {
-                                   if let report = meeting.report {
-                                       TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
+                               onOpenReport: {
+                                   if let file = ReportExport.ensureFile(for: meeting) {
+                                       NSWorkspace.shared.open(file)
+                                   }
+                               },
+                               onRevealReport: {
+                                   if let file = ReportExport.ensureFile(for: meeting) {
+                                       NSWorkspace.shared.activateFileViewerSelecting([file])
                                    }
                                },
                                reportTemplates: ReportTemplateStore.shared.templates.filter(\.isUsable),
@@ -2690,7 +2695,10 @@ private struct TranscriptPane: View {
     /// Writes a report from the given template — "Write it now" after a
     /// failure, and the ⋯ menu's row.
     var onWriteReport: ((ReportTemplate) -> Void)? = nil
-    var onCopyReport: (() -> Void)? = nil
+    /// The report is a file of its own too (Reports folder): open it, or
+    /// show it in Finder.
+    var onOpenReport: (() -> Void)? = nil
+    var onRevealReport: (() -> Void)? = nil
     /// The templates a report can be written from, and whether the agent
     /// is there to write one. Empty templates with the agent on shows the
     /// way to Settings › Templates instead of a control that does nothing.
@@ -3346,11 +3354,18 @@ private struct TranscriptPane: View {
                             .foregroundStyle(.tertiary)
                     }
                     Spacer(minLength: 0)
-                    if report != nil, let onCopyReport {
-                        Button(L("Copy"), action: onCopyReport)
-                            .buttonStyle(.dsSmall)
-                            .controlSize(.small)
-                            .accessibilityLabel(L("Copy report"))
+                    if report != nil {
+                        if let onOpenReport {
+                            Button(L("Open"), action: onOpenReport)
+                                .buttonStyle(.dsSmall)
+                                .controlSize(.small)
+                                .accessibilityLabel(L("Open report"))
+                        }
+                        if let onRevealReport {
+                            Button(L("Show in Finder"), action: onRevealReport)
+                                .buttonStyle(.dsSmall)
+                                .controlSize(.small)
+                        }
                     }
                 }
                 switch reportPhase {

@@ -1146,23 +1146,23 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(template.fields.enumerated()), id: \.element.id) { index, field in
                 HStack(spacing: 6) {
-                    TextField("", text: fieldBinding(index, \.name), prompt: Text(L("Field name")))
+                    TextField("", text: fieldBinding(field.id, \.name), prompt: Text(L("Field name")))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 150)
                         .focused($focusedTemplateField, equals: field.id)
                         .accessibilityLabel(L("Field name"))
-                    TextField("", text: fieldBinding(index, \.instruction),
+                    TextField("", text: fieldBinding(field.id, \.instruction),
                               prompt: Text(L("Instruction (optional)")))
                         .textFieldStyle(.roundedBorder)
                         .frame(minWidth: 180)
                         .accessibilityLabel(L("Instruction (optional)"))
-                    Button { moveTemplateField(index, by: -1) } label: {
+                    Button { moveTemplateField(field.id, by: -1) } label: {
                         Image(systemName: "chevron.up").font(.caption)
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                     .disabled(index == 0)
                     .accessibilityLabel(L("Move up"))
-                    Button { moveTemplateField(index, by: 1) } label: {
+                    Button { moveTemplateField(field.id, by: 1) } label: {
                         Image(systemName: "chevron.down").font(.caption)
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -1201,8 +1201,9 @@ struct SettingsView: View {
         templateDraft = templateID.flatMap { templateStore.template(id: $0) }
     }
 
-    private func moveTemplateField(_ index: Int, by offset: Int) {
-        guard var updated = templateDraft, updated.fields.indices.contains(index),
+    private func moveTemplateField(_ id: UUID, by offset: Int) {
+        guard var updated = templateDraft,
+              let index = updated.fields.firstIndex(where: { $0.id == id }),
               updated.fields.indices.contains(index + offset) else { return }
         updated.fields.swapAt(index, index + offset)
         templateDraft = updated
@@ -1216,14 +1217,18 @@ struct SettingsView: View {
         )
     }
 
-    private func fieldBinding(_ index: Int, _ path: WritableKeyPath<ReportField, String>) -> Binding<String> {
+    /// By the field's id, not its index: a text field keeps writing through
+    /// the binding it was given, and after a ▲/▼ move an index binding
+    /// wrote into whichever field had moved into that slot (owner,
+    /// 2026-09-14: "the arrows are chaos").
+    private func fieldBinding(_ id: UUID, _ path: WritableKeyPath<ReportField, String>) -> Binding<String> {
         Binding(
             get: {
-                guard let draft = templateDraft, draft.fields.indices.contains(index) else { return "" }
-                return draft.fields[index][keyPath: path]
+                templateDraft?.fields.first { $0.id == id }?[keyPath: path] ?? ""
             },
             set: { value in
-                guard var updated = templateDraft, updated.fields.indices.contains(index) else { return }
+                guard var updated = templateDraft,
+                      let index = updated.fields.firstIndex(where: { $0.id == id }) else { return }
                 updated.fields[index][keyPath: path] = value
                 templateDraft = updated
             }
