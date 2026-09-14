@@ -306,7 +306,7 @@ enum MeetingTitler {
     /// So the corrections are prose: a phrase to avoid, quoted inline, and
     /// what to write instead. There is nothing in it shaped like an answer,
     /// and the last leak went with it.
-    private static let instructions = """
+    private static var instructions: String { """
         You label meeting transcripts. Given an excerpt of a conversation, \
         give it a title and one line under it.
 
@@ -336,8 +336,19 @@ enum MeetingTitler {
         clear rather than describing the conversation.
 
         Write the title in the language the conversation is in, and the line \
-        under it in English.
+        under it in \(summaryLanguage.englishName).
         """
+    }
+
+    /// The language summaries are written in — the owner's choice (Settings
+    /// › Meetings, shared with reports), or the interface language. A
+    /// meeting's TITLE keeps the meeting's own language; the line under it
+    /// is for the reader, and a Polish call summarised in Polish for a
+    /// reader who reads Russian was the complaint (owner, 2026-09-14).
+    static var summaryLanguage: AppLanguage {
+        let chosen = Settings.shared.reportLanguage ?? Localization.shared.effective
+        return chosen == .system ? Localization.systemLanguage : chosen
+    }
 
     /// Generates a title and a summary, or nil when the model can't or won't
     /// produce one. Never throws into the caller: a nameless meeting is a
@@ -440,9 +451,13 @@ enum MeetingTitler {
                                  spokenIn language: String?,
                                  viaEnglish: Bool) async -> String? {
         guard var summary = sanitizeSummary(raw) else { return nil }
-        if let language, language != "en",
-           dominantLanguage(of: summary) == "en", #available(macOS 26, *),
-           let translated = await translated(summary, to: language) {
+        // The reader's language, whatever the model answered in: a native
+        // Polish line for an English reader, or an English line from the
+        // Apple hop for a Russian one, both take the on-device packs.
+        let wanted = summaryLanguage.translationCode
+        if let written = dominantLanguage(of: summary), written != wanted,
+           #available(macOS 26, *),
+           let translated = await translated(summary, from: written, to: wanted) {
             summary = translated
         }
         guard !restates(title: title, summary: summary) else {
@@ -455,16 +470,23 @@ enum MeetingTitler {
     /// en → the meeting's language, the reverse of translatedToEnglish.
     @available(macOS 26, *)
     private static func translated(_ text: String, to language: String) async -> String? {
+        await translated(text, from: "en", to: language)
+    }
+
+    /// One language to another through the on-device packs; nil when the
+    /// pair is not installed, and the text stays as the model wrote it.
+    @available(macOS 26, *)
+    private static func translated(_ text: String, from source: String, to language: String) async -> String? {
         #if canImport(Translation)
         do {
             let session = TranslationSession(
-                installedSource: Locale.Language(identifier: "en"),
+                installedSource: Locale.Language(identifier: source),
                 target: Locale.Language(identifier: language))
             let out = try await session.translate(text).targetText
-            Log.d("summary: translated en→\(language)")
+            Log.d("summary: translated \(source)→\(language)")
             return out
         } catch {
-            Log.d("summary: return hop failed (\(error.localizedDescription)) — keeping English")
+            Log.d("summary: \(source)→\(language) hop failed (\(error.localizedDescription)) — keeping the line as written")
             return nil
         }
         #else

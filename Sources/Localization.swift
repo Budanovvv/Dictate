@@ -29,6 +29,36 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+extension AppLanguage {
+    /// The code the Translation framework knows the language by.
+    var translationCode: String {
+        switch self {
+        case .system: return Localization.systemLanguage.translationCode
+        case .tl: return "fil"
+        default: return rawValue
+        }
+    }
+
+    /// The language's name in English — what a model is told to write in.
+    var englishName: String {
+        switch self {
+        case .system: return Localization.systemLanguage.englishName
+        case .en: return "English"
+        case .ru: return "Russian"
+        case .uk: return "Ukrainian"
+        case .es: return "Spanish"
+        case .pt: return "Portuguese"
+        case .fr: return "French"
+        case .de: return "German"
+        case .zh: return "Chinese"
+        case .ja: return "Japanese"
+        case .ko: return "Korean"
+        case .vi: return "Vietnamese"
+        case .tl: return "Filipino"
+        }
+    }
+}
+
 /// Translation store; ObservableObject so views re-render when the language changes.
 ///
 /// WHY @unchecked Sendable: `L()` is called from background contexts too (the
@@ -673,7 +703,6 @@ extension Localization {
         "Export report…": "Экспортировать отчёт…",
         "Export the “%@” report": "Экспортировать отчёт “%@”",
         "Field name": "Название поля",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Названия полей остаются ровно такими, как введены; на этом языке пишется только текст под ними.",
         "Fields": "Поля",
         "Format:": "Формат:",
         "Instruction (optional)": "Инструкция (необязательно)",
@@ -709,7 +738,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "Сохранённый ключ больше не работает. Он удалён из Связки ключей.",
         "What is sent": "Что отправляется",
         "Who “we” are and what to look for": "Кто такие “мы” и на что обращать внимание",
-        "Write reports in": "Язык отчётов",
         "Writing · about a minute": "Пишу · около минуты",
         "Written by Dictate on this Mac from the transcript": "Написано Dictate на этом Mac по транскрипту",
         "Your %@ account refused the request for billing reasons.": "Ваш аккаунт %@ отклонил запрос по биллингу.",
@@ -756,6 +784,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Кто что делает и к какому сроку — по строке на задачу",
         "Why we met and what we set out to settle": "Зачем встречались и что собирались решить",
         "%d more": "ещё %d",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Название остаётся на языке встречи; саммари и все отчёты пишутся на этом. Имена полей в отчёте остаются ровно как напечатаны.",
+        "Write summaries and reports in": "Язык саммари и отчётов",
     ]
 
     static let uk: [String: String] = [
@@ -1300,7 +1330,6 @@ extension Localization {
         "Export report…": "Експортувати звіт…",
         "Export the “%@” report": "Експортувати звіт “%@”",
         "Field name": "Назва поля",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Назви полів залишаються точно такими, як введені; цією мовою пишеться лише текст під ними.",
         "Fields": "Поля",
         "Format:": "Формат:",
         "Instruction (optional)": "Інструкція (необов’язково)",
@@ -1336,7 +1365,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "Збережений ключ більше не працює. Його видалено з В’язки ключів.",
         "What is sent": "Що надсилається",
         "Who “we” are and what to look for": "Хто такі “ми” і на що звертати увагу",
-        "Write reports in": "Мова звітів",
         "Writing · about a minute": "Пишу · близько хвилини",
         "Written by Dictate on this Mac from the transcript": "Написано Dictate на цьому Mac за транскриптом",
         "Your %@ account refused the request for billing reasons.": "Ваш обліковий запис %@ відхилив запит через білінг.",
@@ -1383,6 +1411,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Хто що робить і до якого терміну — по рядку на завдання",
         "Why we met and what we set out to settle": "Навіщо зустрічалися і що збиралися вирішити",
         "%d more": "ще %d",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Назва лишається мовою зустрічі; підсумок і всі звіти пишуться цією. Назви полів у звіті лишаються рівно як надруковано.",
+        "Write summaries and reports in": "Мова підсумків і звітів",
     ]
 
     static let es: [String: String] = [
@@ -1936,7 +1966,6 @@ extension Localization {
         "Export report…": "Exportar informe…",
         "Export the “%@” report": "Exportar el informe “%@”",
         "Field name": "Nombre del campo",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Los nombres de los campos se mantienen tal como se escribieron; solo el texto bajo ellos se escribe en este idioma.",
         "Fields": "Campos",
         "Format:": "Formato:",
         "Instruction (optional)": "Instrucción (opcional)",
@@ -1972,7 +2001,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "La clave guardada ya no funciona. Se ha eliminado del llavero.",
         "What is sent": "Qué se envía",
         "Who “we” are and what to look for": "Quiénes somos “nosotros” y en qué fijarse",
-        "Write reports in": "Escribir informes en",
         "Writing · about a minute": "Escribiendo · alrededor de un minuto",
         "Written by Dictate on this Mac from the transcript": "Escrito por Dictate en este Mac a partir de la transcripción",
         "Your %@ account refused the request for billing reasons.": "Su cuenta de %@ rechazó la solicitud por motivos de facturación.",
@@ -2019,6 +2047,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Quién hace qué y para cuándo: una línea por tarea",
         "Why we met and what we set out to settle": "Por qué nos reunimos y qué queríamos resolver",
         "%d more": "%d más",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "El título conserva el idioma de la reunión; el resumen y todos los informes se escriben en este. Los nombres de los campos de un informe se mantienen tal como se escribieron.",
+        "Write summaries and reports in": "Escribir resúmenes e informes en",
     ]
 
     static let pt: [String: String] = [
@@ -2572,7 +2602,6 @@ extension Localization {
         "Export report…": "Exportar relatório…",
         "Export the “%@” report": "Exportar o relatório “%@”",
         "Field name": "Nome do campo",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Os nomes dos campos ficam exatamente como digitados; só o texto sob eles é escrito neste idioma.",
         "Fields": "Campos",
         "Format:": "Formato:",
         "Instruction (optional)": "Instrução (opcional)",
@@ -2608,7 +2637,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "A chave salva não funciona mais. Foi removida das Chaves.",
         "What is sent": "O que é enviado",
         "Who “we” are and what to look for": "Quem somos “nós” e o que observar",
-        "Write reports in": "Escrever relatórios em",
         "Writing · about a minute": "Escrevendo · cerca de um minuto",
         "Written by Dictate on this Mac from the transcript": "Escrito pelo Dictate neste Mac a partir da transcrição",
         "Your %@ account refused the request for billing reasons.": "Sua conta %@ recusou a solicitação por motivos de cobrança.",
@@ -2655,6 +2683,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Quem faz o quê, até quando — uma linha por tarefa",
         "Why we met and what we set out to settle": "Por que nos reunimos e o que queríamos resolver",
         "%d more": "mais %d",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "O título mantém o idioma da reunião; o resumo e todos os relatórios são escritos neste. Os nomes dos campos de um relatório ficam exatamente como digitados.",
+        "Write summaries and reports in": "Escrever resumos e relatórios em",
     ]
 
     static let fr: [String: String] = [
@@ -3208,7 +3238,6 @@ extension Localization {
         "Export report…": "Exporter le rapport…",
         "Export the “%@” report": "Exporter le rapport “%@”",
         "Field name": "Nom du champ",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Les noms des champs restent tels que saisis ; seul le texte en dessous est écrit dans cette langue.",
         "Fields": "Champs",
         "Format:": "Format :",
         "Instruction (optional)": "Consigne (facultative)",
@@ -3244,7 +3273,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "La clé enregistrée ne fonctionne plus. Elle a été retirée du trousseau.",
         "What is sent": "Ce qui est envoyé",
         "Who “we” are and what to look for": "Qui est “nous” et ce qu'il faut chercher",
-        "Write reports in": "Écrire les rapports en",
         "Writing · about a minute": "Écriture · environ une minute",
         "Written by Dictate on this Mac from the transcript": "Écrit par Dictate sur ce Mac à partir de la transcription",
         "Your %@ account refused the request for billing reasons.": "Votre compte %@ a refusé la requête pour des raisons de facturation.",
@@ -3291,6 +3319,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Qui fait quoi, pour quand — une ligne par tâche",
         "Why we met and what we set out to settle": "Pourquoi nous nous sommes réunis et ce que nous voulions trancher",
         "%d more": "%d de plus",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Le titre garde la langue de la réunion ; le résumé et chaque rapport sont rédigés dans celle-ci. Les noms des champs d’un rapport restent exactement tels que saisis.",
+        "Write summaries and reports in": "Rédiger les résumés et rapports en",
     ]
 
     static let de: [String: String] = [
@@ -3844,7 +3874,6 @@ extension Localization {
         "Export report…": "Bericht exportieren …",
         "Export the “%@” report": "Bericht “%@” exportieren",
         "Field name": "Feldname",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Feldnamen bleiben genau wie eingegeben; nur der Text darunter wird in dieser Sprache geschrieben.",
         "Fields": "Felder",
         "Format:": "Format:",
         "Instruction (optional)": "Anweisung (optional)",
@@ -3880,7 +3909,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "Der gesicherte Schlüssel funktioniert nicht mehr. Er wurde aus dem Schlüsselbund entfernt.",
         "What is sent": "Was gesendet wird",
         "Who “we” are and what to look for": "Wer “wir” sind und worauf zu achten ist",
-        "Write reports in": "Berichte schreiben auf",
         "Writing · about a minute": "Schreibt · etwa eine Minute",
         "Written by Dictate on this Mac from the transcript": "Von Dictate auf diesem Mac aus dem Transkript geschrieben",
         "Your %@ account refused the request for billing reasons.": "Ihr %@-Konto hat die Anfrage aus Abrechnungsgründen abgelehnt.",
@@ -3927,6 +3955,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Wer macht was bis wann – eine Zeile pro Aufgabe",
         "Why we met and what we set out to settle": "Warum wir uns getroffen haben und was wir klären wollten",
         "%d more": "%d weitere",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Der Titel behält die Sprache des Meetings; die Zusammenfassung und jeder Bericht werden in dieser geschrieben. Feldnamen in einem Bericht bleiben genau wie eingegeben.",
+        "Write summaries and reports in": "Zusammenfassungen und Berichte schreiben auf",
     ]
 
     static let zh: [String: String] = [
@@ -4480,7 +4510,6 @@ extension Localization {
         "Export report…": "导出报告…",
         "Export the “%@” report": "导出“%@”报告",
         "Field name": "字段名称",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "字段名称保持原样；只有其下的文字用这种语言撰写。",
         "Fields": "字段",
         "Format:": "格式：",
         "Instruction (optional)": "说明（可选）",
@@ -4516,7 +4545,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "已保存的密钥不再有效，已从钥匙串中移除。",
         "What is sent": "会发送什么",
         "Who “we” are and what to look for": "“我们”是谁，以及要关注什么",
-        "Write reports in": "报告语言",
         "Writing · about a minute": "正在撰写 · 约一分钟",
         "Written by Dictate on this Mac from the transcript": "由 Dictate 在这台 Mac 上根据转录撰写",
         "Your %@ account refused the request for billing reasons.": "你的 %@ 账户因计费原因拒绝了请求。",
@@ -4563,6 +4591,8 @@ extension Localization {
         "Who does what, by when — one line per task": "谁做什么、何时完成——每项一行",
         "Why we met and what we set out to settle": "我们为什么开会、打算解决什么",
         "%d more": "还有 %d 位",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "标题保留会议的语言；摘要和所有报告都用此语言撰写。报告中的字段名保持原样。",
+        "Write summaries and reports in": "摘要和报告的语言",
     ]
 
     static let ja: [String: String] = [
@@ -5116,7 +5146,6 @@ extension Localization {
         "Export report…": "レポートを書き出す…",
         "Export the “%@” report": "“%@”レポートを書き出す",
         "Field name": "項目名",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "項目名は入力したままです。その下の本文だけがこの言語で書かれます。",
         "Fields": "項目",
         "Format:": "形式:",
         "Instruction (optional)": "指示（任意）",
@@ -5152,7 +5181,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "保存したキーが使えなくなりました。キーチェーンから削除されました。",
         "What is sent": "送られるもの",
         "Who “we” are and what to look for": "“私たち”とは誰で、何に注目するか",
-        "Write reports in": "レポートの言語",
         "Writing · about a minute": "作成中 · 約 1 分",
         "Written by Dictate on this Mac from the transcript": "この Mac 上で Dictate が文字起こしから作成",
         "Your %@ account refused the request for billing reasons.": "あなたの %@ アカウントが課金上の理由でリクエストを拒否しました。",
@@ -5199,6 +5227,8 @@ extension Localization {
         "Who does what, by when — one line per task": "誰が何をいつまでに——1 タスク 1 行",
         "Why we met and what we set out to settle": "なぜ集まり、何を決めようとしたか",
         "%d more": "他 %d 人",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "タイトルはミーティングの言語のまま、要約とすべてのレポートはこの言語で書かれます。レポートの項目名は入力したままです。",
+        "Write summaries and reports in": "要約とレポートを書く言語",
     ]
 
     static let ko: [String: String] = [
@@ -5752,7 +5782,6 @@ extension Localization {
         "Export report…": "이 보고서 내보내기…",
         "Export the “%@” report": "“%@” 보고서 내보내기",
         "Field name": "필드 이름",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "필드 이름은 입력한 그대로 유지되며, 그 아래 텍스트만 이 언어로 작성됩니다.",
         "Fields": "필드",
         "Format:": "형식:",
         "Instruction (optional)": "지시 (선택 사항)",
@@ -5788,7 +5817,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "저장된 키가 더 이상 작동하지 않습니다. 키체인에서 제거했습니다.",
         "What is sent": "전송되는 내용",
         "Who “we” are and what to look for": "“우리”가 누구이고 무엇을 살펴볼지",
-        "Write reports in": "보고서 작성 언어",
         "Writing · about a minute": "작성 중 · 약 1분",
         "Written by Dictate on this Mac from the transcript": "이 Mac에서 Dictate가 기록을 바탕으로 작성",
         "Your %@ account refused the request for billing reasons.": "%@ 계정이 결제 문제로 요청을 거부했습니다.",
@@ -5835,6 +5863,8 @@ extension Localization {
         "Who does what, by when — one line per task": "누가 무엇을 언제까지 — 작업당 한 줄",
         "Why we met and what we set out to settle": "왜 모였고 무엇을 결정하려 했는지",
         "%d more": "%d명 더",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "제목은 회의의 언어를 유지하고, 요약과 모든 보고서는 이 언어로 작성됩니다. 보고서의 항목 이름은 입력한 그대로 유지됩니다.",
+        "Write summaries and reports in": "요약과 보고서 작성 언어",
     ]
 
     static let vi: [String: String] = [
@@ -6388,7 +6418,6 @@ extension Localization {
         "Export report…": "Xuất báo cáo này…",
         "Export the “%@” report": "Xuất báo cáo “%@”",
         "Field name": "Tên trường",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Tên trường giữ nguyên như đã nhập; chỉ phần chữ bên dưới được viết bằng ngôn ngữ này.",
         "Fields": "Trường",
         "Format:": "Định dạng:",
         "Instruction (optional)": "Chỉ dẫn (tuỳ chọn)",
@@ -6424,7 +6453,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "Khóa đã lưu không còn hoạt động. Đã xóa khỏi Keychain.",
         "What is sent": "Những gì được gửi",
         "Who “we” are and what to look for": "“Chúng tôi” là ai và cần tìm gì",
-        "Write reports in": "Viết báo cáo bằng",
         "Writing · about a minute": "Đang viết · khoảng một phút",
         "Written by Dictate on this Mac from the transcript": "Viết bởi Dictate trên máy Mac này từ bản ghi",
         "Your %@ account refused the request for billing reasons.": "Tài khoản %@ của bạn đã từ chối yêu cầu vì lý do thanh toán.",
@@ -6471,6 +6499,8 @@ extension Localization {
         "Who does what, by when — one line per task": "Ai làm gì, đến khi nào — mỗi việc một dòng",
         "Why we met and what we set out to settle": "Vì sao chúng tôi họp và muốn giải quyết điều gì",
         "%d more": "%d nữa",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Tiêu đề giữ ngôn ngữ của cuộc họp; bản tóm tắt và mọi báo cáo được viết bằng ngôn ngữ này. Tên trường trong báo cáo giữ nguyên như đã nhập.",
+        "Write summaries and reports in": "Viết tóm tắt và báo cáo bằng",
     ]
 
     static let tl: [String: String] = [
@@ -7024,7 +7054,6 @@ extension Localization {
         "Export report…": "I-export ang report…",
         "Export the “%@” report": "I-export ang “%@” report",
         "Field name": "Pangalan ng field",
-        "Field names stay exactly as typed; only the text under them is written in this language.": "Nananatili ang mga pangalan ng field gaya ng na-type; ang teksto lang sa ilalim nito ang isinusulat sa wikang ito.",
         "Fields": "Mga field",
         "Format:": "Format:",
         "Instruction (optional)": "Instruction (opsyonal)",
@@ -7060,7 +7089,6 @@ extension Localization {
         "The saved key no longer works. It has been removed from the Keychain.": "Hindi na gumagana ang naka-save na key. Inalis na ito sa Keychain.",
         "What is sent": "Ano ang ipinapadala",
         "Who “we” are and what to look for": "Sino ang “kami” at ano ang hahanapin",
-        "Write reports in": "Isulat ang mga report sa",
         "Writing · about a minute": "Sinusulat · mga isang minuto",
         "Written by Dictate on this Mac from the transcript": "Isinulat ng Dictate sa Mac na ito mula sa transcript",
         "Your %@ account refused the request for billing reasons.": "Tumanggi ang %@ account mo sa request dahil sa billing.",
@@ -7107,5 +7135,7 @@ extension Localization {
         "Who does what, by when — one line per task": "Sino ang gagawa ng ano, kailan — isang linya bawat gawain",
         "Why we met and what we set out to settle": "Bakit kami nagkita at ano ang nais naming ayusin",
         "%d more": "%d pa",
+        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Nananatili ang wika ng meeting sa pamagat; ang buod at bawat report ay isinusulat sa wikang ito. Nananatili ang mga pangalan ng field sa report gaya ng na-type.",
+        "Write summaries and reports in": "Isulat ang mga buod at report sa",
     ]
 }

@@ -183,27 +183,6 @@ final class MeetingReports: ObservableObject {
     }
 }
 
-extension AppLanguage {
-    /// The language's name in English — what a model is told to write in.
-    var englishName: String {
-        switch self {
-        case .system: return Localization.systemLanguage.englishName
-        case .en: return "English"
-        case .ru: return "Russian"
-        case .uk: return "Ukrainian"
-        case .es: return "Spanish"
-        case .pt: return "Portuguese"
-        case .fr: return "French"
-        case .de: return "German"
-        case .zh: return "Chinese"
-        case .ja: return "Japanese"
-        case .ko: return "Korean"
-        case .vi: return "Vietnamese"
-        case .tl: return "Filipino"
-        }
-    }
-}
-
 extension MeetingArchive {
     /// One transcript from disk, the same way `list` reads them all.
     static func meeting(at url: URL, youLabel: String) -> ArchivedMeeting? {

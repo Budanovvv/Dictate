@@ -667,6 +667,20 @@ struct SettingsView: View {
                                 status: engineStatus,
                                 canDownload: textModel.state == .absent || textModel.state.isFailed))
                 }
+                // The reader's language for what the models write ABOUT a
+                // meeting — the summary line and every report — as opposed
+                // to the title, which keeps the meeting's own. One setting
+                // for both, here with the reading it belongs to (owner,
+                // 2026-09-14: a Polish call summarised in Polish).
+                if readMeetings {
+                    LabeledContent {
+                        ReportLanguagePicker(selection: $reportLanguage)
+                            .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
+                    } label: {
+                        rowLabel(L("Write summaries and reports in"),
+                                 L("The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed."))
+                    }
+                }
 
                 // The calendar row carries its own permission. Turning it on is
                 // what asks macOS for the calendar, which is why the switch
@@ -1104,13 +1118,6 @@ struct SettingsView: View {
             } header: { Text(draft.name.isEmpty ? L("New template") : draft.name) }
 
             Section {
-                LabeledContent {
-                    ReportLanguagePicker(selection: $reportLanguage)
-                        .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
-                } label: {
-                    rowLabel(L("Write reports in"),
-                             L("Field names stay exactly as typed; only the text under them is written in this language."))
-                }
                 LabeledContent {
                     HStack(spacing: 10) {
                         Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
