@@ -805,6 +805,7 @@ extension Localization {
         "The update waits until the recording ends.": "Обновление подождёт, пока закончится запись.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Обновление %@ уже в пути — скачивается. Установится само в ближайший спокойный момент; в строке меню можно раньше.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Обновление %@ готово — установите из строки меню, или оно установится само в ближайший спокойный момент.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Обновление уже в пути — установится само в ближайший спокойный момент.",
     ]
 
     static let uk: [String: String] = [
@@ -1451,6 +1452,7 @@ extension Localization {
         "The update waits until the recording ends.": "Оновлення почекає, поки закінчиться запис.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Оновлення %@ вже в дорозі — завантажується. Установиться саме у найближчий спокійний момент; у рядку меню можна раніше.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Оновлення %@ готове — установіть із рядка меню, або воно встановиться саме у найближчий спокійний момент.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Оновлення вже в дорозі — установиться саме у найближчий спокійний момент.",
     ]
 
     static let es: [String: String] = [
@@ -2106,6 +2108,7 @@ extension Localization {
         "The update waits until the recording ends.": "La actualización espera a que termine la grabación.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "La actualización %@ está en camino: descargando. Se instalará sola en el próximo momento tranquilo; la barra de menús la ofrece antes.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "La actualización %@ está lista: instálela desde la barra de menús, o se instalará sola en el próximo momento tranquilo.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Ya hay una actualización en camino: se instalará sola en el próximo momento tranquilo.",
     ]
 
     static let pt: [String: String] = [
@@ -2761,6 +2764,7 @@ extension Localization {
         "The update waits until the recording ends.": "A atualização espera a gravação terminar.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "A atualização %@ está a caminho: baixando. Instala-se sozinha no próximo momento tranquilo; a barra de menus oferece antes.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "A atualização %@ está pronta: instale pela barra de menus, ou ela se instala sozinha no próximo momento tranquilo.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Já há uma atualização a caminho: ela se instala sozinha no próximo momento tranquilo.",
     ]
 
     static let fr: [String: String] = [
@@ -3416,6 +3420,7 @@ extension Localization {
         "The update waits until the recording ends.": "La mise à jour attend la fin de l’enregistrement.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "La mise à jour %@ arrive : téléchargement en cours. Elle s’installera d’elle-même au prochain moment calme ; la barre des menus la propose plus tôt.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "La mise à jour %@ est prête : installez-la depuis la barre des menus, ou elle s’installera d’elle-même au prochain moment calme.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Une mise à jour est déjà en route : elle s’installera d’elle-même au prochain moment calme.",
     ]
 
     static let de: [String: String] = [
@@ -4071,6 +4076,7 @@ extension Localization {
         "The update waits until the recording ends.": "Das Update wartet, bis die Aufnahme beendet ist.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Update %@ ist unterwegs – wird heruntergeladen. Es installiert sich im nächsten ruhigen Moment selbst; die Menüleiste bietet es früher an.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Update %@ ist bereit – installieren Sie es über die Menüleiste, oder es installiert sich im nächsten ruhigen Moment selbst.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Ein Update ist bereits unterwegs – es installiert sich im nächsten ruhigen Moment selbst.",
     ]
 
     static let zh: [String: String] = [
@@ -4726,6 +4732,7 @@ extension Localization {
         "The update waits until the recording ends.": "更新将等到录音结束。",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "更新 %@ 正在下载。它会在下一个空闲时刻自动安装；菜单栏可以提前安装。",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "更新 %@ 已就绪：可从菜单栏安装，或者它会在下一个空闲时刻自动安装。",
+        "An update is already on its way — it installs itself at the next quiet moment.": "更新已在下载中，会在下一个空闲时刻自动安装。",
     ]
 
     static let ja: [String: String] = [
@@ -5381,6 +5388,7 @@ extension Localization {
         "The update waits until the recording ends.": "アップデートは録音が終わるまで待ちます。",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "アップデート %@ をダウンロード中です。次の空いたタイミングで自動的にインストールされます。メニューバーからならすぐに実行できます。",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "アップデート %@ の準備ができました。メニューバーからインストールするか、次の空いたタイミングで自動的にインストールされます。",
+        "An update is already on its way — it installs itself at the next quiet moment.": "アップデートはすでに進行中です。次の空いたタイミングで自動的にインストールされます。",
     ]
 
     static let ko: [String: String] = [
@@ -6036,6 +6044,7 @@ extension Localization {
         "The update waits until the recording ends.": "업데이트는 녹음이 끝날 때까지 기다립니다.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "업데이트 %@ 다운로드 중입니다. 다음 한가한 순간에 자동으로 설치되며, 메뉴 막대에서 더 일찍 설치할 수 있습니다.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "업데이트 %@ 준비됨 — 메뉴 막대에서 설치하거나 다음 한가한 순간에 자동으로 설치됩니다.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "업데이트가 이미 진행 중입니다. 다음 한가한 순간에 자동으로 설치됩니다.",
     ]
 
     static let vi: [String: String] = [
@@ -6691,6 +6700,7 @@ extension Localization {
         "The update waits until the recording ends.": "Bản cập nhật sẽ đợi đến khi ghi âm kết thúc.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Bản cập nhật %@ đang tải về. Nó sẽ tự cài vào lúc rảnh tiếp theo; thanh menu cho phép cài sớm hơn.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Bản cập nhật %@ đã sẵn sàng — cài từ thanh menu, hoặc nó sẽ tự cài vào lúc rảnh tiếp theo.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "Bản cập nhật đã đang tải — nó sẽ tự cài vào lúc rảnh tiếp theo.",
     ]
 
     static let tl: [String: String] = [
@@ -7346,5 +7356,6 @@ extension Localization {
         "The update waits until the recording ends.": "Maghihintay ang update hanggang matapos ang recording.",
         "Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.": "Parating na ang update %@ — dina-download ngayon. Mag-i-install ito nang kusa sa susunod na tahimik na sandali; mas maaga sa menu bar.",
         "Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.": "Handa na ang update %@ — i-install mula sa menu bar, o mag-i-install ito nang kusa sa susunod na tahimik na sandali.",
+        "An update is already on its way — it installs itself at the next quiet moment.": "May update nang parating — mag-i-install ito nang kusa sa susunod na tahimik na sandali.",
     ]
 }

@@ -1241,6 +1241,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// the same appcast; the delegate callbacks below carry the verdict.
     private func manualUpdateCheck() {
         guard !manualUpdateProbe else { return }
+        // A second press while the silent download runs used to start a new
+        // probe that tore the download's session down and left nothing
+        // behind (owner, 2026-09-14: two presses six seconds apart, no update
+        // ever staged). Sparkle keeps one session; say so instead.
+        if updater.updater.sessionInProgress {
+            Log.d("updates: manual probe skipped — a session is in progress")
+            TopNotice.show(L("An update is already on its way — it installs itself at the next quiet moment."))
+            return
+        }
         manualUpdateProbe = true
         Log.d("updates: manual probe started")
         updater.updater.checkForUpdateInformation()
