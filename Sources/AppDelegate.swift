@@ -697,6 +697,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // ended offline resumes now, and the notification delegate must be
         // in place before a click on last night's notification arrives.
         _ = MeetingReports.shared
+        // A provider choice lost with the defaults (a reset, a fresh user
+        // account) while its key still sits in the Keychain: the key is the
+        // consent that matters, so the choice comes back on its own instead
+        // of the person finding the agent silently "off" (owner, 2026-09-14).
+        if UserDefaults.standard.string(forKey: "askProvider") == nil,
+           Settings.shared.askProvider == nil,
+           let provider = AIProvider.allCases.first(where: { APIKey.current($0) != nil }) {
+            Settings.shared.askProvider = provider
+            Log.d("agent: provider restored from the Keychain — \(provider.productName)")
+        }
         // A macOS notification about a report was clicked: the meeting it
         // names, in the library, whatever Space the window was left on.
         menuObservers.append(NotificationCenter.default.addObserver(
