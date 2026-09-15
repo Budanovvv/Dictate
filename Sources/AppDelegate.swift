@@ -806,6 +806,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 // The bench's way to start/stop a session (paired with the
                 // replay defaults) — same path as the menu item.
                 toggleMeetingTranscript()
+            case "export":
+                // The row's Export… on the newest meeting with a report —
+                // or, with "export:all", the collection's Export reports…
+                // for the first template.
+                showMeetingWindow(focus: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    let meetings = MeetingArchive.list(youLabel: L("You"))
+                    if variant == "all" {
+                        guard let template = ReportTemplateStore.shared.templates.first else {
+                            Log.d("debugShot export: no template"); return
+                        }
+                        ReportExport.exportAll(meetings, template: template)
+                        return
+                    }
+                    guard let meeting = meetings.first(where: { !$0.reports.isEmpty }),
+                          let report = meeting.reports.first else {
+                        Log.d("debugShot export: no meeting with a report"); return
+                    }
+                    ReportExport.exportOne(meeting, report: report)
+                }
             case "callprompt":
                 // The detection card, both faces, without a call: the record
                 // action only logs — a photograph must not start a session.

@@ -72,12 +72,18 @@ enum ReportExport {
         // open — a save panel from a non-activating window otherwise lands
         // behind everything.
         NSApp.activate()
+        Log.d("export: report “\(report.templateName)” — opening the save panel")
         DispatchQueue.main.async {
             panel.begin { response in
+                Log.d("export: panel closed response=\(response.rawValue) url=\(panel.url?.lastPathComponent ?? "-")")
                 guard response == .OK, let url = panel.url else { return }
                 let format = chooser.format
                 lastFormat = format
-                write(meeting, report: report, format: format, to: url)
+                let ok = write(meeting, report: report, format: format, to: url)
+                Log.d("export: \(format.fileExtension) written=\(ok)")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                Log.d("export: panel visible=\(panel.isVisible) key=\(panel.isKeyWindow) level=\(panel.level.rawValue) app active=\(NSApp.isActive)")
             }
         }
     }
@@ -87,19 +93,21 @@ enum ReportExport {
     /// Every meeting with a report from `template`, one file each, in a
     /// folder the person chooses. Reads the archive first, so the dialog can
     /// say how many.
-    static func exportAll(template: ReportTemplate) {
-        let youLabel = L("You")
-        DispatchQueue.global(qos: .userInitiated).async {
-            let meetings = MeetingArchive.list(youLabel: youLabel)
-                .filter { $0.reports.contains { $0.templateID == template.id } }
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { exportAll(meetings, template: template) }
-            }
+    /// Every report written with the template, from the meetings the
+    /// library already holds — no second read of the archive, which on an
+    /// iCloud folder could keep the panel from ever appearing. By id or by
+    /// name: the collection groups by name, and a report written before
+    /// the template was recreated carries another id.
+    static func exportAll(_ archive: [ArchivedMeeting], template: ReportTemplate) {
+        let meetings = archive.filter {
+            $0.reports.contains { $0.templateID == template.id || $0.templateName == template.name }
         }
+        exportWritten(meetings, template: template)
     }
 
-    private static func exportAll(_ meetings: [ArchivedMeeting], template: ReportTemplate) {
+    private static func exportWritten(_ meetings: [ArchivedMeeting], template: ReportTemplate) {
         guard !meetings.isEmpty else {
+            Log.d("export: “\(template.name)” — nothing written with it")
             TopNotice.show(Lf("No reports written with “%@” yet.", template.name))
             return
         }
@@ -116,14 +124,16 @@ enum ReportExport {
         panel.accessoryView = chooser
         panel.isAccessoryViewDisclosed = true
         NSApp.activate()
+        Log.d("export: “\(template.name)” × \(meetings.count) — opening the folder panel")
         DispatchQueue.main.async {
             panel.begin { response in
+                Log.d("export: folder panel closed response=\(response.rawValue)")
                 guard response == .OK, let folder = panel.url else { return }
                 let format = chooser.format
                 lastFormat = format
                 var written = 0
                 for meeting in meetings {
-                    guard let report = meeting.reports.first(where: { $0.templateID == template.id }) else { continue }
+                    guard let report = meeting.reports.first(where: { $0.templateID == template.id || $0.templateName == template.name }) else { continue }
                     let url = folder.appendingPathComponent(
                         fileName(for: meeting, report: report) + "." + format.fileExtension)
                     if write(meeting, report: report, format: format, to: url) { written += 1 }
@@ -210,7 +220,7 @@ enum ReportExport {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm"
         for meeting in meetings {
-            guard let report = meeting.reports.first(where: { $0.templateID == template.id }) else { continue }
+            guard let report = meeting.reports.first(where: { $0.templateID == template.id || $0.templateName == template.name }) else { continue }
             var row = [cell(MeetingReports.name(of: meeting)), cell(f.string(from: meeting.started))]
             for field in fields {
                 let answer = report.answers.first { $0.field == field }

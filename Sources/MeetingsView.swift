@@ -259,18 +259,18 @@ struct MeetingsView: View {
                     if let first = meetings.first { selection = .archived(first.url) }
                 }
             }
-            // The agent is the selected item at launch (design t2) — the
-            // window opens on the question, not on a transcript. With the
-            // agent off the nil selection falls to the first-run setup or
-            // the plain placeholder (see the detail switch's nil case).
-            if Settings.shared.askArchive, selection == nil, !session.isActive,
-               !forceFirstRun {
-                selection = .ask
-            }
             reload {
                 // A meeting picked in the menu wins over the default — the
                 // window is opening BECAUSE of it.
                 applyRequest()
+                // The window opens on All Meetings with the newest one open
+                // (owner, 2026-09-15) — the library, not the question. With
+                // nothing recorded the nil selection falls to the first-run
+                // setup or the plain placeholder (the detail switch's nil case).
+                if selection == nil, !session.isActive, !forceFirstRun,
+                   let newest = meetings.first {
+                    selection = .archived(newest.url)
+                }
                 backfillSummaries()
             }
         }
@@ -1111,7 +1111,11 @@ struct MeetingsView: View {
             // Each section folds (design turn 33, Collapse): a disclosure
             // on the heading, the state kept per section, so twenty
             // sources or a dozen templates can be closed when not in use.
-            sectionHead(L("Library"), count: nil, key: "library", top: 8)
+            sectionHead(L("Library"), count: nil, key: "library", top: 8) {
+                starredOnly = false; recentOnly = false; reportsOnly = false
+                reportTemplateFilter = nil; sourceFilter = nil
+                leaveAsk()
+            }
             if sectionOpen("library") {
             navRow(icon: "rectangle.grid.1x2", title: L("All Meetings"),
                    count: meetings.count,
@@ -1166,7 +1170,9 @@ struct MeetingsView: View {
             // collection in place of the list and the reading pane.
             let kinds = reportKinds
             if !kinds.isEmpty {
-                sectionHead(L("Reports"), count: kinds.reduce(0) { $0 + $1.count }, key: "reports", top: 8)
+                sectionHead(L("Reports"), count: kinds.reduce(0) { $0 + $1.count }, key: "reports", top: 8) {
+                    openCollection(nil)
+                }
                 if sectionOpen("reports") {
                     navRow(icon: "doc.text", title: L("All reports"),
                            count: kinds.reduce(0) { $0 + $1.count },
@@ -1188,37 +1194,49 @@ struct MeetingsView: View {
 
     /// A sidebar section heading with its disclosure and count (design
     /// turn 33, Collapse). The fold is remembered per section.
-    private func sectionHead(_ title: String, count: Int?, key: String, top: CGFloat) -> some View {
+    /// The arrow folds the section; the name opens what the section is
+    /// for (owner, 2026-09-15: a heading that only folded read as "empty"
+    /// when clicked). Without an opener the name folds too.
+    private func sectionHead(_ title: String, count: Int?, key: String, top: CGFloat,
+                             opens: (() -> Void)? = nil) -> some View {
         let open = sectionOpen(key)
-        return Button {
+        let fold = {
             var closed = Set(UserDefaults.standard.stringArray(forKey: "meetingsNavCollapsed") ?? [])
             if open { closed.insert(key) } else { closed.remove(key) }
             UserDefaults.standard.set(Array(closed), forKey: "meetingsNavCollapsed")
             collapsedSections = closed
-        } label: {
-            HStack(spacing: 7) {
+        }
+        return HStack(spacing: 7) {
+            Button(action: fold) {
                 Image(systemName: open ? "chevron.down" : "chevron.right")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 10)
-                Text(title)
-                    .font(DS.sectionLabel)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if let count {
-                    Text("\(count)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                    .frame(width: 14, height: 16)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 10)
-            .padding(.top, top)
-            .padding(.bottom, 3)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(open ? Lf("Collapse %@", title) : Lf("Expand %@", title))
+            Button(action: opens ?? fold) {
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(DS.sectionLabel)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    if let count {
+                        Text("\(count)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(open ? [] : .isSelected)
+        .padding(.leading, 8)
+        .padding(.trailing, 10)
+        .padding(.top, top)
+        .padding(.bottom, 3)
     }
 
     private func sectionOpen(_ key: String) -> Bool { !collapsedSections.contains(key) }
@@ -2018,7 +2036,7 @@ struct MeetingsView: View {
                 guard let template else { return }
                 batchRequest = BatchRequest(template: template, meetings: chosen)
             },
-            onExport: { if let template { ReportExport.exportAll(template: template) } },
+            onExport: { if let template { ReportExport.exportAll(meetings, template: template) } },
             onEditTemplate: {
                 if let template { openSettingsWindow(tab: "templates/\(template.id.uuidString)") }
             })
@@ -4056,7 +4074,7 @@ private struct TranscriptPane: View {
     /// Whether this meeting already carries a report from the template —
     /// writing again then replaces that one and nothing else.
     private func hasReport(from template: ReportTemplate) -> Bool {
-        reports.contains { $0.templateID == template.id }
+        reports.contains { $0.templateID == template.id || $0.templateName == template.name }
     }
 
     private func isBusy(_ phase: MeetingReports.Phase?) -> Bool {
