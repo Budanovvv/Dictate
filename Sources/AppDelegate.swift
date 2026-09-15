@@ -806,6 +806,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 // The bench's way to start/stop a session (paired with the
                 // replay defaults) — same path as the menu item.
                 toggleMeetingTranscript()
+            case "whatsnew":
+                // The What's new sheet for this build — to be read before a
+                // release, beside the checklist.
+                showMeetingWindow(focus: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    NotificationCenter.default.post(name: .init("dictate.showWhatsNew"), object: nil)
+                }
             case "export":
                 // The row's Export… on the newest meeting with a report —
                 // or, with "export:all", the collection's Export reports…

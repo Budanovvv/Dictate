@@ -127,6 +127,8 @@ targets:
       - path: Sources/AskHistoryStore.swift
       # A report field read as paragraphs and lists — pure string work.
       - path: Sources/ReportText.swift
+      # The What's new notes per version: the release is held to having them.
+      - path: Sources/WhatsNew.swift
       # Pulled in by RecordingHUD, which the tests compile.
       - path: Sources/DesignSystem.swift
       - path: Sources/LanguageList.swift

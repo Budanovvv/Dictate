@@ -15,6 +15,13 @@ DD="$HOME/Library/Caches/DictateBuild"
 APP="$DD/Build/Products/Release/Dictate.app"
 TOOLS="$DD/SourcePackages/artifacts/sparkle/Sparkle/bin"
 VERSION=$(grep 'MARKETING_VERSION' project.yml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+# Every shipped version has What's new notes (WhatsNew.swift): the buttons
+# in Settings and the corner menu always open the sheet, so a version
+# without notes would ship an empty one. Refuse before anything is built.
+if ! grep -q "case \"$VERSION\":" Sources/WhatsNew.swift; then
+    echo "  ❌ no What's new notes for $VERSION in Sources/WhatsNew.swift — write them first"
+    exit 1
+fi
 OUT="release"
 DMG="$OUT/Dictate-$VERSION.dmg"                 # branded, human-facing (built in $DD, moved into $OUT after appcast)
 UPDATE_DMG="$OUT/Dictate-$VERSION-update.dmg"   # plain, Sparkle's silent-update payload (appcast points here)

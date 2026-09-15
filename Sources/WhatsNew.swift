@@ -21,18 +21,34 @@ enum WhatsNew {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     }
 
-    /// The notes for a version — empty for a version with nothing to say,
-    /// which is most patches.
+    /// The notes for a version. Every shipped version has some: the
+    /// "What's new" buttons in Settings and the corner menu always open
+    /// this sheet, so a version without notes shows an empty one —
+    /// WhatsNewTests holds the release to it, and release.sh refuses to
+    /// build a DMG for a version that has none. Written when the version
+    /// is raised, in the tone of the ones below: three or four items, a
+    /// title and one line each, said from the reader's side.
     static func items(for version: String) -> [Item] {
         switch version {
+        case "3.3.1":
+            return [
+                Item(title: L("Settings in six panes"),
+                     line: L("Dictation, Meetings, Summaries & reports, Templates, General, About. Every setting sits in the pane that owns it, and every link from the app lands on the right row.")),
+                Item(title: L("Reports where you read"),
+                     line: L("A meeting’s reports are rows on its card, collapsed until you open one, with Copy and Export…. Library › Reports collects them by template and writes for a selection.")),
+                Item(title: L("Recent dictations that insert"),
+                     line: L("The menu bar keeps your last ten dictations. Click one to insert it where the cursor is; ⌥-click copies it instead.")),
+                Item(title: L("Answers you can quote"),
+                     line: L("Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.")),
+            ]
         case "3.3":
             return [
                 Item(title: L("Reports from templates"),
-                     line: L("Open a meeting and press Write report in its header, then pick a template. The report lands on the card and as a PDF in Dictate Meetings › Reports.")),
+                     line: L("Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.")),
                 Item(title: L("Your own templates"),
                      line: L("Settings › Templates: start from Meeting summary or Decisions & actions, or name your own fields and tell the model what goes under each.")),
                 Item(title: L("Summaries in your language"),
-                     line: L("Settings › Meetings › Write summaries and reports in: the summary line and every report come in the language you read, whatever language the call was in.")),
+                     line: L("Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.")),
             ]
         default:
             return []
