@@ -47,13 +47,19 @@ enum TopNotice {
     private static var panel: NSPanel?
     private static var timer: Timer?
 
-    static func show(_ line: String) {
+    /// `action`: one button at the trailing end, for the notice that tells
+    /// the person something they can act on right here (the model this Mac
+    /// cannot run — Remove…). A notice with a button stays longer: the
+    /// eight-second exit was sized for a sentence, not a decision.
+    static func show(_ line: String, action: (title: String, run: @MainActor () -> Void)? = nil) {
         hide()
-        let panel = makeTopNoticePanel(
-            hosting: NSHostingView(rootView: NoticeCard(line: line) { hide() }))
+        let card = NoticeCard(line: line, actionTitle: action?.title,
+                              action: { hide(); action?.run() },
+                              dismiss: { hide() })
+        let panel = makeTopNoticePanel(hosting: NSHostingView(rootView: card))
         panel.orderFrontRegardless()
         self.panel = panel
-        timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: false) { _ in
+        timer = Timer.scheduledTimer(withTimeInterval: action == nil ? 8 : 20, repeats: false) { _ in
             Task { @MainActor in hide() }
         }
     }
@@ -68,18 +74,27 @@ enum TopNotice {
 
 private struct NoticeCard: View {
     let line: String
+    var actionTitle: String? = nil
+    var action: () -> Void = {}
     let dismiss: () -> Void
 
     var body: some View {
-        Text(line)
-            .font(.system(size: 12.5, weight: .medium))
-            .lineSpacing(2)
-            .fixedSize(horizontal: false, vertical: true)
-            // A FIXED width, not a maximum: with only a ceiling the hosting
-            // view's fittingSize came back 1637 pt tall for a three-line
-            // notice, and the panel — placed from its own height — landed
-            // in the middle of the screen (seen 2026-09-13).
-            .frame(width: 340, alignment: .leading)
+        HStack(alignment: .center, spacing: 12) {
+            Text(line)
+                .font(.system(size: 12.5, weight: .medium))
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                // A FIXED width, not a maximum: with only a ceiling the hosting
+                // view's fittingSize came back 1637 pt tall for a three-line
+                // notice, and the panel — placed from its own height — landed
+                // in the middle of the screen (seen 2026-09-13).
+                .frame(width: 340, alignment: .leading)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.dsSmall)
+                    .controlSize(.small)
+            }
+        }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

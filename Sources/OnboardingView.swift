@@ -135,7 +135,19 @@ struct OnboardingView: View {
         // view itself has its own timer for the badges).
         .onReceive(timer) { _ in
             if step == 3 {
-                allGranted = Permissions.allGranted
+                let now = Permissions.allGranted
+                // The second permission landing while this step is on screen
+                // is the moment the person was waiting for: the step moves
+                // on by itself instead of leaving a Next to press under
+                // two green badges (audit 3.3, D13). Only on the transition —
+                // a returning user who arrives with both already granted
+                // still sees the page and chooses to go on.
+                if now, !allGranted {
+                    allGranted = true
+                    step += 1
+                    return
+                }
+                allGranted = now
                 preloadIfDue()
             }
         }
@@ -377,7 +389,7 @@ private struct WelcomeStep: View {
                 VStack(alignment: .leading, spacing: 9) {
                     bullet(L("Dictation that works offline — recognition runs entirely on this Mac."))
                     bullet(L("Translation that works offline — speak your language, another comes out."))
-                    bullet(L("Meetings, recorded and structured: speakers, summary, outline, search."))
+                    bullet(L("Meetings, recorded and structured: speakers, summary, outline, search. Dictate offers to record a call — it never records without your answer."))
                     bullet(L("An optional agent that knows your meetings — answers quote the moment they came from."))
                 }
                 .padding(.top, 2)
@@ -958,7 +970,9 @@ private struct TryItStep: View {
                         .animation(.spring(response: 0.3, dampingFraction: 0.45), value: nudgeTranslate)
                 }
             }
-            .opacity(engineReady ? 1 : 0.45)
+            // Not dimmed while the engine warms: dimming means "unavailable"
+            // everywhere else in this app, and the empty radio marks plus the
+            // preparing pill already say "not yet" (audit 3.3, P10).
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.4))

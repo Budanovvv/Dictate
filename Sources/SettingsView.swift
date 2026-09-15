@@ -129,6 +129,9 @@ struct SettingsView: View {
     @State private var reportLanguage = Settings.shared.reportLanguage
     @FocusState private var focusedTemplateField: UUID?
     @ObservedObject private var templateStore = ReportTemplateStore.shared
+    /// Meetings with a report per template, for the Written reports row.
+    /// nil until counted, so the row never claims zero before it has looked.
+    @State private var reportCounts: [UUID: Int] = [:]
     /// The removal dialog for the meeting model.
     @State private var confirmRemoveModel = false
     /// The removal dialog for the debug audio dumps.
@@ -214,9 +217,13 @@ struct SettingsView: View {
             textModel.refresh()
             refreshStatuses()
             applyRequestedTab()
+            countReports()
         }
         .onChange(of: textModel.state) { engineStatus = MeetingTextEngines.status }
-        .onChange(of: tab) { _, now in if now == .thisMac { measureStorage() } }
+        .onChange(of: tab) { _, now in
+            if now == .thisMac { measureStorage() }
+            if now == .templates { countReports() }
+        }
         // The meeting model's removal, confirmed: destructive, and not
         // undoable short of downloading 2.5 GB again — the one place in this
         // window where a switch would have been the wrong control (a switch
@@ -444,6 +451,33 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var keysSection: some View {
+            // The one fact that makes every row below useless, said where
+            // the person comes to look when the key does nothing (audit 3.3,
+            // P4). Same words and the same way out as General and the menu
+            // bar — one fact, identical everywhere.
+            if !axGranted {
+                Section {
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(DS.warn)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L("Accessibility access is turned off"))
+                                .font(.system(size: 12.5, weight: .medium))
+                            Text(L("Dictation can hear you but cannot type. Re-enable it to continue."))
+                                .font(DS.helpText)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button(L("Fix…")) { Permissions.openSettingsPane("Privacy_Accessibility") }
+                            .buttonStyle(.dsSmall)
+                            .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(DS.warn.opacity(0.08)))
+                }
+            }
             // — Shortcuts —
             Section {
                 LabeledContent {
@@ -620,7 +654,7 @@ struct SettingsView: View {
                 } label: {
                     rowLabel(MeetingCapability.noticeCalls.name,
                              micDenied ? L("Waiting on microphone access.")
-                                       : MeetingCapability.noticeCalls.adds,
+                                       : MeetingCapability.noticeCalls.addsShort,
                              warn: micDenied)
                 }
                 LabeledContent {
@@ -632,7 +666,7 @@ struct SettingsView: View {
                 } label: {
                     rowLabel(MeetingCapability.recordCallAudio.name,
                              micDenied ? L("Waiting on microphone access.")
-                                       : MeetingCapability.recordCallAudio.adds,
+                                       : MeetingCapability.recordCallAudio.addsShort,
                              warn: micDenied)
                 }
                 LabeledContent {
@@ -645,7 +679,7 @@ struct SettingsView: View {
                 } label: {
                     rowLabel(MeetingCapability.separateVoices.name,
                              recordCallAudio
-                                ? MeetingCapability.separateVoices.adds
+                                ? MeetingCapability.separateVoices.addsShort
                                 : Lf("Waits for “%@” above — there is no call audio to separate yet.",
                                      MeetingCapability.recordCallAudio.name))
                         .padding(.leading, 16)
@@ -663,7 +697,7 @@ struct SettingsView: View {
                     // still has the agent. What it says underneath is WHICH
                     // engine reads — or why none can (design lens, 2026-09-13).
                     rowLabel(MeetingCapability.readMeetings.name,
-                             MeetingCapability.readMeetings.adds,
+                             MeetingCapability.readMeetings.addsShort,
                              note: TextModelRowCopy.engineLine(
                                 status: engineStatus,
                                 canDownload: textModel.state == .absent || textModel.state.isFailed))
@@ -822,16 +856,8 @@ struct SettingsView: View {
                     rowLabel(provider.keyLabel, L("Your account, your usage"))
                 }
             }
-            // Whole-width rows, like This Mac's verdicts: a name and the
-            // sentences under it, nothing to put in a control column.
-            let gate = reportsGateLine(hasKey: storedKey != nil)
-            rowLabel(L("Reports"),
-                     L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."),
-                     note: gate ?? L("The templates have their own tab, next to this one."))
-            if let provider = askProvider, storedKey != nil {
-                rowLabel(L("What is sent"),
-                         Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
-            }
+            // Reports and what they send live on the Templates tab now
+            // (design turn 4): this tab is the connection and nothing else.
         } header: { Text(L("Agent")) } footer: {
             Text(askFooter)
                 .font(.caption).foregroundStyle(.secondary)
@@ -847,13 +873,14 @@ struct SettingsView: View {
         return APIKey.current(provider)
     }
 
-    /// Why reports cannot run right now, when they cannot.
+    /// Why reports cannot run right now, when they cannot — pointing at the
+    /// Agent tab, which is where the fix is.
     private func reportsGateLine(hasKey: Bool) -> String? {
         guard let provider = askProvider else {
-            return L("Reports need the agent, which is off. Choose Claude or ChatGPT above to turn them on; the templates keep until then.")
+            return L("Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.")
         }
         guard hasKey else {
-            return Lf("%@ is chosen but has no key. Add one above; reports start with the next call.", provider.productName)
+            return Lf("%@ is chosen but has no key. Add one on the Agent tab.", provider.productName)
         }
         return nil
     }
@@ -1028,6 +1055,15 @@ struct SettingsView: View {
     /// that comes and goes is a control nobody can find twice.
     @ViewBuilder
     private var templatesSection: some View {
+        // What a report is, and why one cannot be written right now when it
+        // cannot (design turn 4: Reports moved here from Agent). A
+        // whole-width row, like This Mac's verdicts.
+        Section {
+            rowLabel(L("Reports"),
+                     L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."),
+                     warn: false,
+                     note: reportsGateLine(hasKey: storedKey != nil))
+        }
         Section {
             // The templates as a visible list (design: Settings › Agent,
             // turn 3), not a popup: which forms exist is the first thing a
@@ -1035,8 +1071,11 @@ struct SettingsView: View {
             // sidebar tints its row, and its editor opens below.
             VStack(alignment: .leading, spacing: 10) {
                 // The section header already says "Templates"; the row
-                // needs only the sentence.
-                Text(L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
+                // needs only the sentence — and with no templates at all,
+                // what one is and where a report comes from.
+                Text(templateStore.templates.isEmpty
+                     ? L("No templates yet. A template is a name, an optional Context and a few fields; a report is written from it on demand from a meeting’s card.")
+                     : L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if !templateStore.templates.isEmpty {
@@ -1072,11 +1111,6 @@ struct SettingsView: View {
                         .padding(6)
                         .frame(width: 300)
                     }
-                if askProvider == nil {
-                    Text(L("Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then."))
-                        .font(.caption).foregroundStyle(DS.warn)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } header: { Text(L("Templates")) }
@@ -1095,7 +1129,7 @@ struct SettingsView: View {
                 // Context and the fields take the whole row: a paragraph and
                 // a list have no business in a control column.
                 VStack(alignment: .leading, spacing: 8) {
-                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.”"))
+                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.” Sent with every report."))
                     TextField("", text: templateBinding(draft, \.context),
                               prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
                         .labelsHidden()
@@ -1137,9 +1171,45 @@ struct SettingsView: View {
                         Text(L("Reports already written with it stay in their meetings."))
                     }
                 } label: {
+                    // How many meetings carry one — counted off the main
+                    // thread from the archive index (design turn 4).
+                    let count = reportCounts[draft.id]
                     rowLabel(L("Written reports"),
-                             L("Every report written with this template, one file per meeting: Markdown, plain text or PDF, plus a CSV table."))
+                             L("Every report written with this template, one file per meeting: Markdown, plain text or PDF, plus a CSV table."),
+                             note: count.map { $0 == 0
+                                 ? L("No meeting has a report from this template yet.")
+                                 : Lf("Meetings with a report from this template: %d", $0) })
                 }
+            }
+        }
+        // What leaves this Mac when a report is written — next to the
+        // templates it is written from (design turn 4).
+        if let provider = askProvider, storedKey != nil {
+            Section {
+                rowLabel(L("What is sent"),
+                         Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
+            }
+        }
+    }
+
+    /// Meetings per template that carry a report from it. Read through the
+    /// archive index on a background queue — the archive may be in iCloud,
+    /// and a listing on main is how the app once hung for 16 s (GRABLI).
+    private func countReports() {
+        let youLabel = L("You")
+        DispatchQueue.global(qos: .utility).async {
+            var counts: [UUID: Int] = [:]
+            for meeting in MeetingArchive.list(youLabel: youLabel) {
+                for id in Set(meeting.reports.compactMap(\.templateID)) {
+                    counts[id, default: 0] += 1
+                }
+            }
+            DispatchQueue.main.async {
+                // Every template known now gets a number, zero included —
+                // a template outside the map has simply not been counted.
+                var filled = counts
+                for template in templateStore.templates { filled[template.id, default: 0] += 0 }
+                reportCounts = filled
             }
         }
     }

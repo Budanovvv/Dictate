@@ -1702,7 +1702,8 @@ struct MeetingsView: View {
 
                                notice: bareNotice(for: meeting)
                                    ?? (declined(meeting)
-                                   ? AnyView(TextModelOffer(line: L("Apple Intelligence had nothing to say about this meeting. A one-time download, kept on this Mac, is not restricted that way.")))
+                                   ? AnyView(TextModelOffer(title: L("Apple Intelligence declined to summarize this meeting."),
+                                                            line: L("The transcript, search and the agent are unchanged. A downloadable model, kept on this Mac, is not restricted that way.")))
                                    : nil),
                                headerLeading: paneToggles(.meeting),
                                // One Ask, never scoped (16): a transcript's
@@ -2470,6 +2471,52 @@ private struct ChromeButton: View {
     }
 }
 
+/// The find control in the head: the same glyph as its siblings, lit while
+/// the bar is open, and the carrier of ⌘F — a shortcut has to sit on the
+/// Button itself, which is why this is not a ChromeButton.
+private struct FindChromeButton: View {
+    let open: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ChromeGlyph(icon: "magnifyingglass", hovering: hovering,
+                        tint: open ? DS.accentText : nil)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(open ? DS.accentText : .secondary)
+        .keyboardShortcut("f", modifiers: .command)
+        .help(L("Find in this transcript…"))
+        .onHover { hovering = $0 }
+    }
+}
+
+/// The find bar's own small controls: previous, next, close.
+private struct FindNavButton: View {
+    let icon: String
+    let help: String
+    let enabled: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .background(RoundedRectangle(cornerRadius: DS.radiusChip)
+                    .fill(hovering && enabled ? DS.hoverFill : .clear))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
+        .disabled(!enabled)
+        .help(help)
+        .accessibilityLabel(help)
+        .onHover { hovering = $0 }
+    }
+}
+
 /// What a chrome control looks like — shared by the button and by the ⋯ menu,
 /// which cannot use the button but must not look different.
 private struct ChromeGlyph: View {
@@ -2608,6 +2655,10 @@ private struct CapabilityAbsenceStrip: View {
 }
 
 private struct TextModelOffer: View {
+    /// The cause, when there is one to name — Apple Intelligence declining
+    /// this meeting. Said first, so the download below reads as the
+    /// remedy it is and not as a pitch (audit 3.3, D6).
+    var title: String? = nil
     /// What is lost without it, in this particular place.
     let line: String
 
@@ -2617,6 +2668,10 @@ private struct TextModelOffer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let title {
+                Text(title)
+                    .font(.caption.weight(.medium))
+            }
             Text(line)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -2947,6 +3002,17 @@ private struct TranscriptPane: View {
     /// leaves them looking at a screenful of dialogue. Cleared on a timer, so
     /// nothing here animates or repeats.
     @State private var marked: UUID?
+    /// Find inside this transcript (⌘F, audit 3.3 P8): the bar's state, the
+    /// turns that match, and the one being shown. `findTick` is the scroll
+    /// request — the ScrollViewReader lives inside turnsList, so the jump is
+    /// asked for by a counter it can watch.
+    @State private var findOpen = false
+    @State private var findQuery = ""
+    @State private var findMatches: [UUID] = []
+    @State private var findIndex = 0
+    @State private var findTarget: UUID?
+    @State private var findTick = 0
+    @FocusState private var findFocused: Bool
     /// Near enough the top that the way back would be offering nothing.
     @State private var atTop = true
     /// Bumped per jump; only the newest jump gets to clear its own mark.
@@ -2965,6 +3031,10 @@ private struct TranscriptPane: View {
             // length are still being written.
             if live == nil, !entries.isEmpty {
                 archivedHead
+                if findOpen {
+                    findBar
+                    Divider()
+                }
             } else {
                 header
                 Divider()
@@ -2999,13 +3069,13 @@ private struct TranscriptPane: View {
                 Divider()
                 StatusStrip(session: live)
             }
+            // The door to the agent, and only the door (audit 3.3, D5): the
+            // sentence about questions never being limited to one meeting
+            // is the agent's own empty state, not something to read under
+            // every transcript for the life of the app.
             if live == nil, let onAsk {
                 Divider()
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(L("Questions are never limited to one meeting. Your agent searches everything you have recorded and the answer names the meeting and the person."))
-                        .font(DS.helpText)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button(L("Ask your agent")) { onAsk() }
                         .buttonStyle(.plain)
@@ -3099,6 +3169,8 @@ private struct TranscriptPane: View {
                         .fill(Color.primary.opacity(0.12))
                         .frame(width: 0.5, height: 20)
                     HStack(spacing: 2) {
+                        // Find in this transcript — the glyph, and ⌘F.
+                        findButton
                         if let onStar {
                             ChromeButton(icon: starred ? "star.fill" : "star",
                                          help: starred ? L("Unstar meeting") : L("Star meeting"),
@@ -3955,6 +4027,85 @@ private struct TranscriptPane: View {
         return out
     }
 
+    // MARK: Find in this transcript
+
+    /// The header's find control: ⌘F and the glyph open the bar, a second
+    /// ⌘F puts the cursor back in it.
+    private var findButton: some View {
+        FindChromeButton(open: findOpen) {
+            findOpen = true
+            findFocused = true
+            refreshFind()
+        }
+    }
+
+    /// The bar under the head: the field, the count, previous / next, done.
+    /// Return goes to the next hit, ⇧Return to the previous, Esc closes.
+    private var findBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(L("Find in this transcript…"), text: $findQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($findFocused)
+                .onSubmit { findStep(1) }
+                .onExitCommand { closeFind() }
+                .onChange(of: findQuery) { _, _ in refreshFind() }
+            Text(findMatches.isEmpty
+                 ? (findQuery.isEmpty ? "" : L("No matches"))
+                 : Lf("%d of %d", findIndex + 1, findMatches.count))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            FindNavButton(icon: "chevron.up", help: L("Previous match"),
+                          enabled: !findMatches.isEmpty) { findStep(-1) }
+                .keyboardShortcut(.return, modifiers: .shift)
+            FindNavButton(icon: "chevron.down", help: L("Next match"),
+                          enabled: !findMatches.isEmpty) { findStep(1) }
+            FindNavButton(icon: "xmark", help: L("Close find"), enabled: true) { closeFind() }
+        }
+        .padding(.horizontal, MeetingsChrome.inset)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// Which turns contain the query — literal, case- and accent-blind, the
+    /// same rule as the library's search. The first hit is shown at once,
+    /// the way find bars do, so typing walks the transcript.
+    private func refreshFind() {
+        let query = findQuery.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else {
+            findMatches = []; findIndex = 0; marked = nil
+            return
+        }
+        findMatches = cache.turns
+            .filter { $0.text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+            .map(\.id)
+        findIndex = 0
+        if let first = findMatches.first {
+            findTarget = first
+            findTick += 1
+        } else {
+            marked = nil
+        }
+    }
+
+    private func findStep(_ delta: Int) {
+        guard !findMatches.isEmpty else { return }
+        findIndex = (findIndex + delta + findMatches.count) % findMatches.count
+        findTarget = findMatches[findIndex]
+        findTick += 1
+    }
+
+    private func closeFind() {
+        findOpen = false
+        findQuery = ""
+        findMatches = []
+        findIndex = 0
+        marked = nil
+    }
+
     private var turnsList: some View {
         cache.refresh(entries)
         // Everything the list does about scrolling hangs off this one rule:
@@ -3996,6 +4147,7 @@ private struct TranscriptPane: View {
                                  // enough to invalidate the rows when the UI
                                  // language changes (GRABLI).
                                  language: loc.language,
+                                 query: findOpen ? findQuery : "",
                                  relative: relativeStamp(turn.time),
                                  scale: textScale,
                                  onRename: onRename,
@@ -4026,6 +4178,12 @@ private struct TranscriptPane: View {
                 // ONE pointer watcher for the whole transcript, not one per
                 // turn — see TurnPointer.
                 .overlay { TurnPointer(frames: frames) { hovered = $0 } }
+                // A find hit: scroll it to the middle and mark the row.
+                .onChange(of: findTick) { _, _ in
+                    guard let id = findTarget else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .center) }
+                    marked = id
+                }
             }
             // The scroll position is the whole signal: "still at the newest
             // line" arms auto-scroll, anything above it disarms it.
@@ -4947,6 +5105,8 @@ private struct TurnView: View, Equatable {
     /// re-renders the whole list, so the pane observes the localization once
     /// and this is what tells the rows their L() strings went stale (GRABLI).
     let language: AppLanguage
+    /// The find bar's query, marked in the words; "" when the bar is closed.
+    let query: String
     /// The meeting-relative stamp ("02:12"), computed by the pane — derived
     /// from turn.time, so Equatable needs nothing extra.
     let relative: String
@@ -4974,6 +5134,7 @@ private struct TurnView: View, Equatable {
             && a.selected == b.selected
             && a.hovering == b.hovering
             && a.language == b.language
+            && a.query == b.query
             && a.scale == b.scale
     }
 
@@ -5016,7 +5177,7 @@ private struct TurnView: View, Equatable {
             // Reading type (13a): 15/1.65 on a 72-character measure — the
             // transcript is the content, and it is finally larger than the
             // chrome around it.
-            Text(turn.text)
+            Text(highlighted)
                 .font(.system(size: scale.body))
                 .lineSpacing(scale.extraLeading / 2)
                 .frame(maxWidth: DS.readingMeasure, alignment: .leading)
@@ -5043,6 +5204,28 @@ private struct TurnView: View, Equatable {
             Button(L("Copy text")) { onCopy(turn, false) }
             Button(L("Copy with speaker and time")) { onCopy(turn, true) }
         }
+    }
+
+    /// The words, with every occurrence of the find query marked. No query,
+    /// no work: the plain string goes straight through.
+    private var highlighted: AttributedString {
+        var out = AttributedString(turn.text)
+        guard !query.isEmpty else { return out }
+        let text = turn.text
+        var from = text.startIndex
+        while from < text.endIndex,
+              let hit = text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive],
+                                   range: from..<text.endIndex) {
+            if let lower = AttributedString.Index(hit.lowerBound, within: out),
+               let upper = AttributedString.Index(hit.upperBound, within: out) {
+                // The attribute-type subscript, not the key-path one: the
+                // key path to a SwiftUI attribute is non-Sendable and warns
+                // under strict concurrency.
+                out[lower..<upper][AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] = DS.warn.opacity(0.3)
+            }
+            from = hit.upperBound
+        }
+        return out
     }
 
     /// ⌘A's selection is the loud one; hover is a whisper whose only job is to
@@ -5097,6 +5280,7 @@ private struct TurnView: View, Equatable {
 /// two-stream speaker model made visible where the recording happens. No
 /// clock here: elapsed time lives once per surface, in the header (12d).
 private struct StatusStrip: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var session: MeetingSession
     @ObservedObject private var loc = Localization.shared
 
@@ -5125,9 +5309,10 @@ private struct StatusStrip: View {
             .background(Capsule().fill(Color.primary.opacity(0.05)))
         } else if session.inflightCount > 0 {
             HStack(spacing: 6) {
+                // Reduce Motion: a still triplet (audit 3.3, P1).
                 TimelineView(.periodic(from: .now, by: 0.35)) { context in
-                    GlyphMark(state: .recognizing(phase:
-                        Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
+                    GlyphMark(state: .recognizing(phase: reduceMotion ? -1
+                        : Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
                         color: DS.accent, width: 15)
                 }
                 Text(L("Recognizing…")).font(.system(size: 11.5, weight: .semibold))

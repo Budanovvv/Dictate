@@ -182,6 +182,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.button?.image = FamilyGlyph.menuBarImage(.recognizing(phase: 0))
         // Dots-on-the-line, the one place the dots motif is drawn (identity):
         // the lit dot walks left to right, ~3 redraws a second.
+        // Reduce Motion: the dots stand still — the glyph alone says
+        // "recognizing" (audit 3.3, P1).
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         rippleTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {   // runloop timer, main by construction
                 guard let self else { return }
@@ -328,8 +331,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // the very TOP of the menu, holding its most valuable position while
         // being unclickable; under a heading, halfway down the menu, a second
         // line is cheap and a sentence is worth having.
+        // Shaped like rows, so they behave like rows (audit 3.3, P13): a
+        // click opens Settings › Keys, where somebody clicking a key row
+        // wants to arrive.
         for (key, what) in dictationKeyRows() {
-            menu.addItem(Self.viewItem(KeycapRow(key: key, what: what)))
+            menu.addItem(Self.viewItem(KeycapRow(key: key, what: what) { [weak self] in
+                self?.openKeysSettings()
+            }))
         }
 
         // Safety net: recent results are recoverable even when a paste went
@@ -517,6 +525,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         openSettings()
     }
 
+    /// Settings, on the Keys tab: a custom row cannot carry a menu action,
+    /// so it closes the menu itself and asks the window for the tab.
+    private func openKeysSettings() {
+        item.menu?.cancelTracking()
+        // The corner menu's route: the tab in defaults, one notification
+        // that both opens the window and tells it which tab.
+        UserDefaults.standard.set("keys", forKey: "settingsOpenTab")
+        NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
+    }
+
     @objc private func openAccessibilityPane() {
         Permissions.openSettingsPane("Privacy_Accessibility")
     }
@@ -621,12 +639,21 @@ private struct MenuBannerRow: View {
     }
 }
 
-/// One Keys row: the key as a keycap chip, what it does beside it.
+/// One Keys row: the key as a keycap chip, what it does beside it. A
+/// button, because a row in a menu that does nothing reads as broken.
 private struct KeycapRow: View {
     let key: String
     let what: String
+    let open: () -> Void
+    @State private var hovering = false
 
     var body: some View {
+        Button(action: open) { row }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+    }
+
+    private var row: some View {
         HStack(spacing: 10) {
             Text(key)
                 .font(.system(size: 11, weight: .semibold))
@@ -637,13 +664,17 @@ private struct KeycapRow: View {
                     .fill(.quaternary.opacity(0.6)))
             Text(what)
                 .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(hovering ? .primary : .secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
         .frame(width: 300, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .background(RoundedRectangle(cornerRadius: 5)
+            .fill(hovering ? Color.primary.opacity(0.07) : .clear)
+            .padding(.horizontal, 5))
     }
 }
 

@@ -85,7 +85,7 @@ enum FamilyGlyph {
 
     private static func draw(_ state: State, ink: NSColor, scale: CGFloat,
                              flipHeight: CGFloat) {
-        let dimmed: CGFloat = state.isAttention ? 0.45 : 1
+        let dimmed: CGFloat = state.isAttention ? attentionDim : 1
         fill(line, alpha: dimmed, ink: ink, scale: scale, flipHeight: flipHeight)
 
         switch state {
@@ -136,6 +136,15 @@ private extension FamilyGlyph.State {
 
 /// The same mark for SwiftUI surfaces (overlay header, pill). One Canvas, no
 /// layout animation — redraws only when its inputs change (the house rule).
+extension FamilyGlyph {
+    /// How far the rest of the mark steps back in the attention state so the
+    /// exclamation reads. It used to be 0.45, and at menu-bar size over a
+    /// light wallpaper a template image that faint reads as "off", the one
+    /// thing this state must never say (audit 3.3, P14). The shape carries
+    /// the state; the dim is only a nudge now. One number for both renderers.
+    static let attentionDim: CGFloat = 0.7
+}
+
 struct GlyphMark: View {
     var state: FamilyGlyph.State
     var color: Color
@@ -157,7 +166,7 @@ struct GlyphMark: View {
                                                     width: r * 2, height: r * 2)),
                              with: .color(color.opacity(alpha)))
             }
-            let dimmed = { if case .attention = state { return 0.45 }; return 1.0 }()
+            let dimmed = { if case .attention = state { return FamilyGlyph.attentionDim }; return 1.0 }()
             fill(FamilyGlyph.line, dimmed)
             switch state {
             case .recognizing(let phase):

@@ -12,6 +12,9 @@ final class HUDModel: ObservableObject {
     @Published var mode: Mode = .recording
     /// Name of the app the text was inserted into (.inserted; nil = unknown).
     @Published var insertedApp: String?
+    /// The pasteboard snapshot went back after the paste — said on the
+    /// inserted panel, and only once it is true (audit 3.3, D7).
+    @Published var clipboardRestored = false
     /// The delivered text — previewed in the .inserted and .copied states so
     /// the confirmation shows WHAT landed (or what is waiting in the clipboard).
     @Published var resultText = ""
@@ -208,9 +211,18 @@ final class RecordingHUD {
         stopElapsed()
         model.insertedApp = app
         model.resultText = text
+        model.clipboardRestored = false
         model.mode = .inserted
         show()
         scheduleHide(after: 1.4)
+    }
+
+    /// Paster restored the clipboard (0.7 s after the paste, well inside the
+    /// inserted panel's 1.4 s): the panel adds the line. Typed insertion
+    /// never borrows the clipboard, so the line never appears for it.
+    func noteClipboardRestored() {
+        guard model.mode == .inserted else { return }
+        model.clipboardRestored = true
     }
 
     /// Another app holds the mic (voice-processing) — dictation got no audio.
@@ -452,6 +464,7 @@ final class RecordingHUD {
 // MARK: - View
 
 private struct HUDView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var model: HUDModel
     @State private var noticeHover = false
 
@@ -473,8 +486,8 @@ private struct HUDView: View {
             if model.mode == .recording, model.queuedBehind > 0 {
                 HStack(spacing: 9) {
                     TimelineView(.periodic(from: .now, by: 0.35)) { context in
-                        GlyphMark(state: .recognizing(phase:
-                            Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
+                        GlyphMark(state: .recognizing(phase: reduceMotion ? -1
+                            : Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
                             color: .secondary, width: 15)
                     }
                     Text(model.queuedWords > 0
@@ -558,9 +571,10 @@ private struct HUDView: View {
         case .transcribing, .warming:
             // The dots walk — a TimelineView that stops itself with the view;
             // recognizing has no level, so this is the surface's one motion.
+            // Reduce Motion: a still triplet, no walking dot (audit 3.3, P1).
             TimelineView(.periodic(from: .now, by: 0.35)) { context in
-                GlyphMark(state: .recognizing(phase:
-                    Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
+                GlyphMark(state: .recognizing(phase: reduceMotion ? -1
+                    : Int(context.date.timeIntervalSinceReferenceDate / 0.35)),
                     color: model.translate ? DS.translate : DS.accent)
             }
         case .translateTip:
@@ -668,6 +682,19 @@ private struct HUDView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
         }
+        // Whether the words survived, in the same slot on every terminal
+        // state (audit 3.3, D4): a held-key sentence cannot be scrolled
+        // back to, so the panel says kept or gone in those words.
+        if let keptLine {
+            Text(keptLine)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+        if model.mode == .inserted, model.clipboardRestored {
+            Text(L("Clipboard restored."))
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
         // The queued promise (design): what happens to the two dictations.
         if model.mode == .recording, model.queuedBehind > 0 {
             Text(L("Both will be inserted in the order you spoke them"))
@@ -680,6 +707,18 @@ private struct HUDView: View {
             Text(L("Also recording this meeting"))
                 .font(.system(size: 11))
                 .foregroundStyle(DS.record)
+        }
+    }
+
+    /// Kept or gone. The failures that heard nothing usable kept nothing;
+    /// a cancel kept nothing; the missing translation pack inserted the
+    /// untranslated words (DictationController inserts before it reports).
+    private var keptLine: String? {
+        switch model.mode {
+        case .empty, .micBusy, .tooQuiet, .tooLoud: return L("Nothing was kept — say it again.")
+        case .cancelled: return L("Nothing was kept.")
+        case .translateDataMissing: return L("Your words were inserted untranslated.")
+        default: return nil
         }
     }
 

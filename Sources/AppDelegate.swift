@@ -555,6 +555,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 }
             }
         }
+        // The clipboard going back is the one thing the Keys pane promises
+        // that the panel never confirmed (audit 3.3, D7).
+        Paster.onRestored = { [weak self] in self?.hud.noteClipboardRestored() }
         dictation.onResult = { [weak self] success, _, _, text, appName in
             DispatchQueue.main.async {
                 self?.resultShown = true
@@ -721,8 +724,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         }
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        TopNotice.show(Lf("The meeting model needs 16 GB of memory; this Mac has %d. It is not running. Settings › Meetings to remove the %@.",
-                          MachineProfile.current.memoryGB, LocalTextModelFile.sizeText))
+        // The remedy is on the notice itself (audit 3.3, P15): a once-only
+        // panel is the worst place to ask somebody to remember a path.
+        TopNotice.show(Lf("The meeting model needs 16 GB of memory; this Mac has %d. It is not running, and the %@ it takes on disk can be freed.",
+                          MachineProfile.current.memoryGB, LocalTextModelFile.sizeText),
+                       action: (L("Remove…"), { [weak self] in self?.confirmRemoveTextModel() }))
+    }
+
+    /// The same confirmation Settings shows, as an alert: the title, the
+    /// body that says what removing frees and what stays, Remove in red.
+    private func confirmRemoveTextModel() {
+        let alert = NSAlert()
+        alert.messageText = L("Remove the meeting model?")
+        alert.informativeText = TextModelRowCopy.removalBody(
+            appleIntelligence: MeetingTextEngines.appleIntelligence,
+            readMeetings: Settings.shared.readMeetings,
+            sizeText: LocalTextModelFile.sizeText)
+        alert.alertStyle = .warning
+        let remove = alert.addButton(withTitle: L("Remove"))
+        remove.hasDestructiveAction = true
+        alert.addButton(withTitle: L("Cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        LocalTextModelDownload.shared.remove()
     }
 
     /// Hidden screenshot harness for the design pass: `defaults write

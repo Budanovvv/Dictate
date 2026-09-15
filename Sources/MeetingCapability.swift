@@ -28,14 +28,29 @@ enum MeetingCapability: String, CaseIterable {
         case .noticeCalls:
             return L("With this on, a small panel appears when a call starts and you decide there — no need to remember to start anything.")
         case .recordCallAudio:
-            return L("Off, you get only your own microphone — your half of the conversation. On, the other side is transcribed as well.")
+            return L("Off, you get only your own microphone; on, the other side is transcribed as well.")
         case .separateVoices:
             // The imprecision is said HERE, before the first meeting —
             // an expectation set up front reads as honesty, the same
             // sentence after a disappointment reads as an excuse.
-            return L("Turns one block of text into named turns, so you can see who committed to what. The split is by sound and can be imprecise — names are yours to set and can be changed after the fact.")
+            return L("Turns one block of text into named turns. The split is by sound and can be imprecise; the names are yours to change.")
         case .readMeetings:
             return L("This is what writes the summary and the outline, and what gives your agent something to answer from. Off, you get the raw transcript — no summary, no outline, and no agent. Nothing is sent anywhere either way.")
+        }
+    }
+
+    /// The same fact in one line — what a switch in Settings carries. The
+    /// paragraph above is for the first-run card, where somebody is reading
+    /// about the feature; under a switch it outweighed the switch (audit
+    /// 3.3, P3), so Settings shows the load-bearing sentence and no more.
+    var addsShort: String {
+        switch self {
+        case .noticeCalls:
+            return L("A small panel appears when a call starts, and you decide there.")
+        case .recordCallAudio, .separateVoices:
+            return adds
+        case .readMeetings:
+            return L("Writes the summary and the outline, and gives your agent something to answer from. Nothing is sent anywhere either way.")
         }
     }
 

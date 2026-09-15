@@ -26,6 +26,11 @@ enum Paster {
     /// someone else (the user's ⌘C, a clipboard manager) wrote after us —
     /// restoring the snapshot would silently destroy their copy.
     private static var ourChangeCount: Int?
+    /// Called once the snapshot is actually written back — the HUD's
+    /// "Clipboard restored." line (audit 3.3, D7). Not called when the
+    /// restore is skipped because someone else wrote to the pasteboard: the
+    /// line would then be a lie, so nothing is said.
+    static var onRestored: (() -> Void)?
 
     /// The user-facing insertion switch (Settings › Keys, design: "Insert
     /// text by"): pasting is instant but borrows the clipboard for a moment;
@@ -280,5 +285,6 @@ enum Paster {
         if let items = pendingRestore, !items.isEmpty {
             pb.writeObjects(items)
         }
+        onRestored?()
     }
 }
