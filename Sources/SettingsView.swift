@@ -66,19 +66,6 @@ struct SettingsView: View {
     @State private var axGranted = Permissions.accessibility == .granted
 
 
-    private var appearanceHelp: String {
-        switch appearance {
-        case "light":
-            return L("Dictate stays light even when macOS switches. Every surface follows: the window, the dictation overlay, the recording pill and the menu.")
-        case "dark":
-            return L("Dictate stays dark even when macOS switches. Every surface follows: the window, the dictation overlay, the recording pill and the menu.")
-        default:
-            return L("Follows the macOS setting, switching with it at sunset. Choose Light or Dark to hold Dictate to one appearance regardless of the system.")
-        }
-    }
-
-    /// The same string the About panel shows — both read
-    /// CFBundleShortVersionString, so the two can never disagree.
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
     }
@@ -116,8 +103,28 @@ struct SettingsView: View {
     // local again: calendar names, reading, the meeting model.
     // Templates is the seventh (2026-09-14): a report is a thing a person
     // goes looking for by name, and would not find under Agent.
-    private enum Tab: CaseIterable { case keys, languages, meetings, agent, templates, general, thisMac }
-    @State private var tab: Tab = .keys
+    // Six panes (design turn 32/33, 2026-09-15): one pane per thing the
+    // person HAS — you press it (Dictation), it records (Meetings), it
+    // writes for you (Summaries & reports), it is a form (Templates), it is
+    // the app (General), or it is a report about this Mac (About, which
+    // sets nothing). The seven-tab model divided by where a feature came
+    // from, which is why "where do I turn off the thing that writes
+    // summaries" had three plausible answers.
+    private enum Tab: String, CaseIterable {
+        case dictation, meetings, writing, templates, general, about
+        /// A hairline above these rows in the sidebar: the three groups
+        /// the design draws (press · write · the app / the Mac).
+        var startsGroup: Bool { self == .writing || self == .general || self == .about }
+        /// ⌘, and the menu bar row reopen the pane you were on (design
+        /// turn 33, behaviour B); every deep link overrides it.
+        static var lastUsed: Tab {
+            Tab(rawValue: UserDefaults.standard.string(forKey: "settingsLastTab") ?? "") ?? .dictation
+        }
+    }
+    @State private var tab: Tab = Tab.lastUsed
+    /// The row a deep link asked to be shown — scrolled to and tinted for a
+    /// moment, the way System Settings reveals a row its search found.
+    @State private var revealRow: String?
     /// The Templates tab: which template is showing, and its working copy.
     /// Every edit goes to the store at once (the list in memory) and to
     /// disk a moment later — see ReportTemplateStore.save.
@@ -147,31 +154,29 @@ struct SettingsView: View {
 
     private func tabTitle(_ tab: Tab) -> String {
         switch tab {
-        case .keys: return L("Keys")
-        case .languages: return L("Languages")
+        case .dictation: return L("Dictation")
         case .meetings: return L("Meetings")
-        case .agent: return L("Agent")
+        case .writing: return L("Summaries & reports")
         case .templates: return L("Templates")
         case .general: return L("General")
-        case .thisMac: return L("This Mac")
+        case .about: return L("About")
         }
     }
 
     private func tabIcon(_ tab: Tab) -> String {
         switch tab {
-        case .keys: return "keyboard"
-        case .languages: return "globe"
+        case .dictation: return "keyboard"
         case .meetings: return "video"
-        case .agent: return "sparkles"
+        case .writing: return "text.alignleft"
         case .templates: return "doc.text"
         case .general: return "gearshape"
-        case .thisMac: return "desktopcomputer"
+        case .about: return "desktopcomputer"
         }
     }
 
     var body: some View {
         HStack(spacing: 0) {
-            settingsSidebar.frame(width: 196)
+            settingsSidebar.frame(width: 212)
             Divider()
             VStack(spacing: 0) {
                 HStack {
@@ -221,7 +226,8 @@ struct SettingsView: View {
         }
         .onChange(of: textModel.state) { engineStatus = MeetingTextEngines.status }
         .onChange(of: tab) { _, now in
-            if now == .thisMac { measureStorage() }
+            UserDefaults.standard.set(now.rawValue, forKey: "settingsLastTab")
+            if now == .about { measureStorage() }
             if now == .templates { countReports() }
         }
         // The meeting model's removal, confirmed: destructive, and not
@@ -298,6 +304,9 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 1) {
             Color.clear.frame(height: 40)   // the traffic lights' band
             ForEach(Tab.allCases, id: \.self) { candidate in
+                if candidate.startsGroup {
+                    Divider().padding(.horizontal, 20).padding(.vertical, 6)
+                }
                 Button {
                     tab = candidate
                 } label: {
@@ -351,13 +360,12 @@ struct SettingsView: View {
     @ViewBuilder
     private var sectionForm: some View {
         switch tab {
-        case .keys: Form { keysSection }.formStyle(.grouped)
-        case .languages: Form { languagesSection }.formStyle(.grouped)
+        case .dictation: Form { keysSection; languagesSection }.formStyle(.grouped)
         case .meetings: Form { meetingsSection }.formStyle(.grouped)
-        case .agent: Form { agentSection }.formStyle(.grouped)
+        case .writing: Form { readingSection; agentSection }.formStyle(.grouped)
         case .templates: Form { templatesSection }.formStyle(.grouped)
         case .general: Form { generalSection }.formStyle(.grouped)
-        case .thisMac: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
+        case .about: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
         }
     }
 
@@ -388,6 +396,7 @@ struct SettingsView: View {
                     LabeledContent(L("Translate to")) {
                         TranslateTargetPicker(selection: $translateTarget)
                     }
+                    .modifier(revealed("translateInto"))
                     .onChange(of: translateTarget) { _, v in Settings.shared.translateTargetCode = v }
 
                     // macOS keeps each language pair's data on demand; picking
@@ -409,13 +418,8 @@ struct SettingsView: View {
                     }
                 }
 
-                // Last in the section on purpose: the spoken language and the
-                // translate target get changed far more often than the UI's own
-                // language, which is usually set once and forgotten.
-                // Same control as the two rows above (see PopupTrigger).
-                LabeledContent(L("Interface language")) {
-                    InterfaceLanguagePicker()
-                }
+                // Interface language lives in General now (design 9.2): it
+                // is about the app, not about speech.
                 // The macOS translation packs, one line per target. A row answers
                 // exactly one question: would the translate key work into this
                 // language RIGHT NOW, from the language you speak — so the check
@@ -441,7 +445,8 @@ struct SettingsView: View {
                     .buttonStyle(.dsSmall)
                     .controlSize(.small)
                 }
-            } header: { Text(L("Language")) } footer: {
+                .modifier(revealed("packs"))
+            } header: { Text(L("Languages")) } footer: {
                 if language != "en" || translateSet {
                     Text(L("The translate key transcribes your speech, then macOS translates it on this Mac. Picking a language may download its translation data once."))
                         .font(.caption).foregroundStyle(.secondary)
@@ -464,7 +469,11 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(L("Accessibility access is turned off"))
                                 .font(.system(size: 12.5, weight: .medium))
-                            Text(L("Dictation can hear you but cannot type. Re-enable it to continue."))
+                            // The onboarding's honest second sentence, here
+                            // too (design 9.2): the switch is reset by macOS,
+                            // not declined by the person.
+                            Text(L("Dictation can hear you but cannot type. Re-enable it to continue.") + " "
+                                 + L("macOS resets this switch after some updates and never asks a second time."))
                                 .font(DS.helpText)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -476,15 +485,19 @@ struct SettingsView: View {
                     }
                     .padding(10)
                     .background(RoundedRectangle(cornerRadius: 8).fill(DS.warn.opacity(0.08)))
+                    .modifier(revealed("accessibility"))
                 }
             }
-            // — Shortcuts —
+            // — Keys (design 9.2: Keys and Languages are two headings in
+            // one pane; nobody separates the key from the language it
+            // speaks) —
             Section {
                 LabeledContent {
                     KeyRecorder(keyName: KeyNames.displayName(hotkeyName), capture: captureMain)
                 } label: {
                     rowLabel(L("Dictation key"), L("Hold to talk, release to insert what you said."))
                 }
+                .modifier(revealed("dictationKey"))
                 .onReceive(captureMain.$capturedKeyCode) { code in
                     guard let code, let name = captureMain.capturedName,
                           code != Settings.shared.translateKeyCode else { return }
@@ -514,6 +527,7 @@ struct SettingsView: View {
                     } label: {
                         rowLabel(L("Translate key"), translateKeyHint)
                     }
+                    .modifier(revealed("translateKey"))
                     .onReceive(captureTranslate.$capturedKeyCode) { code in
                         guard let code, let name = captureTranslate.capturedName,
                               code != Settings.shared.hotkeyKeyCode else { return }
@@ -542,7 +556,14 @@ struct SettingsView: View {
                     rowLabel(L("Insert text by"),
                              L("Pasting is instant but replaces your clipboard for a moment. Typing works in apps that block paste, such as some terminals and remote desktops."))
                 }
-            } header: { Text(L("Shortcuts")) } footer: {
+                // The speech model, named where dictation is configured
+                // (design 9.2) — a sentence, not a storage row: it is
+                // required and cannot be removed, so there is nothing to
+                // manage, only something to know.
+                rowLabel(L("Speech model"),
+                         Lf("%@ · required for dictation, cannot be removed.",
+                            MachineProfile.fileSizeText(Int64(ModelTier.fast.sizeMB) * 1_000_000)))
+            } header: { Text(L("Keys")) } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     if unsafeKey {
                         Label(L("This key types characters — they'll go into the text during dictation. A modifier or F-key is better."),
@@ -586,7 +607,7 @@ struct SettingsView: View {
                 // Everything off is a state worth a sentence, not four silent
                 // switches (design MeetingsOff): the banner says what the
                 // silence costs and offers the one-click way out.
-                if !noticeCalls && !recordCallAudio && !separateVoices && !readMeetings {
+                if !noticeCalls && !recordCallAudio && !separateVoices {
                     HStack(alignment: .top, spacing: 9) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(.secondary)
@@ -657,6 +678,7 @@ struct SettingsView: View {
                                        : MeetingCapability.noticeCalls.addsShort,
                              warn: micDenied)
                 }
+                .modifier(revealed("calls"))
                 LabeledContent {
                     Toggle("", isOn: $recordCallAudio).labelsHidden().toggleStyle(.switch)
                         .onChange(of: recordCallAudio) { _, v in
@@ -677,46 +699,21 @@ struct SettingsView: View {
                             OfferLedger.decided(.separateVoices)
                         }
                 } label: {
+                    // The speaker models' size, as its own line (design 9.2):
+                    // the storage row that named it is gone from About's
+                    // controls, so the fact lives with the switch that uses it.
                     rowLabel(MeetingCapability.separateVoices.name,
                              recordCallAudio
                                 ? MeetingCapability.separateVoices.addsShort
                                 : Lf("Waits for “%@” above — there is no call audio to separate yet.",
-                                     MeetingCapability.recordCallAudio.name))
+                                     MeetingCapability.recordCallAudio.name),
+                             note: L("Uses 41 MB of speaker models."))
                         .padding(.leading, 16)
                 }
                 .opacity(recordCallAudio ? 1 : 0.5)
-                LabeledContent {
-                    Toggle("", isOn: $readMeetings).labelsHidden().toggleStyle(.switch)
-                        .onChange(of: readMeetings) { _, v in
-                            Settings.shared.readMeetings = v
-                            OfferLedger.decided(.readMeetings)
-                        }
-                } label: {
-                    // The switch is shown on every Mac, engine or none: the
-                    // agent depends on it too, and a Mac with no engine
-                    // still has the agent. What it says underneath is WHICH
-                    // engine reads — or why none can (design lens, 2026-09-13).
-                    rowLabel(MeetingCapability.readMeetings.name,
-                             MeetingCapability.readMeetings.addsShort,
-                             note: TextModelRowCopy.engineLine(
-                                status: engineStatus,
-                                canDownload: textModel.state == .absent || textModel.state.isFailed))
-                }
-                // The reader's language for what the models write ABOUT a
-                // meeting — the summary line and every report — as opposed
-                // to the title, which keeps the meeting's own. One setting
-                // for both, here with the reading it belongs to (owner,
-                // 2026-09-14: a Polish call summarised in Polish).
-                if readMeetings {
-                    LabeledContent {
-                        ReportLanguagePicker(selection: $reportLanguage)
-                            .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
-                    } label: {
-                        rowLabel(L("Write summaries and reports in"),
-                                 L("The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed."))
-                    }
-                }
-
+                .modifier(revealed("separateVoices"))
+            } header: { Text(L("Calls")) }
+            Section {
                 // The calendar row carries its own permission. Turning it on is
                 // what asks macOS for the calendar, which is why the switch
                 // snaps back when the request is refused: a switch that stays
@@ -749,6 +746,7 @@ struct SettingsView: View {
                     rowLabel(L("Read meeting names from Calendar"),
                              L("Recordings arrive already titled instead of as “Zoom call, 14:02”. Only titles overlapping a recording are read."))
                 }
+                .modifier(revealed("calendar"))
                 // The switch snapping back off is macOS saying no — a banner
                 // says so and points at the only place that can change it
                 // (design: calendarDenied).
@@ -776,45 +774,172 @@ struct SettingsView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(DS.warn.opacity(0.08)))
                 }
 
-                // The downloadable meeting model. Named by what the user
-                // gets, not by what it is — nobody has ever wanted a "text
-                // model"; they want their meetings to have names.
-                //
-                // The row is absent on a Mac that has nothing to offer AND
-                // nothing on disk (`unsupported`: no helper, or too little
-                // memory) — the why lives on This Mac. But a model that IS on
-                // disk is shown whatever the switch above says: the row used
-                // to vanish with reading off, and 2.5 GB vanished with it,
-                // with no way left to remove them (owner, 2026-09-13).
-                if textModel.state != .unsupported, readMeetings || textModel.state != .absent {
-                    LabeledContent {
-                        textModelControl
-                    } label: {
-                        rowLabel(L("Meeting titles & summaries"), textModelHint)
-                    }
-                }
+                // Reading left this pane (design 9.2): everything that
+                // reads a recording — summaries, outlines, reports, the
+                // agent — is configured together under Summaries & reports,
+                // and this pane ends by saying so.
+                rowLabel(L("Summaries"),
+                         L("Whether anything reads these recordings — summaries, outlines, reports and the agent — is under Summaries & reports. This pane is only about what gets recorded on this Mac."))
+                Button(L("Summaries & reports")) { tab = .writing; reveal("reading") }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+            } header: { Text(L("Meeting names")) }
+    }
 
-            } header: { Text(L("Meetings")) } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    // The privacy line answers for the whole section: the
-                    // calendar and the local model read and write here only.
-                    // The agent, which does send, has its own tab and its
-                    // own footer.
-                    Text(L("Everything here runs on this Mac and nothing leaves it. What the agent sends, on your key, is on the Agent tab."))
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    // The hardware caveats used to repeat here; they live on
-                    // This Mac now, once, next to the machine they describe,
-                    // and in the offer at the moment of the decision.
+    // MARK: - Summaries & reports
+
+    /// The chain, in the order it runs (design 9.2): the reading switch and
+    /// its verdict, the meeting model in every state with the one Remove,
+    /// the output language — then the agent, its key, and the one paragraph
+    /// about what leaves this Mac. These five things fail together and are
+    /// configured together; they used to be spread over four panes.
+    @ViewBuilder
+    private var readingSection: some View {
+        Section {
+            LabeledContent {
+                Toggle("", isOn: $readMeetings).labelsHidden().toggleStyle(.switch)
+                    .onChange(of: readMeetings) { _, v in
+                        Settings.shared.readMeetings = v
+                        OfferLedger.decided(.readMeetings)
+                    }
+            } label: {
+                // The switch is shown on every Mac, engine or none: the
+                // agent depends on it too, and a Mac with no engine still
+                // has the agent. Under it, WHICH engine reads — or why none
+                // can (design lens, 2026-09-13).
+                rowLabel(MeetingCapability.readMeetings.name,
+                         MeetingCapability.readMeetings.addsShort,
+                         note: readingVerdict)
+            }
+            .modifier(revealed("reading"))
+            // The downloadable meeting model — the only place it is
+            // downloaded, paused, or removed. Absent on a Mac that has
+            // nothing to offer AND nothing on disk (`unsupported`); a model
+            // that IS on disk is shown whatever the switch says, or 2.5 GB
+            // vanish with no way left to remove them (owner, 2026-09-13).
+            if textModel.state != .unsupported {
+                LabeledContent {
+                    meetingModelControl
+                } label: {
+                    rowLabel(L("Meeting model"), meetingModelHelp, note: meetingModelNotice)
+                }
+                .modifier(revealed("meetingModel"))
+            }
+            // The reader's language for what the models write ABOUT a
+            // meeting — the summary line and every report — as opposed to
+            // the title, which keeps the meeting's own (owner, 2026-09-14).
+            LabeledContent {
+                ReportLanguagePicker(selection: $reportLanguage)
+                    .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
+            } label: {
+                rowLabel(L("Written in"),
+                         L("The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed."))
+            }
+        } header: { Text(L("On this Mac")) }
+    }
+
+    /// What reads meetings right now, in one sentence under the switch.
+    /// The shipped verdicts are reused; only downloading, paused and the
+    /// too-old macOS have sentences of their own (design turn 33).
+    private var readingVerdict: String {
+        switch engineStatus {
+        case .downloadedModel:
+            return textModel.paused == .memory
+                ? L("Reads with the downloaded model — paused until there is free memory.")
+                : L("Reads with the downloaded model.")
+        case .appleIntelligence:
+            if case .downloading = textModel.state {
+                return L("Reads with Apple Intelligence until the download finishes.")
+            }
+            return L("Reads with Apple Intelligence.")
+        case .none(let apple):
+            if apple == .unavailableOS {
+                return L("Nothing on this Mac can read yet: Apple Intelligence needs a newer macOS. The agent with your own key still works.")
+            }
+            return TextModelRowCopy.engineLine(status: engineStatus,
+                                               canDownload: textModel.state == .absent || textModel.state.isFailed)
+        }
+    }
+
+    /// The line under "Meeting model": the price before the download, the
+    /// mechanism while it runs, the fact once it is there, and why it is
+    /// worth having on a Mac with nothing else to read (design 9.2).
+    private var meetingModelHelp: String {
+        switch textModel.state {
+        case .absent, .failed:
+            if case .none(let apple) = engineStatus, apple != .on {
+                return L("The download is the way to get summaries on this Mac without Apple Intelligence. The transcript and search work either way.")
+            }
+            return Lf("One-time %@ download, then titles, summaries and outlines run entirely on this Mac. It needs 16 GB of memory to run and holds about %@ while it writes.",
+                      LocalTextModelFile.sizeText, LocalTextModelFile.expectedResidentText)
+        case .downloading:
+            return L("One resumable file. Closing Dictate pauses it; it picks up where it stopped.")
+        case .verifying:
+            return L("Names, a one-line summary and a table of contents, written on this Mac.")
+        case .ready:
+            return MeetingTextEngines.appleIntelligence.isOn
+                ? L("Runs entirely on this Mac. Without it, titles and summaries come from Apple Intelligence.")
+                : textModelHint
+        case .installedNotRunnable:
+            return textModelHint
+        case .unsupported:
+            return ""
+        }
+    }
+
+    /// The second caption under the model row, when the state needs one:
+    /// a pause, a removal that costs nothing, or why Apple Intelligence
+    /// cannot stand in.
+    private var meetingModelNotice: String? {
+        switch textModel.state {
+        case .ready where textModel.paused == .memory:
+            return L("Paused right now: not enough free memory. It resumes on its own, and the meetings waiting for a summary keep their transcripts.")
+        case .installedNotRunnable:
+            return L("Nothing is lost by removing it: the transcript, search and the agent do not depend on it.")
+        case .absent, .failed:
+            guard case .none(let apple) = engineStatus else { return nil }
+            switch apple {
+            case .notEligible: return L("Apple Intelligence isn’t available on this Mac, so there is nothing to fall back on.")
+            case .unavailableOS: return L("Apple Intelligence needs a newer macOS than this Mac is running, so there is nothing to fall back on.")
+            case .notReady: return L("macOS is still setting up Apple Intelligence. It may take a while and cannot be hurried from here.")
+            default: return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    /// The right-hand side of the model row: the value and its one action.
+    @ViewBuilder
+    private var meetingModelControl: some View {
+        switch textModel.state {
+        case .absent, .failed:
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(L("Not downloaded")).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    if case .none(.notEnabled) = engineStatus {
+                        Button(L("Open System Settings…")) { Permissions.openSettingsPane("AppleIntelligence") }
+                            .buttonStyle(.dsSmall).controlSize(.small)
+                    }
+                    textModelControl
                 }
             }
+        case .ready, .installedNotRunnable:
+            HStack(spacing: 8) {
+                Text(Lf("Installed · %@", LocalTextModelFile.sizeText))
+                    .foregroundStyle(.secondary).monospacedDigit()
+                Button(L("Remove…")) { confirmRemoveModel = true }
+                    .buttonStyle(.dsSmall).controlSize(.small)
+            }
+        default:
+            textModelControl
+        }
     }
 
     // MARK: - Agent
 
-    /// The agent and what it does: the connection, then reports. Reports sit
-    /// under the connection because they cannot exist without it, and the
-    /// off state points one row up instead of to another tab.
+    /// The agent, on the person's key: the connection, and the one paragraph
+    /// about what leaves this Mac (design 9.2, "Your agent, on your key").
     @ViewBuilder
     private var agentSection: some View {
         Section {
@@ -836,33 +961,45 @@ struct SettingsView: View {
                             keyDraft = ""
                         }
                     if askProvider == nil {
-                        Text(L("Off: transcripts, summaries and search work as before. The agent answers questions across your meetings and writes reports; it runs in the cloud on your own API key."))
+                        Text(L("Off: transcripts, summaries, outlines and search work as before. The agent answers questions across your meetings and writes reports from your templates; it runs in the cloud on your own API key."))
                             .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if storedKey == nil {
+                        // Chosen, but not connected: the one state where the
+                        // pane must say the agent is still off (design 9.2).
+                        Text(Lf("%@ is chosen, but there is no key yet. The agent and reports stay off until one is added.", askProvider?.productName ?? ""))
+                            .font(.caption).foregroundStyle(DS.warn)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             } label: {
                 rowLabel(L("Answers with"), L("Questions across your meetings, and reports."))
             }
+            .modifier(revealed("answersWith"))
             // The key row belongs to the chosen provider — it appears
             // with the choice, labelled with the vendor's name, because a
             // field for a credential nobody can use yet is a question
             // with no reason behind it.
-            let storedKey = storedKey
             if let provider = askProvider {
                 LabeledContent {
                     apiKeyControl(for: provider, stored: storedKey)
                 } label: {
-                    rowLabel(provider.keyLabel, L("Your account, your usage"))
+                    rowLabel(provider.keyLabel,
+                             storedKey == nil
+                                ? Lf("A key from your own %@ account. Stored in your Keychain, never in a settings file.", provider.vendorName)
+                                : L("Stored in your Keychain, never in a settings file. The agent answers questions across your meetings and writes reports from your templates."))
                 }
+                // The single sentence about what leaves this Mac — it used
+                // to be written in three panes in three wordings. Named
+                // vendor, not product: that is whose servers it reaches.
+                rowLabel(L("What is sent"),
+                         Lf("A question sends the question and the passages the search found. A report sends that meeting’s whole transcript — about 12,000 words for an hour of talk. Both go to %@ on your key, and only when you ask. The recordings never leave this Mac.", provider.vendorName),
+                         note: L("Report templates are under Templates; written reports are in the library, under Reports."))
+                Button(L("Templates")) { tab = .templates }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
             }
-            // Reports and what they send live on the Templates tab now
-            // (design turn 4): this tab is the connection and nothing else.
-        } header: { Text(L("Agent")) } footer: {
-            Text(askFooter)
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        } header: { Text(L("Your agent, on your key")) }
     }
 
     /// One Keychain read per render of the section, not one per row: the
@@ -877,22 +1014,20 @@ struct SettingsView: View {
     /// Agent tab, which is where the fix is.
     private func reportsGateLine(hasKey: Bool) -> String? {
         guard let provider = askProvider else {
-            return L("Reports need the agent, which is off. Choose Claude or ChatGPT on the Agent tab to turn them on; the templates keep until then.")
+            return L("Reports need the agent, which is off. Choose Claude or ChatGPT under Summaries & reports; the templates keep until then.")
         }
         guard hasKey else {
-            return Lf("%@ is chosen but has no key. Add one on the Agent tab.", provider.productName)
+            return Lf("%@ is chosen, but there is no key yet. The agent and reports stay off until one is added.", provider.productName)
         }
         return nil
     }
 
     @ViewBuilder
     private var generalSection: some View {
-            // — General — after the two feature clusters, before the read-only
-            // status: one app-level switch does not outrank the features, and
-            // wedged between the meeting sections (where it used to sit) it
-            // was breaking that cluster in half.
-            // The appearance row leads General (design): the one choice that
-            // repaints every surface, applied the moment it is clicked.
+            // — General (design 9.2): the app about the app. Appearance
+            // leads — the one choice that repaints every surface, applied
+            // the moment it is clicked — then the interface language (about
+            // the app, not about speech), startup, and updates.
             Section {
                 LabeledContent {
                     VStack(alignment: .leading, spacing: 8) {
@@ -909,13 +1044,20 @@ struct SettingsView: View {
                             default: NSApp.appearance = nil
                             }
                         }
-                        Text(appearanceHelp)
+                        Text(L("Applies to this window, the meetings window and the panels over your other apps."))
                             .font(DS.helpText)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 } label: {
                     Text(L("Appearance"))
+                }
+                .modifier(revealed("appearance"))
+                LabeledContent {
+                    InterfaceLanguagePicker()
+                } label: {
+                    rowLabel(L("Interface language"),
+                             L("12 languages. Applies to this window and the menu bar right away. What you speak is set under Dictation."))
                 }
             }
 
@@ -929,14 +1071,55 @@ struct SettingsView: View {
                     }
                 Toggle(L("Show in Dock"), isOn: $showInDock)
                     .onChange(of: showInDock) { _, v in Settings.shared.showInDock = v }
-            } header: { Text(L("General")) } footer: {
+            } header: { Text(L("Startup")) } footer: {
                 Text(L("With this off, Dictate is menu-bar only. Clicking the Dock icon opens Meetings; the menu bar item is always there either way."))
+            }
+
+            // The version and "am I current?" on ONE line, because they are
+            // one question; the release notes and the two links under it.
+            // Updates are checked daily and installed silently, so a manual
+            // check is a rare, impatient act — a row here, not a menu item.
+            Section {
+                LabeledContent(L("Updates")) {
+                    VStack(alignment: .trailing, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Text(Self.appVersion)
+                            if !Self.buildStamp.isEmpty {
+                                Text("(\(Self.buildStamp))")
+                                    .font(.system(size: 11).monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Text("·").foregroundStyle(.tertiary)
+                            Button(L("Check for updates")) { onCheckForUpdates() }
+                                .buttonStyle(.dsSmall)
+                        }
+                        if let lastCheck = Self.lastUpdateCheck {
+                            Text(Lf("Checked automatically · last %@", lastCheck))
+                                .font(DS.helpText)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 12) {
+                            Button(Lf("What’s new in %@", Self.appVersion)) {
+                                NotificationCenter.default.post(name: .init("dictate.showWhatsNew"), object: nil)
+                            }
+                            .buttonStyle(.link)
+                            Link(L("Source code"),
+                                 destination: URL(string: "https://github.com/Budanovvv/Dictate")!)
+                            Link(L("Report an issue"),
+                                 destination: URL(string: "https://github.com/Budanovvv/Dictate/issues")!)
+                        }
+                        .font(.callout)
+                    }
+                }
+                .modifier(revealed("updates"))
             }
     }
 
     @ViewBuilder
     private var statusSection: some View {
-            // — Status (read-only) —
+            // — Permissions (design 9.2 About): reported, with the way out.
+            // Calendar joins the two the app cannot work without, because
+            // it is the third thing macOS is asked for.
             Section {
                 LabeledContent(L("Microphone")) {
                     HStack(spacing: 6) {
@@ -949,57 +1132,38 @@ struct SettingsView: View {
                     }
                 }
                 LabeledContent(L("Accessibility")) {
-                    HStack(spacing: 6) {
-                        statusBadge(ok: axGranted, text: axGranted ? L("Granted") : L("No"))
-                        if !axGranted {
-                            // The pane, not a fresh prompt: an old Deny
-                            // suppresses prompts, the switch always works
-                            // (GRABLI — the hanging-dialog trap).
-                            Button(L("Fix…")) { Permissions.openSettingsPane("Privacy_Accessibility") }
-                            .buttonStyle(.dsSmall)
-                                .controlSize(.small)
+                    if axGranted {
+                        statusBadge(ok: true, text: L("Granted"))
+                    } else {
+                        // The line points at the Dictation pane, whose
+                        // warning explains the switch and opens the right
+                        // System Settings pane (design 9.2 About; turn 33).
+                        Button { tab = .dictation; reveal("accessibility") } label: {
+                            statusBadge(ok: false, text: L("Off — dictation cannot type"))
                         }
+                        .buttonStyle(.plain)
+                        .pointerStyle(.link)
                     }
                 }
-                // The version and "am I current?" on ONE line, because they are
-                // one question. Updates are checked daily and installed
-                // silently (the app even relaunches itself when idle to apply
-                // one), so a manual check is a rare, impatient act — it did not
-                // deserve a permanent row in the menu bar's menu, and it does
-                // belong next to the number people come here to read.
-                LabeledContent(L("Version")) {
-                    HStack(spacing: 6) {
-                        Text(Self.appVersion)
-                        if !Self.buildStamp.isEmpty {
-                            Text("(\(Self.buildStamp))")
-                                .font(.system(size: 11).monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
-                        Text("·").foregroundStyle(.tertiary)
-                        Button(L("Check for updates")) { onCheckForUpdates() }
-                            .buttonStyle(.dsSmall)
-                    }
+                LabeledContent(L("Calendar")) {
+                    statusBadge(ok: MeetingCalendar.hasAccess,
+                                text: MeetingCalendar.hasAccess ? L("Granted") : L("No"))
                 }
-                // When the daily silent check last ran — the proof the
-                // automatic machinery is alive, next to the number it keeps
-                // current. Sparkle's own record, read, not duplicated.
-                if let lastCheck = Self.lastUpdateCheck {
-                    LabeledContent(L("Updates")) {
-                        Text(Lf("Checked automatically · last %@", lastCheck))
-                            .foregroundStyle(.secondary)
-                    }
+            } header: { Text(L("Permissions")) }
+            // Diagnostics last (design 9.2 About): the one action on the
+            // pane, and it sets nothing either.
+            Section {
+                LabeledContent {
+                    Button(diagnosticsCopied ? L("Copied") : L("Copy diagnostics")) { copyDiagnostics() }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                } label: {
+                    rowLabel(L("Diagnostics"),
+                             L("Mac, macOS, version and which features are on. No transcripts, no keys."))
                 }
-                LabeledContent(L("Links")) {
-                    HStack(spacing: 12) {
-                        Link(L("Source code"),
-                             destination: URL(string: "https://github.com/Budanovvv/Dictate")!)
-                        Link(L("Report an issue"),
-                             destination: URL(string: "https://github.com/Budanovvv/Dictate/issues")!)
-                    }
-                    .font(.callout)
-                }
-            } header: { Text(L("Status")) } footer: {
-                Text(L("Network access: a one-time model download — nothing else. Don't take our word for it: turn off Wi-Fi and dictate."))
+            } header: { Text(L("Diagnostics")) } footer: {
+                // The pane's contract, at its foot (design 9.2).
+                Text(L("Nothing is set here. Every line above either reports what this Mac can do or points at the pane that owns it."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1030,23 +1194,6 @@ struct SettingsView: View {
         }
     }
 
-    /// What the asking section promises. Its own paragraph because it makes a
-    /// different promise from the local model's, and one paragraph making both
-    /// is exactly how "nothing is sent anywhere" quietly acquired an exception.
-    private var askFooter: String {
-        guard let provider = askProvider else {
-            return L("Asking questions is off, so nothing about your meetings leaves this Mac.")
-        }
-        // Named vendor, not product: the footer says whose servers the
-        // passages reach, and that is Anthropic or OpenAI, not Claude.
-        // Honest about the agent loop: it OPENS whole transcripts when it
-        // decides to read them, and those go to the provider too. The old
-        // line ("whole meetings never do") predated the tool loop and had
-        // become a false privacy claim (review find, 2026-08-31).
-        return Lf("Asking is the one thing that leaves this Mac: your question, the search hits, and the transcripts the agent opens to answer go to %@ on your key. Nothing is sent until you ask.",
-                  provider.vendorName)
-    }
-
     // MARK: - Templates
 
     /// A template is a form the agent fills in from a transcript. Rows like
@@ -1055,15 +1202,6 @@ struct SettingsView: View {
     /// that comes and goes is a control nobody can find twice.
     @ViewBuilder
     private var templatesSection: some View {
-        // What a report is, and why one cannot be written right now when it
-        // cannot (design turn 4: Reports moved here from Agent). A
-        // whole-width row, like This Mac's verdicts.
-        Section {
-            rowLabel(L("Reports"),
-                     L("A structured write-up of a call under fields you define once, such as Objections or Next steps, written from any meeting’s card. A field the call did not cover reads “Not discussed”."),
-                     warn: false,
-                     note: reportsGateLine(hasKey: storedKey != nil))
-        }
         Section {
             // The templates as a visible list (design: Settings › Agent,
             // turn 3), not a popup: which forms exist is the first thing a
@@ -1074,8 +1212,8 @@ struct SettingsView: View {
                 // needs only the sentence — and with no templates at all,
                 // what one is and where a report comes from.
                 Text(templateStore.templates.isEmpty
-                     ? L("No templates yet. A template is a name, an optional Context and a few fields; a report is written from it on demand from a meeting’s card.")
-                     : L("A form the agent fills in from a transcript: field names become headings, the model writes under each."))
+                     ? L("No templates yet. A template is a name, an optional Context and a few fields; a report is written from it on demand from a meeting’s card, one per template per meeting.")
+                     : L("A template is a name, an optional Context and a few fields. A report is written from it on demand, one per template per meeting."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if !templateStore.templates.isEmpty {
@@ -1111,6 +1249,20 @@ struct SettingsView: View {
                         .padding(6)
                         .frame(width: 300)
                     }
+                // Why nothing can be written right now, pointing at the pane
+                // that owns the fix (design 9.2).
+                if let gate = reportsGateLine(hasKey: storedKey != nil) {
+                    // The sentence is the link: Summaries & reports ›
+                    // Answers with, revealed (design turn 33).
+                    Button { tab = .writing; reveal("answersWith") } label: {
+                        Text(gate)
+                            .font(.caption).foregroundStyle(DS.warn)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .buttonStyle(.plain)
+                    .pointerStyle(.link)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } header: { Text(L("Templates")) }
@@ -1129,7 +1281,7 @@ struct SettingsView: View {
                 // Context and the fields take the whole row: a paragraph and
                 // a list have no business in a control column.
                 VStack(alignment: .leading, spacing: 8) {
-                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template, such as “We are a sales agency; the client is always the other party.” Sent with every report."))
+                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template. Sent with every report."))
                     TextField("", text: templateBinding(draft, \.context),
                               prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
                         .labelsHidden()
@@ -1155,9 +1307,12 @@ struct SettingsView: View {
             Section {
                 LabeledContent {
                     HStack(spacing: 10) {
-                        Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
-                            .buttonStyle(.dsSmall).controlSize(.small)
                         Button(L("Remove template…")) { confirmRemoveTemplate = true }
+                            .buttonStyle(.dsSmall).controlSize(.small)
+                        // Export leaves for the library's Reports collection
+                        // in the next pass; until then the function stays
+                        // reachable here (deviation from 9.2, recorded).
+                        Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
                             .buttonStyle(.dsSmall).controlSize(.small)
                     }
                     .confirmationDialog(Lf("Remove “%@”?", draft.name), isPresented: $confirmRemoveTemplate,
@@ -1171,23 +1326,12 @@ struct SettingsView: View {
                         Text(L("Reports already written with it stay in their meetings."))
                     }
                 } label: {
-                    // How many meetings carry one — counted off the main
-                    // thread from the archive index (design turn 4).
+                    // The count as a fact beside Remove (design 9.2): what
+                    // stays if this template goes.
                     let count = reportCounts[draft.id]
-                    rowLabel(L("Written reports"),
-                             L("Every report written with this template, one file per meeting: Markdown, plain text or PDF, plus a CSV table."),
-                             note: count.map { $0 == 0
-                                 ? L("No meeting has a report from this template yet.")
-                                 : Lf("Meetings with a report from this template: %d", $0) })
+                    rowLabel(L("Remove template"),
+                             count.map { Lf("%d meetings have a %@ report. They stay if this template goes.", $0, draft.name) })
                 }
-            }
-        }
-        // What leaves this Mac when a report is written — next to the
-        // templates it is written from (design turn 4).
-        if let provider = askProvider, storedKey != nil {
-            Section {
-                rowLabel(L("What is sent"),
-                         Lf("Each report sends the whole transcript to %@ on your key — about 12,000 words for an hour of talk. The recording never leaves this Mac.", provider.vendorName))
             }
         }
     }
@@ -1391,14 +1535,6 @@ struct SettingsView: View {
             }
             Text(TextModelRowCopy.agentLine(productName: askProvider?.productName))
                 .fixedSize(horizontal: false, vertical: true)
-            LabeledContent {
-                Button(diagnosticsCopied ? L("Copied") : L("Copy diagnostics")) { copyDiagnostics() }
-                    .buttonStyle(.dsSmall)
-                    .controlSize(.small)
-            } label: {
-                rowLabel(L("Diagnostics"),
-                         L("Mac, macOS, version and which features are on. No transcripts, no keys."))
-            }
         } header: { Text(L("This Mac")) }
     }
 
@@ -1415,17 +1551,30 @@ struct SettingsView: View {
                 Text(MachineProfile.fileSizeText(Int64(ModelTier.fast.sizeMB) * 1_000_000))
                     .foregroundStyle(.secondary).monospacedDigit()
             } label: {
-                rowLabel(L("Speech model"), L("Required for dictation."))
+                rowLabel(L("Speech model"),
+                         Lf("%@ · required for dictation, cannot be removed.",
+                            MachineProfile.fileSizeText(Int64(ModelTier.fast.sizeMB) * 1_000_000)))
             }
+            // About only reports (design 9.2): the one Remove lives under
+            // Summaries & reports, and this row points there.
             LabeledContent {
-                meetingModelStorageControl
+                HStack(spacing: 8) {
+                    Text(storage.map { MachineProfile.fileSizeText($0.meetingModelBytes) } ?? LocalTextModelFile.sizeText)
+                        .foregroundStyle(.secondary).monospacedDigit()
+                    Button(L("Summaries & reports")) { tab = .writing; reveal("meetingModel") }
+                        .buttonStyle(.link).controlSize(.small)
+                }
             } label: {
                 rowLabel(L("Meeting model"), meetingModelStorageHint)
             }
             if let storage, storage.speakerModelBytes > 0 {
                 LabeledContent {
-                    Text(MachineProfile.fileSizeText(storage.speakerModelBytes))
-                        .foregroundStyle(.secondary).monospacedDigit()
+                    HStack(spacing: 8) {
+                        Text(MachineProfile.fileSizeText(storage.speakerModelBytes))
+                            .foregroundStyle(.secondary).monospacedDigit()
+                        Button(L("Meetings")) { tab = .meetings; reveal("separateVoices") }
+                            .buttonStyle(.link).controlSize(.small)
+                    }
                 } label: {
                     rowLabel(L("Speaker models"), L("Tell the voices on a call apart."))
                 }
@@ -1441,7 +1590,9 @@ struct SettingsView: View {
                     .controlSize(.small)
                 }
             } label: {
-                rowLabel(L("Meeting archive"), L("Your transcripts, as Markdown files you own."))
+                rowLabel(L("Meeting archive"),
+                         storage.map { Lf("%d meetings, reports included", $0.meetingCount) }
+                             ?? L("Your transcripts, as Markdown files you own."))
             }
             // Only while the hidden debug default is on and there is
             // something to show — a row for an instrument nobody turned on
@@ -1461,6 +1612,7 @@ struct SettingsView: View {
                 }
             }
         } header: { Text(L("Storage")) }
+        .modifier(revealed("storage"))
     }
 
     private var meetingModelStorageHint: String {
@@ -1482,34 +1634,6 @@ struct SettingsView: View {
                                                      appleIntelligence: MeetingTextEngines.appleIntelligence)
             if case .unavailable(let reason, _) = verdict { return reason }
             return L("Not available on this Mac.")
-        }
-    }
-
-    @ViewBuilder
-    private var meetingModelStorageControl: some View {
-        switch textModel.state {
-        case .ready, .installedNotRunnable:
-            HStack(spacing: 8) {
-                Text(storage.map { MachineProfile.fileSizeText($0.meetingModelBytes) } ?? LocalTextModelFile.sizeText)
-                    .foregroundStyle(.secondary).monospacedDigit()
-                Button(L("Remove…")) { confirmRemoveModel = true }
-                    .buttonStyle(.dsSmall)
-                    .controlSize(.small)
-            }
-        case .absent, .failed:
-            Button(Lf("Download %@", LocalTextModelFile.sizeText)) { textModel.start() }
-                .buttonStyle(.dsSmall)
-                .controlSize(.small)
-        case .downloading(let fraction):
-            HStack(spacing: 8) {
-                ProgressView(value: fraction).frame(width: 70)
-                Text("\(Int(fraction * 100))%")
-                    .font(DS.timestamp).foregroundStyle(.secondary)
-            }
-        case .verifying:
-            ProgressView().controlSize(.small)
-        case .unsupported:
-            Text("—").foregroundStyle(.tertiary)
         }
     }
 
@@ -1655,9 +1779,7 @@ struct SettingsView: View {
                 .buttonStyle(.dsSmall)
                 .controlSize(.small)
         case .ready:
-            // Managing the file — its size, removing it — is This Mac's job;
-            // this row only points there.
-            Button(L("Manage…")) { tab = .thisMac }
+            Button(L("Remove…")) { confirmRemoveModel = true }
                 .buttonStyle(.dsSmall)
                 .controlSize(.small)
         case .installedNotRunnable:
@@ -1684,17 +1806,52 @@ struct SettingsView: View {
             ?? UserDefaults.standard.string(forKey: "settingsOpenTab") else { return }
         UserDefaults.standard.removeObject(forKey: "debugShotTab")
         UserDefaults.standard.removeObject(forKey: "settingsOpenTab")
-        switch wanted {
-        case "languages": tab = .languages
+        // "pane" or "pane/row" — the row is revealed (design turn 33, the
+        // deep-link table). Old pane names still land somewhere sensible.
+        let parts = wanted.split(separator: "/", maxSplits: 1).map(String.init)
+        switch parts.first ?? "" {
+        case "dictation", "keys", "languages": tab = .dictation
         case "meetings": tab = .meetings
-        case "agent": tab = .agent
-        case "templates": tab = askProvider != nil ? .templates : .agent
+        case "writing", "agent": tab = .writing
+        case "templates": tab = .templates
         case "general": tab = .general
-        case "thismac": tab = .thisMac
-        default: tab = .keys
+        case "about", "thismac": tab = .about
+        default: tab = .dictation
         }
-        Log.d("corner: settings landed on tab \(wanted)")
+        if parts.count > 1 { reveal(parts[1]) }
+        Log.d("corner: settings landed on \(wanted)")
     }
+
+    /// Tint the named row for a moment — the deep link's "revealed".
+    private func reveal(_ row: String) {
+        revealRow = row
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
+            if revealRow == row { withAnimation(.easeOut(duration: DS.reveal)) { revealRow = nil } }
+        }
+    }
+
+    /// The tint a revealed row carries, applied to the row's content.
+    private func revealed(_ row: String) -> some ViewModifier {
+        RevealTint(on: revealRow == row)
+    }
+}
+
+/// The deep link's landing: the row tinted the sidebar's selection colour
+/// for a moment, then back to nothing.
+private struct RevealTint: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 6).fill(on ? DS.selectionTint : .clear))
+            .padding(.horizontal, -6)
+            .padding(.vertical, -3)
+            .animation(.easeOut(duration: DS.reveal), value: on)
+    }
+}
+
+extension SettingsView {
 
     /// A row's name, and under it the one line that explains it — when there is
     /// one. `nil` leaves the row a single line rather than an empty second one.

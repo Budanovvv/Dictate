@@ -37,6 +37,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// silent update is visible before it is staged (owner, 2026-09-14:
     /// "I pressed Check and saw nothing happening").
     var updateProgress: String?
+    /// A recalled row was clicked, but nothing on screen holds a text cursor:
+    /// Paster left the words in the clipboard, and the overlay should say so
+    /// the way it does for a fresh dictation that went nowhere (design 9.3).
+    var onInsertKeptInClipboard: ((String) -> Void)?
 
     init(dictation: DictationController,
          openSettings: @escaping () -> Void,
@@ -334,27 +338,50 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Shaped like rows, so they behave like rows (audit 3.3, P13): a
         // click opens Settings › Keys, where somebody clicking a key row
         // wants to arrive.
-        for (key, what) in dictationKeyRows() {
+        for (index, (key, what)) in dictationKeyRows().enumerated() {
+            let row = index == 0 ? "dictationKey" : "translateKey"
             menu.addItem(Self.viewItem(KeycapRow(key: key, what: what) { [weak self] in
-                self?.openKeysSettings()
+                self?.openKeysSettings(row: row)
             }))
         }
 
         // Safety net: recent results are recoverable even when a paste went
         // nowhere or the clipboard got overwritten. Inline rows under their
-        // own header, "click to copy" spelled out at its right (design 4a) —
-        // a submenu was tried and was a door nobody found.
+        // own header, "click to insert" spelled out at its right (design
+        // 9.3) — a submenu was tried and was a door nobody found. A click
+        // INSERTS into whatever holds the text cursor: the status menu never
+        // activates Dictate, so the person's app keeps focus. ⌥ copies
+        // instead; ⇧ forgets the row. NSMenu has no per-row context menu, so
+        // the mockup's "Forget this one" rides the ⇧ alternate — same words
+        // in the row, only the action differs.
         if !dictation.history.isEmpty {
             menu.addItem(.separator())
             menu.addItem(Self.viewItem(RecentHeaderRow()))
-            for text in dictation.history.prefix(3) {
-                let entry = NSMenuItem(title: Self.shortened(text),
-                                       action: #selector(copyHistoryItem(_:)), keyEquivalent: "")
-                entry.target = self
-                entry.representedObject = text
-                entry.toolTip = text
-                menu.addItem(entry)
+            let now = Date()
+            for entry in dictation.history.prefix(10) {
+                let title = Self.recentTitle(entry.text, age: Self.relativeAge(of: entry.at, now: now))
+                // Alternates must directly follow their primary and share its
+                // (empty) key equivalent; the modifier alone tells them apart.
+                let insert = NSMenuItem(title: "", action: #selector(insertHistoryItem(_:)),
+                                        keyEquivalent: "")
+                insert.keyEquivalentModifierMask = []
+                let copy = NSMenuItem(title: "", action: #selector(copyHistoryItem(_:)),
+                                      keyEquivalent: "")
+                copy.keyEquivalentModifierMask = .option
+                copy.isAlternate = true
+                let forget = NSMenuItem(title: "", action: #selector(forgetHistoryItem(_:)),
+                                        keyEquivalent: "")
+                forget.keyEquivalentModifierMask = .shift
+                forget.isAlternate = true
+                for row in [insert, copy, forget] {
+                    row.attributedTitle = title
+                    row.target = self
+                    row.representedObject = entry.text
+                    row.toolTip = entry.text
+                    menu.addItem(row)
+                }
             }
+            menu.addItem(Self.viewItem(RecentFooterRow()))
         }
 
         menu.addItem(.separator())
@@ -514,6 +541,46 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
+    /// The age beside a recent row (design 9.3): minutes under an hour,
+    /// hours beyond. Never "0 min ago" — ten seconds old is a minute old to
+    /// the eye, and a zero reads as a bug.
+    private static func relativeAge(of date: Date, now: Date) -> String {
+        let minutes = max(1, Int(now.timeIntervalSince(date) / 60))
+        return minutes < 60 ? Lf("%d min ago", minutes) : Lf("%d h", minutes / 60)
+    }
+
+    /// A recent row: the words, then the age in a lighter, smaller face —
+    /// the meeting row's pattern, so the row stays a plain menu item that
+    /// highlights and clicks like every other.
+    private static func recentTitle(_ text: String, age: String) -> NSAttributedString {
+        let title = NSMutableAttributedString(
+            string: shortened(text),
+            attributes: [.font: NSFont.menuFont(ofSize: 0)])
+        title.append(NSAttributedString(
+            string: "  " + age,
+            attributes: [.font: NSFont.menuFont(ofSize: NSFont.systemFontSize(for: .small)),
+                         .foregroundColor: NSColor.tertiaryLabelColor]))
+        return title
+    }
+
+    /// The row's click (design 9.3): the words go to the text cursor. One
+    /// turn later — the action fires while the menu is still tearing down,
+    /// and the paste's focus probe should meet the person's app with the
+    /// menu gone. No cursor anywhere: Paster keeps the words in the
+    /// clipboard and the overlay says so.
+    @objc private func insertHistoryItem(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {   // main-queue dispatch, main by construction
+                if Paster.insert(text) == .keptInClipboard {
+                    self?.onInsertKeptInClipboard?(text)
+                }
+            }
+        }
+    }
+
+    /// ⌥-click: the old behaviour, now the alternate — the words go to the
+    /// clipboard and nowhere else.
     @objc private func copyHistoryItem(_ sender: NSMenuItem) {
         guard let text = sender.representedObject as? String else { return }
         let pb = NSPasteboard.general
@@ -521,17 +588,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pb.setString(text, forType: .string)
     }
 
+    /// ⇧-click: forget the row. Found by its words, not by its position —
+    /// a dictation may have finished (and shifted the list) while the menu
+    /// was open.
+    @objc private func forgetHistoryItem(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String,
+              let index = dictation.history.firstIndex(where: { $0.text == text }) else { return }
+        dictation.forgetHistory(at: index)
+    }
+
     @objc private func settingsClicked() {
         openSettings()
     }
 
-    /// Settings, on the Keys tab: a custom row cannot carry a menu action,
-    /// so it closes the menu itself and asks the window for the tab.
-    private func openKeysSettings() {
+    /// Settings › Dictation, at the key that was clicked: a custom row
+    /// cannot carry a menu action, so it closes the menu itself and asks the
+    /// window for the pane and row.
+    private func openKeysSettings(row: String) {
         item.menu?.cancelTracking()
-        // The corner menu's route: the tab in defaults, one notification
-        // that both opens the window and tells it which tab.
-        UserDefaults.standard.set("keys", forKey: "settingsOpenTab")
+        // The corner menu's route: the target in defaults, one notification
+        // that both opens the window and tells it where.
+        UserDefaults.standard.set("dictation/" + row, forKey: "settingsOpenTab")
         NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
     }
 
@@ -539,9 +616,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         Permissions.openSettingsPane("Privacy_Accessibility")
     }
 
+    /// Settings › Dictation › Installed packs (design turn 33): the row
+    /// lists what is installed and carries the System Settings button.
     @objc private func openLanguagePacks() {
-        NSWorkspace.shared.open(
-            URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!)
+        UserDefaults.standard.set("dictation/packs", forKey: "settingsOpenTab")
+        NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
     }
 
     @objc private func meetingClicked() {
@@ -561,8 +640,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         showPill()
     }
 
+    /// Pops the menu as if the mark had been clicked — the overlay's "Recent
+    /// dictations" button lands here (design 9.3): the list lives in the
+    /// menu, the pill only points at it.
+    func openMenu() { item.button?.performClick(nil) }
+
     // Screenshot harness (design pass): open/close the menu without a mouse.
-    func debugOpenMenu() { item.button?.performClick(nil) }
+    func debugOpenMenu() { openMenu() }
     func debugCloseMenu() { item.menu?.cancelTracking() }
 
     @objc private func showAbout() {
@@ -679,14 +763,15 @@ private struct KeycapRow: View {
 }
 
 /// The Recent dictations header: the label at the left, the affordance —
-/// "click to copy" — spelled out at the right, where a submenu used to hide it.
+/// "click to insert" — spelled out at the right, where a submenu used to
+/// hide it (design 9.3).
 private struct RecentHeaderRow: View {
     var body: some View {
         HStack {
             Text(L("Recent dictations"))
                 .font(.system(size: 11, weight: .semibold))
             Spacer(minLength: 8)
-            Text(L("click to copy"))
+            Text(L("click to insert"))
                 .font(.system(size: 11))
         }
         .foregroundStyle(.secondary)
@@ -694,5 +779,20 @@ private struct RecentHeaderRow: View {
         .padding(.horizontal, 14)
         .padding(.top, 4)
         .padding(.bottom, 2)
+    }
+}
+
+/// Under the list (design 9.3): the other click, and how long the list
+/// lives. Static and quiet — it explains the rows, it is not one.
+private struct RecentFooterRow: View {
+    var body: some View {
+        Text(L("⌥-click to copy instead. Cleared when Dictate quits."))
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: 300, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.top, 2)
+            .padding(.bottom, 4)
     }
 }

@@ -153,8 +153,14 @@ final class DictationController {
     var onLiveTypingStarted: ((String?) -> Void)?
     /// Forward-only count of words live typing has already put in the document.
     var onLiveTyped: ((Int) -> Void)?
+    /// One remembered result: the words and when they were said — the menu
+    /// shows the age beside each row (design 9.3).
+    struct RecentDictation: Equatable {
+        let text: String
+        let at: Date
+    }
     /// Recent results, newest first (in memory only — never written to disk).
-    private(set) var history: [String] = []
+    private(set) var history: [RecentDictation] = []
     private(set) var lastStats: (words: Int, seconds: Double)?
     /// Whether the last result came from the translate key (onboarding checklist).
     private(set) var lastWasTranslate = false
@@ -1061,6 +1067,15 @@ final class DictationController {
         }
     }
 
+    /// Drops one remembered result — the menu's "Forget this one" (design
+    /// 9.3). Index into `history`, newest first. Out of range is a no-op: a
+    /// dictation can finish while the menu is still open, and the row the
+    /// person meant may have moved.
+    func forgetHistory(at index: Int) {
+        guard history.indices.contains(index) else { return }
+        history.remove(at: index)
+    }
+
     /// - Parameter rawText: the transcription before post-processing. Only live
     ///   typing needs it: the engine committed raw words, so the final text has
     ///   to be aligned against the raw form to see what is left to insert.
@@ -1078,7 +1093,7 @@ final class DictationController {
         let words = text.split(whereSeparator: \.isWhitespace).count
         lastStats = text.isEmpty ? nil : (words, seconds)
         if !text.isEmpty {
-            history.insert(text, at: 0)
+            history.insert(RecentDictation(text: text, at: Date()), at: 0)
             if history.count > 10 { history.removeLast() }
             // Translate-tip bookkeeping: a translate result anywhere (incl. the
             // onboarding try-out) silences the tip forever; the dictation

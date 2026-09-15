@@ -76,6 +76,10 @@ final class RecordingHUD {
     /// pill cannot host the macOS translation consent itself (GRABLI: consent
     /// sheets need a real window), so the click opens Settings, which can.
     var onOpenSettings: (() -> Void)?
+    /// The "Recent dictations" button on the states where a take was not
+    /// kept, and on copied (design 9.3): opens the menu bar menu, where the
+    /// list lives. Wired by AppDelegate to StatusItemController.openMenu().
+    var onOpenRecent: (() -> Void)?
     private var panel: NSPanel?
     private var elapsedTimer: Timer?
     private var hideWork: DispatchWorkItem?
@@ -378,7 +382,10 @@ final class RecordingHUD {
         if model.mode != .translateTip, model.mode != .translateDataMissing {
             model.tapAction = nil
         }
-        panel.ignoresMouseEvents = model.tapAction == nil
+        // The recall footer's button (design 9.3) is the other reason to
+        // take the mouse — for the button alone; the rest of that pill has
+        // no tap action and stays inert.
+        panel.ignoresMouseEvents = model.tapAction == nil && !HUDView.hasRecallFooter(model.mode)
         // Reset position and alpha only when the pill is actually off screen.
         // A state change on a visible pill (recording → transcribing) must not
         // drop it to alpha 0 and fade back in — that reads as a flash, the
@@ -397,7 +404,9 @@ final class RecordingHUD {
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let hosting = NSHostingView(rootView: HUDView(model: model))
+        let hosting = NSHostingView(rootView: HUDView(model: model, openRecent: { [weak self] in
+            self?.onOpenRecent?()
+        }))
         hosting.frame = NSRect(x: 0, y: 0, width: HUDView.panelSize.width, height: HUDView.panelSize.height)
 
         let panel = NSPanel(
@@ -466,11 +475,24 @@ final class RecordingHUD {
 private struct HUDView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var model: HUDModel
+    /// The recall footer's button — opens the menu bar menu (design 9.3).
+    let openRecent: () -> Void
     @State private var noticeHover = false
 
-    /// The panel takes the mouse only in these two states (see show()).
+    /// The whole pill is the click target only in these two states (see
+    /// show()); the recall footer's button is a target of its own.
     private var tappable: Bool {
         model.mode == .translateTip || model.mode == .translateDataMissing
+    }
+
+    /// The states that end with the recall footer (design 9.3): every one
+    /// where this take was not kept, plus copied — where the words are in
+    /// the clipboard AND the list, so the clipboard can be given back.
+    static func hasRecallFooter(_ mode: HUDModel.Mode) -> Bool {
+        switch mode {
+        case .empty, .tooQuiet, .tooLoud, .micBusy, .copied: return true
+        default: return false
+        }
     }
 
     /// The design's 452 pt panel (13h): a fixed grammar top to bottom —
@@ -690,6 +712,24 @@ private struct HUDView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
         }
+        // The recall footer (design 9.3): a hairline, the line saying where
+        // the earlier takes live, and the door to them. The panel takes the
+        // mouse in these states for this button alone (see show()); the
+        // panel stays non-activating, so the click costs the person's app
+        // nothing.
+        if let recallLine {
+            HStack(alignment: .center, spacing: 12) {
+                Text(recallLine)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button(L("Recent dictations"), action: openRecent)
+                    .buttonStyle(.dsSmall)
+            }
+            .padding(.top, 8)
+            .overlay(alignment: .top) { Divider() }
+        }
         if model.mode == .inserted, model.clipboardRestored {
             Text(L("Clipboard restored."))
                 .font(.system(size: 11))
@@ -710,14 +750,31 @@ private struct HUDView: View {
         }
     }
 
-    /// Kept or gone. The failures that heard nothing usable kept nothing;
-    /// a cancel kept nothing; the missing translation pack inserted the
+    /// Kept, in other words: the missing translation pack inserted the
     /// untranslated words (DictationController inserts before it reports).
+    /// The states that kept nothing say so in the recall footer instead
+    /// (design 9.3); a cancel says nothing beyond its title.
     private var keptLine: String? {
         switch model.mode {
-        case .empty, .micBusy, .tooQuiet, .tooLoud: return L("Nothing was kept — say it again.")
-        case .cancelled: return L("Nothing was kept.")
         case .translateDataMissing: return L("Your words were inserted untranslated.")
+        default: return nil
+        }
+    }
+
+    /// The recall footer's line (design 9.3): what happened to THIS take,
+    /// and that the earlier ones are a click away. Copied is the odd one —
+    /// the take was kept twice, so the line is about giving the clipboard
+    /// back.
+    private var recallLine: String? {
+        switch model.mode {
+        case .empty:
+            return L("Nothing was kept from this take — earlier ones are still here.")
+        case .tooQuiet, .tooLoud:
+            return L("This take was not kept. Earlier ones are still here.")
+        case .micBusy:
+            return L("Nothing was recorded, so nothing was kept. Earlier ones are still here.")
+        case .copied:
+            return L("It is also in Recent dictations, so the clipboard is yours again whenever you like.")
         default: return nil
         }
     }

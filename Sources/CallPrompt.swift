@@ -148,9 +148,20 @@ private struct CallPromptCard: View {
                     .buttonStyle(.dsRegular)
             }
             if firstEver {
-                Text(L("Asked once. After this, the panel is the short version above."))
+                // The first-ever footnote (design 9.4 offerFirst) also names
+                // the other door — the menu bar — once, in full.
+                Text(L("Asked once. After this, the panel is the short version, and it stays until you answer it. You can also start recording from the menu bar at any point during a call."))
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if style == .prompt {
+                // The short version (design 9.4 offerQuiet): one line under
+                // the buttons, so the menu bar route survives the long
+                // footnote's retirement.
+                Text(L("Or start from the menu bar later in the call."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if style == .offer {
                 Button(L("Don't offer this again"), action: onNever)

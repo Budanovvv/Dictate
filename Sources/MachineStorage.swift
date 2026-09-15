@@ -16,6 +16,9 @@ struct MachineStorage: Sendable {
     /// Everything else under models/: the speaker models the diarizer fetched.
     let speakerModelBytes: Int64
     let meetingArchiveBytes: Int64
+    /// Meeting files in the archive — reports live inside them, so this is
+    /// the one count About needs.
+    let meetingCount: Int
     /// The debug audio dumps (`meetingAudioDump`), when the default is on.
     let debugDumpBytes: Int64
 
@@ -39,6 +42,8 @@ struct MachineStorage: Sendable {
             meetingModelBytes: text,
             speakerModelBytes: speakers,
             meetingArchiveBytes: size(of: archive),
+            meetingCount: ((try? FileManager.default.contentsOfDirectory(atPath: archive.path)) ?? [])
+                .filter { $0.hasSuffix(".md") }.count,
             debugDumpBytes: size(of: replayDirectory))
     }
 

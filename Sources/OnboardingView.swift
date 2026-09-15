@@ -794,7 +794,11 @@ private struct PermissionsStep: View {
                 Text(L("Already clicked and nothing changed?"))
                     .foregroundStyle(.tertiary)
                 Button(L("Show me where to look")) {
-                    Permissions.openSettingsPane("Privacy_Accessibility")
+                    // Settings › Dictation opens on its Accessibility
+                    // warning, which explains the switch and opens the pane
+                    // (design turn 33 deep links).
+                    UserDefaults.standard.set("dictation/accessibility", forKey: "settingsOpenTab")
+                    NotificationCenter.default.post(name: .init("dictate.openSettings"), object: nil)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DS.accentText)

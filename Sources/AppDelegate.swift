@@ -569,7 +569,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 }
             }
         }
-        hud.onOpenSettings = { [weak self] in self?.showSettings() }
+        hud.onOpenSettings = { [weak self] in
+            // The pack that is missing is named on the Translate into row
+            // (design turn 33 deep links: Dictation › Translate into, revealed).
+            UserDefaults.standard.set("dictation/translateInto", forKey: "settingsOpenTab")
+            self?.showSettings()
+        }
+        // The overlay's "Recent dictations" button opens the menu bar menu
+        // (design 9.3) — the list lives there, the pill only points at it.
+        hud.onOpenRecent = { [weak self] in self?.statusController.openMenu() }
+        // A recalled row inserted from the menu found no text cursor: the
+        // words wait in the clipboard and the pill says so, the same way it
+        // does for a fresh dictation that went nowhere.
+        statusController.onInsertKeptInClipboard = { [weak self] text in
+            self?.hud.showCopied(text: text)
+        }
         // Already delivered on main by DictationController (dispatched at the
         // source) — no extra hop here, the level drives a 60 fps equalizer.
         dictation.onTranscribeProgress = { [weak self] fraction, words in
@@ -676,6 +690,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         ) { [weak self] _ in
             // Main by construction: the observer's queue is .main.
             MainActor.assumeIsolated { self?.manualUpdateCheck() }
+        })
+        // Settings › General › "What’s new in …": the sheet belongs to the
+        // meetings window, which has to be on screen to show it.
+        menuObservers.append(NotificationCenter.default.addObserver(
+            forName: .init("dictate.showWhatsNew"), object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showMeetingWindow(focus: true) }
         })
         // The text model's helper paused for memory and the memory is back:
         // the backfills exited their loops when it paused, so somebody has
@@ -964,7 +985,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         DispatchQueue.main.async {
             Log.d("updates: manual probe — v\(item.displayVersionString) available")
             TopNotice.show(Lf("Update %@ is on its way — downloading now. It installs itself at the next quiet moment; the menu bar offers it sooner.",
-                                 item.displayVersionString))
+                                 item.displayVersionString),
+                           action: Self.whatsNewAction(for: item.displayVersionString))
         }
     }
 
@@ -993,7 +1015,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         if let staged = statusController.stagedUpdateVersion {
             DispatchQueue.main.async {
                 Log.d("updates: manual probe — v\(staged) already staged")
-                TopNotice.show(Lf("Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.", staged))
+                TopNotice.show(Lf("Update %@ is ready — install it from the menu bar, or it installs itself at the next quiet moment.", staged),
+                               action: Self.whatsNewAction(for: staged))
             }
             return
         }
@@ -1002,6 +1025,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             Log.d("updates: manual probe — up to date")
             TopNotice.show(Lf("You're up to date — Dictate %@ is the newest version.", version))
         }
+    }
+
+    /// "What's new" on the update notices (design 9.4): that version's
+    /// release page on GitHub — the notes are published there, and an
+    /// update strip that names a version should say what it brings.
+    private static func whatsNewAction(for version: String)
+        -> (title: String, run: @MainActor () -> Void) {
+        (L("What’s new"), {
+            guard let url = URL(string: "https://github.com/Budanovvv/Dictate/releases/tag/v\(version)")
+            else { return }
+            NSWorkspace.shared.open(url)
+        })
     }
 
     func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,

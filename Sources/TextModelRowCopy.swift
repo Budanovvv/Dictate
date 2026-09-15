@@ -106,7 +106,7 @@ enum TextModelRowCopy {
                 lines.append(reason)
                 lines.append(instead)
             } else {
-                lines.append(L("Download the meeting model in Meetings, or add a key for the agent."))
+                lines.append(L("Download the meeting model under Summaries & reports, or add a key for the agent."))
             }
             return lines
         }
