@@ -446,11 +446,15 @@ struct MeetingsView: View {
             // Settings menu (owner, 2026-08-31: "settings inside settings —
             // wrong"). The gear row IS the settings door; the menu lists
             // the sections.
-            cornerRow(L("Keyboard shortcuts")) { openSettingsWindow(tab: "dictation/dictationKey") }
-            Divider().padding(.vertical, 4)
-            cornerRow(L("Appearance"), trailing: appearanceValue) { openSettingsWindow(tab: "general/appearance") }
-            cornerRow(L("Storage & models")) { openSettingsWindow(tab: "about/storage") }
-            cornerRow(L("Agent & reports")) { openSettingsWindow(tab: "writing/answersWith") }
+            // The six panes, by their own names and in their own order
+            // (owner, 2026-09-15): the menu is a table of contents for the
+            // Settings window, not a second vocabulary for it.
+            cornerRow(L("Dictation")) { openSettingsWindow(tab: "dictation") }
+            cornerRow(L("Meetings")) { openSettingsWindow(tab: "meetings") }
+            cornerRow(L("Summaries & reports")) { openSettingsWindow(tab: "writing") }
+            cornerRow(L("Templates")) { openSettingsWindow(tab: "templates") }
+            cornerRow(L("General")) { openSettingsWindow(tab: "general") }
+            cornerRow(L("About")) { openSettingsWindow(tab: "about") }
             Divider().padding(.vertical, 4)
             cornerRow(L("What’s new")) {
                 settingsMenuOpen = false
@@ -470,15 +474,6 @@ struct MeetingsView: View {
         .padding(5)
         .frame(width: 212)
     }
-
-    private var appearanceValue: String {
-        switch Settings.shared.appearance {
-        case "light": return L("Light")
-        case "dark": return L("Dark")
-        default: return L("Match system")
-        }
-    }
-
 
     private func openSettingsWindow(tab: String?) {
         if let tab { UserDefaults.standard.set(tab, forKey: "settingsOpenTab") }

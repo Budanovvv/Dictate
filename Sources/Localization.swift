@@ -154,8 +154,6 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 extension Localization {
     static let ru: [String: String] = [
         "Settings": "Настройки",
-        "Keyboard shortcuts": "Сочетания клавиш",
-        "Storage & models": "Хранилище и модели",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain отказался сохранить ключ — он остался в поле. Разблокируйте связку и попробуйте снова.",
         "Couldn't reach the update server. Try again once you're online.": "Не удалось связаться с сервером обновлений. Попробуйте, когда появится сеть.",
         "You're up to date — Dictate %@ is the newest version.": "У вас последняя версия — новее Dictate %@ нет.",
@@ -661,7 +659,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. Отчёт в любом случае остаётся в файле встречи; это создаёт копию.",
         "%d fields": "Полей: %d",
         "Add field": "Добавить поле",
-        "Agent & reports": "Агент и отчёты",
         "Also one table (CSV): a row per meeting, a column per field": "И одна таблица (CSV): строка на встречу, столбец на поле",
         "Answers with": "Отвечает через",
         "Choose folder…": "Выбрать папку…",
@@ -902,8 +899,6 @@ extension Localization {
 
     static let uk: [String: String] = [
         "Settings": "Налаштування",
-        "Keyboard shortcuts": "Сполучення клавіш",
-        "Storage & models": "Сховище та моделі",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain відмовився зберегти ключ — він залишився в полі. Розблокуйте в'язку і спробуйте ще раз.",
         "Couldn't reach the update server. Try again once you're online.": "Не вдалося зв'язатися з сервером оновлень. Спробуйте, коли з'явиться мережа.",
         "You're up to date — Dictate %@ is the newest version.": "У вас остання версія — новішої за Dictate %@ немає.",
@@ -1400,7 +1395,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. Звіт у будь-якому разі залишається у файлі зустрічі; це створює копію.",
         "%d fields": "Полів: %d",
         "Add field": "Додати поле",
-        "Agent & reports": "Агент і звіти",
         "Also one table (CSV): a row per meeting, a column per field": "І одна таблиця (CSV): рядок на зустріч, стовпець на поле",
         "Answers with": "Відповідає через",
         "Choose folder…": "Вибрати теку…",
@@ -1641,8 +1635,6 @@ extension Localization {
 
     static let es: [String: String] = [
         "Settings": "Ajustes",
-        "Keyboard shortcuts": "Atajos de teclado",
-        "Storage & models": "Almacenamiento y modelos",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "El llavero rechazó guardar la clave; sigue en el campo. Desbloquee el llavero e inténtelo de nuevo.",
         "Couldn't reach the update server. Try again once you're online.": "No se pudo contactar el servidor de actualizaciones. Inténtelo cuando esté en línea.",
         "You're up to date — Dictate %@ is the newest version.": "Está al día: Dictate %@ es la versión más reciente.",
@@ -2148,7 +2140,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. El informe se queda en el archivo de la reunión de todos modos; esto crea una copia.",
         "%d fields": "%d campos",
         "Add field": "Añadir campo",
-        "Agent & reports": "Agente e informes",
         "Also one table (CSV): a row per meeting, a column per field": "También una tabla (CSV): una fila por reunión, una columna por campo",
         "Answers with": "Responde con",
         "Choose folder…": "Elegir carpeta…",
@@ -2389,8 +2380,6 @@ extension Localization {
 
     static let pt: [String: String] = [
         "Settings": "Definições",
-        "Keyboard shortcuts": "Atalhos de teclado",
-        "Storage & models": "Armazenamento e modelos",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "As Chaves recusaram salvar a chave — ela continua no campo. Desbloqueie as chaves e tente de novo.",
         "Couldn't reach the update server. Try again once you're online.": "Não foi possível contatar o servidor de atualizações. Tente de novo quando estiver online.",
         "You're up to date — Dictate %@ is the newest version.": "Você está em dia — Dictate %@ é a versão mais recente.",
@@ -2896,7 +2885,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. O relatório fica no arquivo da reunião de qualquer forma; isto cria uma cópia.",
         "%d fields": "%d campos",
         "Add field": "Adicionar campo",
-        "Agent & reports": "Agente e relatórios",
         "Also one table (CSV): a row per meeting, a column per field": "Também uma tabela (CSV): uma linha por reunião, uma coluna por campo",
         "Answers with": "Responde com",
         "Choose folder…": "Escolher pasta…",
@@ -3137,8 +3125,6 @@ extension Localization {
 
     static let fr: [String: String] = [
         "Settings": "Réglages",
-        "Keyboard shortcuts": "Raccourcis clavier",
-        "Storage & models": "Stockage et modèles",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Le trousseau a refusé d'enregistrer la clé — elle reste dans le champ. Déverrouillez le trousseau et réessayez.",
         "Couldn't reach the update server. Try again once you're online.": "Impossible de joindre le serveur de mise à jour. Réessayez une fois en ligne.",
         "You're up to date — Dictate %@ is the newest version.": "Vous êtes à jour — Dictate %@ est la version la plus récente.",
@@ -3644,7 +3630,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. Le rapport reste de toute façon dans le fichier de la réunion ; ceci en fait une copie.",
         "%d fields": "%d champs",
         "Add field": "Ajouter un champ",
-        "Agent & reports": "Agent et rapports",
         "Also one table (CSV): a row per meeting, a column per field": "Plus un tableau (CSV) : une ligne par réunion, une colonne par champ",
         "Answers with": "Répond avec",
         "Choose folder…": "Choisir un dossier…",
@@ -3885,8 +3870,6 @@ extension Localization {
 
     static let de: [String: String] = [
         "Settings": "Einstellungen",
-        "Keyboard shortcuts": "Tastaturkurzbefehle",
-        "Storage & models": "Speicher & Modelle",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Der Schlüsselbund hat das Speichern verweigert — der Schlüssel bleibt im Feld. Entsperren Sie den Schlüsselbund und versuchen Sie es erneut.",
         "Couldn't reach the update server. Try again once you're online.": "Der Update-Server ist nicht erreichbar. Versuchen Sie es, sobald Sie online sind.",
         "You're up to date — Dictate %@ is the newest version.": "Sie sind auf dem neuesten Stand — Dictate %@ ist die aktuellste Version.",
@@ -4392,7 +4375,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. Der Bericht bleibt so oder so in der Datei des Meetings; dies erstellt eine Kopie.",
         "%d fields": "%d Felder",
         "Add field": "Feld hinzufügen",
-        "Agent & reports": "Agent & Berichte",
         "Also one table (CSV): a row per meeting, a column per field": "Zusätzlich eine Tabelle (CSV): eine Zeile pro Meeting, eine Spalte pro Feld",
         "Answers with": "Antwortet mit",
         "Choose folder…": "Ordner wählen …",
@@ -4633,8 +4615,6 @@ extension Localization {
 
     static let zh: [String: String] = [
         "Settings": "设置",
-        "Keyboard shortcuts": "键盘快捷键",
-        "Storage & models": "存储与模型",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "钥匙串拒绝保存密钥——它仍留在输入框中。解锁钥匙串后重试。",
         "Couldn't reach the update server. Try again once you're online.": "无法连接更新服务器。联网后再试一次。",
         "You're up to date — Dictate %@ is the newest version.": "已是最新版本——Dictate %@ 就是最新版。",
@@ -5140,7 +5120,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@。报告无论如何都留在会议文件中；此操作只是生成一份副本。",
         "%d fields": "%d 个字段",
         "Add field": "添加字段",
-        "Agent & reports": "代理与报告",
         "Also one table (CSV): a row per meeting, a column per field": "另加一张表格（CSV）：每场会议一行，每个字段一列",
         "Answers with": "回答使用",
         "Choose folder…": "选择文件夹…",
@@ -5381,8 +5360,6 @@ extension Localization {
 
     static let ja: [String: String] = [
         "Settings": "設定",
-        "Keyboard shortcuts": "キーボードショートカット",
-        "Storage & models": "ストレージとモデル",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "キーチェーンがキーの保存を拒否しました — キーは入力欄に残っています。キーチェーンのロックを解除してからもう一度お試しください。",
         "Couldn't reach the update server. Try again once you're online.": "アップデートサーバーに接続できません。オンラインになったらもう一度お試しください。",
         "You're up to date — Dictate %@ is the newest version.": "最新の状態です — Dictate %@ が最新バージョンです。",
@@ -5888,7 +5865,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@。レポートはいずれにせよミーティングのファイルに残ります。これはコピーを作ります。",
         "%d fields": "%d 項目",
         "Add field": "項目を追加",
-        "Agent & reports": "エージェントとレポート",
         "Also one table (CSV): a row per meeting, a column per field": "加えて表を 1 つ（CSV）：ミーティングごとに 1 行、項目ごとに 1 列",
         "Answers with": "回答に使うもの",
         "Choose folder…": "フォルダを選択…",
@@ -6129,8 +6105,6 @@ extension Localization {
 
     static let ko: [String: String] = [
         "Settings": "설정",
-        "Keyboard shortcuts": "키보드 단축키",
-        "Storage & models": "저장 공간 및 모델",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "키체인이 키 저장을 거부했습니다 — 키는 입력란에 남아 있습니다. 키체인 잠금을 해제하고 다시 시도하세요.",
         "Couldn't reach the update server. Try again once you're online.": "업데이트 서버에 연결할 수 없습니다. 온라인 상태가 되면 다시 시도하세요.",
         "You're up to date — Dictate %@ is the newest version.": "최신 상태입니다 — Dictate %@가 최신 버전입니다.",
@@ -6636,7 +6610,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. 보고서는 어느 쪽이든 회의 파일에 남으며, 이 작업은 사본을 만듭니다.",
         "%d fields": "필드 %d개",
         "Add field": "필드 추가",
-        "Agent & reports": "에이전트 및 보고서",
         "Also one table (CSV): a row per meeting, a column per field": "표 하나(CSV)도 함께: 회의당 한 행, 필드당 한 열",
         "Answers with": "답변 제공자",
         "Choose folder…": "폴더 선택…",
@@ -6877,8 +6850,6 @@ extension Localization {
 
     static let vi: [String: String] = [
         "Settings": "Cài đặt",
-        "Keyboard shortcuts": "Phím tắt bàn phím",
-        "Storage & models": "Lưu trữ và mô hình",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain từ chối lưu khóa — khóa vẫn còn trong ô. Mở khóa keychain rồi thử lại.",
         "Couldn't reach the update server. Try again once you're online.": "Không thể kết nối máy chủ cập nhật. Thử lại khi có mạng.",
         "You're up to date — Dictate %@ is the newest version.": "Bạn đang dùng bản mới nhất — Dictate %@ là phiên bản mới nhất.",
@@ -7384,7 +7355,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. Báo cáo vẫn nằm trong tệp cuộc họp dù thế nào; thao tác này tạo một bản sao.",
         "%d fields": "%d trường",
         "Add field": "Thêm trường",
-        "Agent & reports": "Tác nhân & báo cáo",
         "Also one table (CSV): a row per meeting, a column per field": "Thêm một bảng (CSV): mỗi cuộc họp một hàng, mỗi trường một cột",
         "Answers with": "Trả lời bằng",
         "Choose folder…": "Chọn thư mục…",
@@ -7625,8 +7595,6 @@ extension Localization {
 
     static let tl: [String: String] = [
         "Settings": "Mga Setting",
-        "Keyboard shortcuts": "Mga keyboard shortcut",
-        "Storage & models": "Storage at mga model",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Tumanggi ang Keychain na i-save ang key — nanatili ito sa field. I-unlock ang keychain at subukan ulit.",
         "Couldn't reach the update server. Try again once you're online.": "Hindi maabot ang update server. Subukan ulit kapag online ka na.",
         "You're up to date — Dictate %@ is the newest version.": "Updated ka na — ang Dictate %@ ang pinakabagong bersyon.",
@@ -8132,7 +8100,6 @@ extension Localization {
         "%@ · %@. The report stays in the meeting’s file either way; this makes a copy.": "%@ · %@. Nananatili ang report sa file ng meeting anuman ang mangyari; gumagawa ito ng kopya.",
         "%d fields": "%d field",
         "Add field": "Magdagdag ng field",
-        "Agent & reports": "Agent at mga report",
         "Also one table (CSV): a row per meeting, a column per field": "Pati isang table (CSV): isang row bawat meeting, isang column bawat field",
         "Answers with": "Sumasagot gamit ang",
         "Choose folder…": "Pumili ng folder…",
