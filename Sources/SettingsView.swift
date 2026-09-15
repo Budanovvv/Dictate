@@ -1216,8 +1216,8 @@ struct SettingsView: View {
                 // needs only the sentence — and with no templates at all,
                 // what one is and where a report comes from.
                 Text(templateStore.templates.isEmpty
-                     ? L("No templates yet. A template is a name, an optional Context and a few fields; a report is written from it on demand from a meeting’s card, one per template per meeting.")
-                     : L("A template is a name, an optional Context and a few fields. A report is written from it on demand, one per template per meeting."))
+                     ? L("No templates yet. A template is a name and a few fields; a report is written from it on demand from a meeting’s card, one per template per meeting.")
+                     : L("A template is a name and a few fields. A report is written from it on demand, one per template per meeting."))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if !templateStore.templates.isEmpty {
@@ -1272,47 +1272,52 @@ struct SettingsView: View {
         } header: { Text(L("Templates")) }
 
         if let draft = templateDraft {
+            // The editor is four ordinary rows (design 9.2, turn 33): Name,
+            // Fields, Always assume, Remove — the label and help on the
+            // left, the control column on the right, like every other pane.
+            // Always assume sits below Fields: the assumptions only make
+            // sense once you have seen what they modify.
             Section {
                 LabeledContent {
                     TextField("", text: templateBinding(draft, \.name), prompt: Text(L("Template name")))
                         .labelsHidden()
                         .templateField()
-                        .frame(width: 260, alignment: .leading)
+                        .frame(width: 300, alignment: .leading)
                         .accessibilityLabel(L("Template name"))
                 } label: {
-                    rowLabel(L("Name"), nil)
+                    rowLabel(L("Name"),
+                             L("Shown on the meeting’s card, in the library under Reports, and as the heading inside the written report."))
                 }
-                // Context and the fields take the whole row: a paragraph and
-                // a list have no business in a control column.
-                VStack(alignment: .leading, spacing: 8) {
-                    rowLabel(L("Context"), L("Optional. One paragraph for the whole template. Sent with every report."))
-                    TextField("", text: templateBinding(draft, \.context),
-                              prompt: Text(L("Who “we” are and what to look for")), axis: .vertical)
-                        .labelsHidden()
-                        .lineLimit(2...4)
-                        .templateField()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityLabel(L("Context"))
-                }
-                // The grouped form hands a row its ideal width and aligns
-                // its text trailing; a list of fields wants the whole row
-                // and its text at the left, so both are said explicitly.
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .multilineTextAlignment(.leading)
-                VStack(alignment: .leading, spacing: 8) {
-                    rowLabel(L("Fields"),
-                             L("Drag a field by its handle to reorder. An instruction can be as long as it needs to be and is sent with every report; a field without one goes by its name alone. A field the call did not cover reads “Not discussed”."))
+                LabeledContent {
                     templateFields(draft)
+                        .frame(width: 400, alignment: .leading)
+                } label: {
+                    rowLabel(L("Fields"),
+                             L("Each field becomes a heading in the report, in this order. Drag a field by its handle to move it. An instruction is optional and can be as long as it needs to be; a field without one goes by its name alone.")
+                             + "\n\n"
+                             + L("Every field is filled from this call’s transcript and nothing else. One the call did not cover reads “Not discussed”."))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .multilineTextAlignment(.leading)
-            } header: { Text(draft.name.isEmpty ? L("New template") : draft.name) }
-
-            Section {
+                LabeledContent {
+                    TextField("", text: templateBinding(draft, \.context),
+                              prompt: Text(L("We are a sales agency. The client is always the other party, never us. “Seats” means paid user licences.")),
+                              axis: .vertical)
+                        .labelsHidden()
+                        .lineLimit(2...8)
+                        .templateField()
+                        .frame(width: 400, alignment: .leading)
+                        .accessibilityLabel(L("Always assume"))
+                } label: {
+                    rowLabel(L("Always assume"),
+                             L("Facts the call never states but every report should take as given: who you are, which side is the client, words your team uses in a particular way. Sent with every report from this template.")
+                             + "\n\n"
+                             + L("Optional. Without it the model reads the call cold, which is usually fine for a meeting between colleagues and wrong for a call with an outside party."))
+                }
                 LabeledContent {
                     HStack(spacing: 10) {
                         Button(L("Remove template…")) { confirmRemoveTemplate = true }
-                            .buttonStyle(.dsSmall).controlSize(.small)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(DS.accentText)
+                            .pointerStyle(.link)
                     }
                     .confirmationDialog(Lf("Remove “%@”?", draft.name), isPresented: $confirmRemoveTemplate,
                                         titleVisibility: .visible) {
@@ -1328,10 +1333,10 @@ struct SettingsView: View {
                     // The count as a fact beside Remove (design 9.2): what
                     // stays if this template goes.
                     let count = reportCounts[draft.id]
-                    rowLabel(L("Remove template"),
+                    rowLabel(L("Remove"),
                              count.map { Lf("%d meetings have a %@ report. They stay if this template goes.", $0, draft.name) })
                 }
-            }
+            } header: { Text(draft.name.isEmpty ? L("New template") : draft.name) }
         }
     }
 

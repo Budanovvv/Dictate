@@ -159,7 +159,7 @@ final class MeetingReports: ObservableObject {
             part in the conversation; their own turns are labelled "\(L("You"))".
             """
         if !context.isEmpty {
-            instructions += "\n\nContext from the reader, which tells you who \"we\" are and what matters: \(context)"
+            instructions += "\n\nTake as given, from the reader — facts the call never states but every report should assume, such as who \"we\" are and which side is the client: \(context)"
         }
         instructions += """
             \n

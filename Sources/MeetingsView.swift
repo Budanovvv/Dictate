@@ -3992,16 +3992,18 @@ private struct TranscriptPane: View {
     /// transcript is about to leave this Mac.
     @ViewBuilder
     private var reportPullDown: some View {
-        if isBusy(reportPhase) {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.mini)
-                Text(L("Writing…")).font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-        } else {
-            let replacing = pendingTemplate.map { hasReport(from: $0) } ?? false
-            if WhatsNew.pending { NewBadge() }
-            PopupTrigger(label: reports.isEmpty ? L("Write report") : L("Report"),
-                         icon: "doc.text") { templateChooserOpen.toggle() }
+        // Transient status belongs to the object, not the chrome (design
+        // turn 33, tight rows): "Writing…" is on the Reports row and the
+        // list row, both wide enough to hold it. Here the control just
+        // waits — in a header the title is the only thing that may give
+        // way, and a status squeezed beside five controls once stacked
+        // itself one letter per line.
+        let busy = isBusy(reportPhase)
+        let replacing = pendingTemplate.map { hasReport(from: $0) } ?? false
+        if WhatsNew.pending { NewBadge() }
+        PopupTrigger(label: reports.isEmpty ? L("Write report") : L("Report"),
+                     icon: "doc.text") { templateChooserOpen.toggle() }
+                .disabled(busy)
                 // Its own width, whatever the title does: in the head's
                 // cluster a two-line title squeezed the label to nothing
                 // and left an icon nobody could name.
@@ -4054,7 +4056,6 @@ private struct TranscriptPane: View {
                          : Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName))
                 }
-        }
     }
 
     /// Whether this meeting already carries a report from the template —

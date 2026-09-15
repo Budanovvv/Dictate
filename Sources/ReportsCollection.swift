@@ -373,7 +373,9 @@ struct ReportsCollection: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 12)
-            actions()
+            // Tight rows (design turn 33): the title is the only flexible
+            // item; every control keeps its width and never wraps.
+            HStack(spacing: 10) { actions() }.fixedSize()
         }
         .padding(.horizontal, 18)
         .frame(height: 52)
