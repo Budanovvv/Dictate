@@ -13,9 +13,18 @@ final class MeetingReports: ObservableObject {
 
     /// Where one meeting's report stands, for the card and the list row.
     enum Phase: Equatable, Sendable {
-        case queued
-        case writing
-        case failed(AskFailureKind)
+        case queued(String)
+        case writing(String)
+        case failed(AskFailureKind, String)
+
+        /// The template the phase is about — the card's row and the
+        /// collection name it without remembering who asked.
+        var templateName: String {
+            switch self {
+            case .queued(let name), .writing(let name): return name
+            case .failed(_, let name): return name
+            }
+        }
     }
 
     private struct Job: Equatable {
@@ -41,8 +50,15 @@ final class MeetingReports: ObservableObject {
     func write(_ url: URL, with template: ReportTemplate) {
         queue.removeAll { $0.url == url }
         queue.append(Job(url: url, template: template))
-        phases[url] = .queued
+        phases[url] = .queued(template.name)
         pump()
+    }
+
+    /// Several meetings, one template — a batch (design 9.1): queued in
+    /// the order given and written one at a time, like everything else
+    /// here. A refusal stops that meeting only; the rest continue.
+    func write(_ urls: [URL], with template: ReportTemplate) {
+        for url in urls { write(url, with: template) }
     }
 
     /// Whether something is queued or being written for this meeting.
@@ -76,10 +92,10 @@ final class MeetingReports: ObservableObject {
             return
         }
         guard oracle.isAvailable else {
-            phases[url] = .failed(.badKey)
+            phases[url] = .failed(.badKey, job.template.name)
             return
         }
-        phases[url] = .writing
+        phases[url] = .writing(job.template.name)
         let request = Self.request(for: meeting, template: job.template,
                                    language: Settings.shared.reportLanguage ?? Localization.shared.effective)
         Log.d("report: writing “\(job.template.name)” for \(url.lastPathComponent) with \(provider.productName)")
@@ -91,7 +107,7 @@ final class MeetingReports: ObservableObject {
                 writer: provider.productName, written: Date(),
                 answers: zip(fields, answers).map { .init(field: $0.name, text: $1) })
             guard MeetingArchive.setReport(report, heading: L("Report"), in: url) else {
-                phases[url] = .failed(.other)
+                phases[url] = .failed(.other, job.template.name)
                 return
             }
             // No file of its own any more (design turn 33): the report is
@@ -106,7 +122,7 @@ final class MeetingReports: ObservableObject {
             // As the answer pane does: a key the vendor rejects is removed,
             // undoably, so nothing is retried with it.
             if kind == .badKey { _ = APIKey.store(nil, for: provider) }
-            phases[url] = .failed(kind)
+            phases[url] = .failed(kind, job.template.name)
         }
     }
 

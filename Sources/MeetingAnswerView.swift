@@ -28,6 +28,11 @@ struct AnswerTurn: Identifiable {
     /// Which of the four known failure shapes this is (design: askFailures) —
     /// decides the banner and its action; nil with a failure = generic.
     var failureKind: AskFailureKind?
+    /// The passages the turn's searches surfaced, and the reach of the
+    /// answer — how many meetings were looked at, out of how many.
+    var quotes: [AnswerQuote] = []
+    var meetingsTouched = 0
+    var archiveCount = 0
 }
 
 /// The conversation being had.
@@ -115,11 +120,17 @@ final class MeetingAnswer: ObservableObject {
         isRunning = true
         progress = nil
         suggested = []
+        MeetingAgentTool.resetTrace()
         work = Task { [weak self] in
             do {
                 for try await piece in oracle.answer(prompt, history: history) {
                     guard !Task.isCancelled, let self, !self.turns.isEmpty else { break }
                     self.turns[self.turns.count - 1].text += piece
+                }
+                if let self, !self.turns.isEmpty {
+                    self.turns[self.turns.count - 1].quotes = MeetingAgentTool.quotes
+                    self.turns[self.turns.count - 1].meetingsTouched = MeetingAgentTool.touched.count
+                    self.turns[self.turns.count - 1].archiveCount = MeetingAgentTool.archiveCount
                 }
                 Log.d("ask: answered")
             } catch {
@@ -231,7 +242,10 @@ final class MeetingAnswer: ObservableObject {
         turns = stored.turns.map { turn in
             AnswerTurn(question: turn.question,
                        prompt: turn.prompt,
-                       text: turn.text)
+                       text: turn.text,
+                       quotes: turn.quotes ?? [],
+                       meetingsTouched: turn.meetingsTouched ?? 0,
+                       archiveCount: turn.archiveCount ?? 0)
         }
     }
 
@@ -241,7 +255,10 @@ final class MeetingAnswer: ObservableObject {
         let kept = turns.filter { !$0.text.isEmpty || $0.failure != nil }
             .map { turn in
                 AskConversation.Turn(question: turn.question, prompt: turn.prompt,
-                                     text: turn.text)
+                                     text: turn.text,
+                                     quotes: turn.quotes.isEmpty ? nil : turn.quotes,
+                                     meetingsTouched: turn.meetingsTouched,
+                                     archiveCount: turn.archiveCount)
             }
         guard !kept.isEmpty else { return }
         if title.isEmpty { title = kept[0].question }
@@ -646,6 +663,7 @@ struct AnswerPane: View {
         }
 
         if !turn.text.isEmpty {
+            answerHeader(turn)
             // Reading type (13a): 15/1.65 on a 72-character measure — the
             // content larger than the chrome around it. Serif stays: the
             // model's voice never wears the transcript's typeface. Inline
@@ -789,6 +807,38 @@ struct AnswerPane: View {
                 .foregroundStyle(DS.warn)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// The answer's header (design 9.4): the eyebrow, how far the answer
+    /// reached, and Copy with quotes — Markdown, plain text, or the
+    /// answer alone.
+    private func answerHeader(_ turn: AnswerTurn) -> some View {
+        HStack(spacing: 10) {
+            Text(L("Answer").uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .kerning(0.3)
+                .foregroundStyle(.secondary)
+            if !turn.quotes.isEmpty {
+                Text(Lf("%d passages from %d meetings",
+                        turn.quotes.count, Set(turn.quotes.map(\.meeting)).count))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Menu {
+                Button(L("Copy as Markdown")) { TranscriptCopy.put(AnswerCopy.markdown(turn)) }
+                Button(L("Copy as plain text")) { TranscriptCopy.put(AnswerCopy.plain(turn)) }
+                Divider()
+                Button(L("Copy the answer only")) { TranscriptCopy.put(turn.text) }
+            } label: {
+                Label(L("Copy with quotes"), systemImage: "doc.on.doc")
+            }
+            .controlSize(.small)
+            .fixedSize()
+        }
+        .padding(.bottom, 4)
+        .frame(maxWidth: DS.readingMeasure)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func failureBox(icon: String, title: String, sub: String,

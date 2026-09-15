@@ -190,14 +190,31 @@ struct MeetingsView: View {
                 ColumnGrip(width: $navWidth, range: 180...320, key: "meetingsNavWidth")
                     .zIndex(2)
             }
-            if selection != .ask, !listHidden {
-                listColumn.frame(width: listWidth)
-                ColumnGrip(width: $listWidth, range: 240...420, key: "meetingsListWidth")
-                    .zIndex(2)
+            if reportsOnly {
+                // Library › Reports (design 9.1): the collection takes the
+                // list's and the pane's width; a written row brings them back.
+                reportsCollection
+            } else {
+                if selection != .ask, !listHidden {
+                    listColumn.frame(width: listWidth)
+                    ColumnGrip(width: $listWidth, range: 240...420, key: "meetingsListWidth")
+                        .zIndex(2)
+                }
+                detail.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Writing for a selection (design 9.1 batch): the one question
+        // before a batch, then the queue takes it one meeting at a time.
+        .sheet(item: $batchRequest) { request in
+            ReportBatchDialog(template: request.template, meetings: request.meetings,
+                              onWrite: { chosen in
+                                  reports.write(chosen.map(\.url), with: request.template)
+                                  batchSelection = []
+                                  batchRequest = nil
+                              },
+                              onCancel: { batchRequest = nil })
+        }
         // Any defaults write, filtered down to the one this window must
         // mirror live: the Ask switch in the Settings window.
         // Settings › General › "What’s new in …" — the sheet lives here.
@@ -260,8 +277,9 @@ struct MeetingsView: View {
         // The same request arriving at a window that already exists.
         .onChange(of: navigator.requests) { applyRequest() }
         .onChange(of: session.isActive) { _, active in
-            // A session that has just started needs no list to be shown.
-            if active { selection = .live }
+            // A session that has just started needs no list to be shown —
+            // and no collection in the way of the live row.
+            if active { selection = .live; reportsOnly = false }
             // A finished session becomes a file: refresh and follow it.
             reload {
                 if !active, let newest = meetings.first { selection = .archived(newest.url) }
@@ -1104,7 +1122,7 @@ struct MeetingsView: View {
             navRow(icon: "rectangle.grid.1x2", title: L("All Meetings"),
                    count: meetings.count,
                    selected: selection != .ask && !starredOnly && !recentOnly
-                             && sourceFilter == nil) {
+                             && sourceFilter == nil && !reportsOnly && reportTemplateFilter == nil) {
                 starredOnly = false
                 recentOnly = false
                 reportsOnly = false
@@ -1129,37 +1147,27 @@ struct MeetingsView: View {
                 if recentOnly { starredOnly = false; sourceFilter = nil; reportsOnly = false; reportTemplateFilter = nil }
                 leaveAsk()
             }
-            // The meetings with a report — the reports are meeting-bound
-            // documents, so the way to them is the library's own filter,
-            // the same row as Starred, not a window of their own.
-            let reportedCount = meetings.filter { !$0.reports.isEmpty }.count
-            if reportedCount > 0 || reportsOnly {
-                navRow(icon: "doc.text", title: L("Reports"),
-                       count: reportedCount, selected: reportsOnly && reportTemplateFilter == nil) {
-                    reportsOnly = !(reportsOnly && reportTemplateFilter == nil)
-                    reportTemplateFilter = nil
-                    if reportsOnly { starredOnly = false; recentOnly = false; sourceFilter = nil }
-                    leaveAsk()
+            // Reports (design 9.1 collection): a section of its own — All
+            // reports, then one row per template, each opening the
+            // collection in place of the list and the reading pane.
+            let kinds = reportKinds
+            if !kinds.isEmpty {
+                Text(L("Reports"))
+                    .font(DS.sectionLabel)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 14)
+                    .padding(.bottom, 3)
+                navRow(icon: "doc.text", title: L("All reports"),
+                       count: kinds.reduce(0) { $0 + $1.count },
+                       selected: reportsOnly && reportTemplateFilter == nil) {
+                    openCollection(nil)
                 }
-                // By template, the way Sources lists platforms: a report is
-                // found by its kind as much as by its meeting (design, the
-                // smart-folder rule). One sub-row per template in use —
-                // shown while Reports is open, so eight templates are eight
-                // rows only for the person who went looking for them.
-                ForEach(reportsOnly ? reportTemplatesPresent : [], id: \.name) { kind in
+                ForEach(kinds, id: \.name) { kind in
                     navRow(icon: "doc.text", title: kind.name, count: kind.count,
                            selected: reportTemplateFilter == kind.name) {
-                        if reportTemplateFilter == kind.name {
-                            reportTemplateFilter = nil
-                            reportsOnly = false
-                        } else {
-                            reportTemplateFilter = kind.name
-                            reportsOnly = true
-                            starredOnly = false; recentOnly = false; sourceFilter = nil
-                        }
-                        leaveAsk()
+                        openCollection(kind.name)
                     }
-                    .padding(.leading, 14)
                 }
             }
             let sources = sourcesPresent
@@ -1732,7 +1740,7 @@ struct MeetingsView: View {
                                                         dividerBefore: true) {
                                        deleteMeeting(meeting)
                                    }
-                               ])
+                               ] + reportWriteActions(for: meeting))
             } else {
                 placeholder
             }
@@ -1938,15 +1946,67 @@ struct MeetingsView: View {
         return out
     }
 
-    /// Templates with a report in the archive, most-used first — the
-    /// sub-rows under Reports.
-    private var reportTemplatesPresent: [(name: String, count: Int)] {
+    /// Every template the Reports section lists: the ones in Settings, in
+    /// their order, then names that live only in the archive (a removed
+    /// template's reports stay) — each with how many meetings have one.
+    private var reportKinds: [(name: String, count: Int)] {
         var counts: [String: Int] = [:]
         for meeting in meetings {
             for name in Set(meeting.reports.map(\.templateName)) { counts[name, default: 0] += 1 }
         }
-        return counts.map { (name: $0.key, count: $0.value) }
-            .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
+        var out: [(name: String, count: Int)] = ReportTemplateStore.shared.templates
+            .filter(\.isUsable).map { ($0.name, counts[$0.name] ?? 0) }
+        for (name, count) in counts.sorted(by: { $0.value > $1.value })
+            where !out.contains(where: { $0.name == name }) {
+            out.append((name, count))
+        }
+        return out
+    }
+
+    /// Library › Reports, for one template or none: the collection is the
+    /// window's whole width until a written row is opened.
+    private func openCollection(_ name: String?) {
+        reportsOnly = true
+        reportTemplateFilter = name
+        starredOnly = false; recentOnly = false; sourceFilter = nil
+        batchSelection = []
+        leaveAsk()
+    }
+
+    private var reportsCollection: some View {
+        let name = reportTemplateFilter
+        let template = ReportTemplateStore.shared.templates.first { $0.isUsable && $0.name == name }
+        return ReportsCollection(
+            templateName: name, template: template, kinds: reportKinds,
+            meetings: meetings, phases: reports.phases,
+            canWrite: Settings.shared.askArchive,
+            selected: $batchSelection,
+            onPickTemplate: { openCollection($0) },
+            onOpen: { meeting in
+                // Back to three columns, at this meeting, with the report
+                // open (preferredReport is the filter that stays).
+                reportsOnly = false
+                selection = .archived(meeting.url)
+            },
+            onWrite: { chosen in
+                guard let template else { return }
+                batchRequest = BatchRequest(template: template, meetings: chosen)
+            },
+            onExport: { if let template { ReportExport.exportAll(template: template) } },
+            onEditTemplate: {
+                if let template { openSettingsWindow(tab: "templates/\(template.id.uuidString)") }
+            })
+    }
+
+    /// "Write report › template", one per template (design turn 33): the
+    /// card head's write, reachable from the row's menu as well.
+    private func reportWriteActions(for meeting: ArchivedMeeting) -> [TranscriptMenuAction] {
+        guard Settings.shared.askArchive else { return [] }
+        return ReportTemplateStore.shared.templates.filter(\.isUsable).enumerated().map { index, template in
+            TranscriptMenuAction(title: Lf("Write report › %@", template.name), dividerBefore: index == 0) {
+                batchRequest = BatchRequest(template: template, meetings: [meeting])
+            }
+        }
     }
 
     /// The bucket every un-attributed call falls into ("Other browser calls"
@@ -2045,7 +2105,17 @@ struct MeetingsView: View {
     @State private var starredOnly = false
     /// The sidebar's Recently Added filter (design): the last seven days.
     @State private var recentOnly = false
+    /// True while Library › Reports is open — the collection stands in
+    /// for the list and the pane (design 9.1).
     @State private var reportsOnly = false
+    /// The collection's selection for a batch, and the batch being asked about.
+    @State private var batchSelection: Set<URL> = []
+    @State private var batchRequest: BatchRequest?
+    private struct BatchRequest: Identifiable {
+        let id = UUID()
+        let template: ReportTemplate
+        let meetings: [ArchivedMeeting]
+    }
     /// One template's reports only, chosen from the sub-rows under Reports.
     @State private var reportTemplateFilter: String?
     @State private var sourceFilter: String?
@@ -3744,7 +3814,7 @@ private struct TranscriptPane: View {
         case .queued, .writing:
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 ProgressView().controlSize(.mini).frame(width: 12)
-                Text(requestedName)
+                Text(phase.templateName)
                     .font(.system(size: textScale.body))
                     .lineLimit(1)
                 Text(L("Writing · about a minute"))
@@ -3755,7 +3825,7 @@ private struct TranscriptPane: View {
             .shimmering()
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-        case .failed(let kind):
+        case .failed(let kind, _):
             let provider = Settings.shared.askProvider ?? .anthropic
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -3764,7 +3834,7 @@ private struct TranscriptPane: View {
                         .foregroundStyle(DS.warn)
                         .frame(width: 12)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(Lf("%@ — not written", requestedName))
+                        Text(Lf("%@ — not written", phase.templateName))
                             .font(.system(size: textScale.body, weight: .semibold))
                             .foregroundStyle(DS.warn)
                         Text(kind == .offline
@@ -3776,7 +3846,7 @@ private struct TranscriptPane: View {
                     }
                 }
                 Spacer(minLength: 8)
-                Button(L("Write again")) { writeAgain() }
+                Button(L("Write again")) { writeAgain(named: phase.templateName) }
                     .buttonStyle(.plain)
                     .foregroundStyle(DS.accentText)
                     .font(.system(size: 11.5))
@@ -3827,9 +3897,9 @@ private struct TranscriptPane: View {
     /// Write again after a refusal: the same template, no second question
     /// — the person already said yes to it once. Without a remembered
     /// template, the pull-down, which asks.
-    private func writeAgain() {
-        if let requestedTemplate {
-            onWriteReport?(requestedTemplate)
+    private func writeAgain(named name: String) {
+        if let template = reportTemplates.first(where: { $0.name == name }) ?? requestedTemplate {
+            onWriteReport?(template)
         } else {
             templateChooserOpen = true
         }

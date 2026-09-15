@@ -1309,11 +1309,6 @@ struct SettingsView: View {
                     HStack(spacing: 10) {
                         Button(L("Remove template…")) { confirmRemoveTemplate = true }
                             .buttonStyle(.dsSmall).controlSize(.small)
-                        // Export leaves for the library's Reports collection
-                        // in the next pass; until then the function stays
-                        // reachable here (deviation from 9.2, recorded).
-                        Button(L("Export reports…")) { ReportExport.exportAll(template: draft) }
-                            .buttonStyle(.dsSmall).controlSize(.small)
                     }
                     .confirmationDialog(Lf("Remove “%@”?", draft.name), isPresented: $confirmRemoveTemplate,
                                         titleVisibility: .visible) {
@@ -1831,7 +1826,14 @@ struct SettingsView: View {
         case "dictation", "keys", "languages": tab = .dictation
         case "meetings": tab = .meetings
         case "writing", "agent": tab = .writing
-        case "templates": tab = .templates
+        case "templates":
+            tab = .templates
+            // "templates/<id>": that template, selected (Edit template…
+            // in the library's Reports collection).
+            if parts.count > 1, let id = UUID(uuidString: parts[1]),
+               templateStore.templates.contains(where: { $0.id == id }) {
+                templateID = id
+            }
         case "general": tab = .general
         case "about", "thismac": tab = .about
         default: tab = .dictation

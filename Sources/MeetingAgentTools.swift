@@ -57,6 +57,28 @@ enum MeetingAgentTool: String, CaseIterable {
     /// says what the model is actually doing with the archive.
     static let progressNotification = Notification.Name("dictate.askProgress")
 
+    /// What a turn touched, for "Copy with quotes" (design 9.4): the
+    /// verbatim lines its searches surfaced, with their meeting and
+    /// moment, and how many meetings it looked at. Reset per question.
+    @MainActor static var quotes: [AnswerQuote] = []
+    @MainActor static var touched: Set<URL> = []
+    @MainActor static var archiveCount = 0
+    @MainActor static func resetTrace() { quotes = []; touched = []; archiveCount = 0 }
+
+    @MainActor private static func trace(hits: [ArchivedMeeting], query: String) {
+        archiveCount = max(archiveCount, hits.count)
+        for meeting in hits {
+            touched.insert(meeting.url)
+            guard quotes.count < 12, !query.isEmpty,
+                  let entry = meeting.entries.first(where: { $0.text.lowercased().contains(query) })
+            else { continue }
+            let quote = AnswerQuote(meeting: meeting.title ?? meeting.url.deletingPathExtension().lastPathComponent,
+                                    started: meeting.started, time: entry.time,
+                                    speaker: entry.speaker, text: entry.text)
+            if !quotes.contains(quote) { quotes.append(quote) }
+        }
+    }
+
     @MainActor private static func progress(_ text: String) {
         NotificationCenter.default.post(name: progressNotification, object: text)
     }
@@ -76,6 +98,7 @@ enum MeetingAgentTool: String, CaseIterable {
             MeetingArchive.list(youLabel: youLabel)
         }.value
         guard !meetings.isEmpty else { return "The archive is empty." }
+        await MainActor.run { archiveCount = meetings.count }
 
         switch tool {
         case .listMeetings:
@@ -95,7 +118,10 @@ enum MeetingAgentTool: String, CaseIterable {
             guard !literal.isEmpty else {
                 return "Nothing in the archive matches that. Try different words, or list_meetings to orient."
             }
-            return literal.prefix(10).map(Self.line(for:)).joined(separator: "\n")
+            let hits = Array(literal.prefix(10))
+            let words = MeetingSearch.split(query: query).text
+            await MainActor.run { trace(hits: hits, query: words) }
+            return hits.map(Self.line(for:)).joined(separator: "\n")
 
         case .readMeeting:
             guard let file = arguments["file"] as? String, !file.isEmpty else {
@@ -109,6 +135,7 @@ enum MeetingAgentTool: String, CaseIterable {
                 let names = meetings.map(\.url.lastPathComponent).joined(separator: "\n")
                 return "No meeting named \"\(file)\". The archive has:\n\(names)"
             }
+            await MainActor.run { _ = touched.insert(meeting.url) }
             // The report first, when there is one: a person's own fields,
             // already answered — the agent should quote it before it
             // re-derives the same thing from an hour of transcript.

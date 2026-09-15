@@ -1,5 +1,15 @@
 import Foundation
 
+/// One verbatim line from a transcript, with where it came from — what
+/// "Copy with quotes" puts under the answer (design 9.4).
+struct AnswerQuote: Codable, Hashable, Sendable {
+    let meeting: String
+    let started: Date
+    let time: String
+    let speaker: String
+    let text: String
+}
+
 /// A persisted Ask conversation — everything needed to re-show an answer
 /// without re-asking (no API call) and to continue it with a follow-up.
 struct AskConversation: Codable, Identifiable {
@@ -7,6 +17,11 @@ struct AskConversation: Codable, Identifiable {
         var question: String
         var prompt: String
         var text: String
+        /// The passages the turn's searches surfaced, for "Copy with
+        /// quotes" — absent in conversations stored before 3.3.1.
+        var quotes: [AnswerQuote]? = nil
+        var meetingsTouched: Int? = nil
+        var archiveCount: Int? = nil
     }
 
     var id: UUID
