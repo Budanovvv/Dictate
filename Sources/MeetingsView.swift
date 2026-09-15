@@ -3829,12 +3829,21 @@ private struct TranscriptPane: View {
         }
     }
 
+    /// A list item with its lead-in in bold: "Architecture: split…" reads
+    /// as a labelled point, the way the eye scans a list.
+    private func listItemText(_ item: String) -> Text {
+        if let (lead, rest) = ReportText.leadIn(item) {
+            return Text(lead + ":").fontWeight(.semibold) + Text(" " + rest)
+        }
+        return Text(item)
+    }
+
     /// The fields as the file carries them: a heading, then the text — or
     /// "Not discussed", muted, where the call never got to it.
     private func reportFields(_ report: MeetingReport) -> some View {
         ForEach(Array(report.answers.enumerated()), id: \.offset) { _, answer in
             VStack(alignment: .leading, spacing: 4) {
-                Text(answer.field)
+                Text(answer.title)
                     .font(.system(size: textScale.body, weight: .semibold))
                 if answer.isEmpty {
                     Text(L("Not discussed"))
@@ -3853,6 +3862,22 @@ private struct TranscriptPane: View {
                                 .lineSpacing(textScale.extraLeading / 2)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .textSelection(.enabled)
+                        case .quote(let quote):
+                            // The speaker's own words: a hairline at the
+                            // left, the text a shade quieter.
+                            HStack(alignment: .top, spacing: 9) {
+                                RoundedRectangle(cornerRadius: 1)
+                                    .fill(.quaternary)
+                                    .frame(width: 2)
+                                Text(quote)
+                                    .font(.system(size: textScale.body))
+                                    .italic()
+                                    .foregroundStyle(.secondary)
+                                    .lineSpacing(textScale.extraLeading / 2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .textSelection(.enabled)
+                            }
+                            .padding(.vertical, 2)
                         case .list(let items):
                             VStack(alignment: .leading, spacing: 3) {
                                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
@@ -3860,7 +3885,7 @@ private struct TranscriptPane: View {
                                         Text("•")
                                             .font(.system(size: textScale.body))
                                             .foregroundStyle(.secondary)
-                                        Text(item)
+                                        listItemText(item)
                                             .font(.system(size: textScale.body))
                                             .lineSpacing(textScale.extraLeading / 2)
                                             .fixedSize(horizontal: false, vertical: true)

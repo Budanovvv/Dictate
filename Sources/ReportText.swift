@@ -10,6 +10,8 @@ enum ReportText {
     enum Block: Equatable {
         case paragraph(String)
         case list([String])
+        /// A line the model marked "> " — the speaker's own words.
+        case quote(String)
     }
 
     /// Lines into blocks: every marked line is an item, consecutive items
@@ -24,6 +26,12 @@ enum ReportText {
         for raw in text.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { flushList(); continue }
+            if line.hasPrefix("> ") || line.hasPrefix(">\t") {
+                flushList()
+                let quote = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+                if !quote.isEmpty { out.append(.quote(quote)) }
+                continue
+            }
             if let item = listItem(line) {
                 items.append(item)
             } else {
@@ -52,22 +60,41 @@ enum ReportText {
         return rest.isEmpty ? nil : rest
     }
 
-    /// The same text with every list item marked "- " — what a Markdown
-    /// export carries.
+    /// An item's lead-in — "Architecture: split the portal…" → ("Architecture",
+    /// "split the portal…") — when it is short enough to be a label rather
+    /// than a sentence with a colon in it. nil otherwise.
+    static func leadIn(_ item: String) -> (lead: String, rest: String)? {
+        guard let colon = item.firstIndex(of: ":") else { return nil }
+        let lead = item[..<colon].trimmingCharacters(in: .whitespaces)
+        let rest = item[item.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        guard !lead.isEmpty, !rest.isEmpty, lead.count <= 40,
+              !lead.contains("."), lead.split(separator: " ").count <= 5 else { return nil }
+        return (lead, rest)
+    }
+
+    /// The same text with every list item marked "- ", lead-ins in bold and
+    /// quotes as "> " — what a Markdown export carries.
     static func markdown(_ text: String) -> String {
         blocks(text).map { block in
             switch block {
             case .paragraph(let p): return p
-            case .list(let items): return items.map { "- \($0)" }.joined(separator: "\n")
+            case .quote(let q): return "> \(q)"
+            case .list(let items):
+                return items.map { item -> String in
+                    if let (lead, rest) = leadIn(item) { return "- **\(lead):** \(rest)" }
+                    return "- \(item)"
+                }.joined(separator: "\n")
             }
         }.joined(separator: "\n\n")
     }
 
-    /// The same text with bullets a plain-text reader sees as bullets.
+    /// The same text with bullets a plain-text reader sees as bullets and
+    /// quotes in quotation marks.
     static func plain(_ text: String) -> String {
         blocks(text).map { block in
             switch block {
             case .paragraph(let p): return p
+            case .quote(let q): return "    “\(q)”"
             case .list(let items): return items.map { "• \($0)" }.joined(separator: "\n")
             }
         }.joined(separator: "\n\n")

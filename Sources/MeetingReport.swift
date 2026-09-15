@@ -6,8 +6,16 @@ import Foundation
 /// there and never invents anything.
 struct MeetingReport: Hashable, Sendable {
     struct Answer: Hashable, Sendable {
+        /// The field as the template names it — what the CSV column and
+        /// "already has one" are matched on.
         let field: String
         let text: String
+        /// The heading as the report shows it: the field's name in the
+        /// report's language (owner, 2026-09-15 — a Russian report under
+        /// English headings read as two documents). nil when it is the
+        /// field's own name.
+        var heading: String? = nil
+        var title: String { heading ?? field }
         var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
@@ -79,7 +87,14 @@ extension MeetingArchive {
     static func reportBlock(_ report: MeetingReport, heading: String) -> [String] {
         var lines = [reportMarker(report), "## \(heading) · \(report.templateName)", ""]
         for answer in report.answers {
-            lines.append("### \(answer.field)")
+            // The heading in the report's language; the template's own
+            // name rides along in a comment when the two differ, so the
+            // CSV column and "already written" still find the field.
+            if let heading = answer.heading, heading != answer.field {
+                lines.append("### \(heading) <!-- field: \(answer.field.replacingOccurrences(of: "-->", with: "—>")) -->")
+            } else {
+                lines.append("### \(answer.field)")
+            }
             lines.append("")
             let text = cleanReportText(answer.text)
             if !text.isEmpty {
@@ -161,11 +176,12 @@ extension MeetingArchive {
         guard let marker = parseReportMarker(lines[range.lowerBound]) else { return nil }
         var answers: [MeetingReport.Answer] = []
         var field: String?
+        var heading: String?
         var body: [String] = []
         func flush() {
             if let field {
                 let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                answers.append(.init(field: field, text: text))
+                answers.append(.init(field: field, text: text, heading: heading))
             }
             body = []
         }
@@ -173,7 +189,16 @@ extension MeetingArchive {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("### ") {
                 flush()
-                field = String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                let title = String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                // "### Решения <!-- field: Decisions -->": the heading shown,
+                // the field it answers.
+                if let open = title.range(of: " <!-- field: "), title.hasSuffix("-->") {
+                    heading = String(title[..<open.lowerBound])
+                    field = String(title[open.upperBound...].dropLast(3)).trimmingCharacters(in: .whitespaces)
+                } else {
+                    heading = nil
+                    field = title
+                }
             } else if line.hasPrefix("## ") {
                 continue
             } else if field != nil {

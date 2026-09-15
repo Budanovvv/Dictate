@@ -729,7 +729,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Кто что делает и к какому сроку — по строке на задачу",
         "Why we met and what we set out to settle": "Зачем встречались и что собирались решить",
         "%d more": "ещё %d",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Название остаётся на языке встречи; саммари и все отчёты пишутся на этом. Имена полей в отчёте остаются ровно как напечатаны.",
         "About “%@”:": "По встрече «%@»:",
         "Replace the report with a new “%@” one?": "Заменить отчёт новым по шаблону «%@»?",
         "Replace report": "Заменить отчёт",
@@ -903,6 +902,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Copy with quotes кладёт ответ агента в буфер обмена вместе со строками расшифровок, на которые он опирался, как Markdown или обычный текст.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Откройте встречу, нажмите Write report в её шапке и выберите шаблон. Отчёт ложится на карточку встречи и путешествует вместе с её расшифровкой.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Settings › Summaries & reports › Written in: строка резюме и каждый отчёт приходят на языке, на котором вы читаете, на каком бы языке ни шёл звонок.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "Заголовок остаётся на языке встречи; резюме и каждый отчёт пишутся на этом, включая заголовки полей.",
     ]
 
     static let uk: [String: String] = [
@@ -1473,7 +1473,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Хто що робить і до якого терміну — по рядку на завдання",
         "Why we met and what we set out to settle": "Навіщо зустрічалися і що збиралися вирішити",
         "%d more": "ще %d",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Назва лишається мовою зустрічі; підсумок і всі звіти пишуться цією. Назви полів у звіті лишаються рівно як надруковано.",
         "About “%@”:": "Щодо зустрічі «%@»:",
         "Replace the report with a new “%@” one?": "Замінити звіт новим за шаблоном «%@»?",
         "Replace report": "Замінити звіт",
@@ -1647,6 +1646,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Copy with quotes кладе відповідь агента в буфер обміну разом із рядками розшифровок, на які він спирався, як Markdown або звичайний текст.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Відкрийте зустріч, натисніть Write report у її шапці й виберіть шаблон. Звіт лягає на картку зустрічі й подорожує разом із її розшифровкою.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Settings › Summaries & reports › Written in: рядок резюме й кожен звіт приходять мовою, якою ви читаєте, якою б мовою не йшов дзвінок.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "Заголовок залишається мовою зустрічі; резюме й кожен звіт пишуться цією, включно із заголовками полів.",
     ]
 
     static let es: [String: String] = [
@@ -2226,7 +2226,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Quién hace qué y para cuándo: una línea por tarea",
         "Why we met and what we set out to settle": "Por qué nos reunimos y qué queríamos resolver",
         "%d more": "%d más",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "El título conserva el idioma de la reunión; el resumen y todos los informes se escriben en este. Los nombres de los campos de un informe se mantienen tal como se escribieron.",
         "About “%@”:": "Sobre “%@”:",
         "Replace the report with a new “%@” one?": "¿Sustituir el informe por uno nuevo “%@”?",
         "Replace report": "Sustituir informe",
@@ -2400,6 +2399,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Copiar con citas pone la respuesta del agente en el portapapeles junto con las líneas de transcripción en las que se basó, como Markdown o texto sin formato.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Abre una reunión, pulsa Escribir informe en su cabecera y elige una plantilla. El informe queda en la ficha de la reunión y viaja con su transcripción.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Ajustes › Resúmenes e informes › Escrito en: la línea de resumen y cada informe llegan en el idioma en que lees, sea cual sea el idioma de la llamada.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "El título conserva el idioma de la reunión; el resumen y cada informe se escriben en este, encabezados de campo incluidos.",
     ]
 
     static let pt: [String: String] = [
@@ -2979,7 +2979,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Quem faz o quê, até quando — uma linha por tarefa",
         "Why we met and what we set out to settle": "Por que nos reunimos e o que queríamos resolver",
         "%d more": "mais %d",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "O título mantém o idioma da reunião; o resumo e todos os relatórios são escritos neste. Os nomes dos campos de um relatório ficam exatamente como digitados.",
         "About “%@”:": "Sobre “%@”:",
         "Replace the report with a new “%@” one?": "Substituir o relatório por um novo “%@”?",
         "Replace report": "Substituir relatório",
@@ -3153,6 +3152,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Copiar com citações põe a resposta do agente na área de transferência com as linhas da transcrição em que se baseou, como Markdown ou texto simples.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Abra uma reunião, pressione Escrever relatório no cabeçalho e escolha um modelo. O relatório fica no cartão da reunião e viaja com a transcrição.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Ajustes › Resumos e relatórios › Escrito em: a linha de resumo e cada relatório chegam no idioma em que você lê, seja qual for o idioma da chamada.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "O título mantém o idioma da reunião; o resumo e cada relatório são escritos neste, títulos dos campos incluídos.",
     ]
 
     static let fr: [String: String] = [
@@ -3732,7 +3732,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Qui fait quoi, pour quand — une ligne par tâche",
         "Why we met and what we set out to settle": "Pourquoi nous nous sommes réunis et ce que nous voulions trancher",
         "%d more": "%d de plus",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Le titre garde la langue de la réunion ; le résumé et chaque rapport sont rédigés dans celle-ci. Les noms des champs d’un rapport restent exactement tels que saisis.",
         "About “%@”:": "À propos de « %@ » :",
         "Replace the report with a new “%@” one?": "Remplacer le rapport par un nouveau « %@ » ?",
         "Replace report": "Remplacer le rapport",
@@ -3906,6 +3905,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Copier avec les citations place la réponse de l’agent dans le presse-papiers avec les lignes de transcription dont elle vient, en Markdown ou en texte brut.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Ouvrez une réunion, cliquez sur Rédiger un rapport dans son en-tête, puis choisissez un modèle. Le rapport se pose sur la fiche de la réunion et voyage avec sa transcription.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Réglages › Résumés et rapports › Rédigé en : la ligne de résumé et chaque rapport arrivent dans la langue que vous lisez, quelle que soit celle de l’appel.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "Le titre garde la langue de la réunion ; le résumé et chaque rapport sont rédigés dans celle-ci, titres des champs compris.",
     ]
 
     static let de: [String: String] = [
@@ -4485,7 +4485,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Wer macht was bis wann – eine Zeile pro Aufgabe",
         "Why we met and what we set out to settle": "Warum wir uns getroffen haben und was wir klären wollten",
         "%d more": "%d weitere",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Der Titel behält die Sprache des Meetings; die Zusammenfassung und jeder Bericht werden in dieser geschrieben. Feldnamen in einem Bericht bleiben genau wie eingegeben.",
         "About “%@”:": "Zu „%@“:",
         "Replace the report with a new “%@” one?": "Bericht durch einen neuen „%@“-Bericht ersetzen?",
         "Replace report": "Bericht ersetzen",
@@ -4659,6 +4658,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Mit Zitaten kopieren legt die Antwort des Agenten mit den Transkriptzeilen, aus denen sie stammt, in die Zwischenablage — als Markdown oder reiner Text.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Öffnen Sie ein Meeting, klicken Sie in seiner Kopfzeile auf „Bericht schreiben“ und wählen Sie eine Vorlage. Der Bericht landet auf der Karte des Meetings und reist mit dem Transkript.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Einstellungen › Zusammenfassungen & Berichte › Geschrieben auf: die Zusammenfassungszeile und jeder Bericht kommen in der Sprache, die Sie lesen — egal, in welcher Sprache das Gespräch war.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "Der Titel behält die Sprache des Meetings; die Zusammenfassung und jeder Bericht werden in dieser geschrieben, die Feldüberschriften eingeschlossen.",
     ]
 
     static let zh: [String: String] = [
@@ -5238,7 +5238,6 @@ extension Localization {
         "Who does what, by when — one line per task": "谁做什么、何时完成——每项一行",
         "Why we met and what we set out to settle": "我们为什么开会、打算解决什么",
         "%d more": "还有 %d 位",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "标题保留会议的语言；摘要和所有报告都用此语言撰写。报告中的字段名保持原样。",
         "About “%@”:": "关于“%@”：",
         "Replace the report with a new “%@” one?": "用新的“%@”报告替换现有报告？",
         "Replace report": "替换报告",
@@ -5412,6 +5411,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "「连同引文拷贝」会把代理的回答连同其依据的转录行一起放入剪贴板，可选 Markdown 或纯文本。",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "打开一场会议，在标题栏按「写报告」，然后选择模板。报告会落在会议卡片上，随转录一起移动。",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "设置 › 摘要与报告 › 撰写语言：摘要行和每份报告都以您阅读的语言呈现，无论通话使用什么语言。",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "标题保留会议的语言；摘要和每份报告用此语言撰写，字段标题也包括在内。",
     ]
 
     static let ja: [String: String] = [
@@ -5991,7 +5991,6 @@ extension Localization {
         "Who does what, by when — one line per task": "誰が何をいつまでに——1 タスク 1 行",
         "Why we met and what we set out to settle": "なぜ集まり、何を決めようとしたか",
         "%d more": "他 %d 人",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "タイトルはミーティングの言語のまま、要約とすべてのレポートはこの言語で書かれます。レポートの項目名は入力したままです。",
         "About “%@”:": "「%@」について：",
         "Replace the report with a new “%@” one?": "レポートを新しい「%@」レポートに置き換えますか？",
         "Replace report": "レポートを置き換える",
@@ -6165,6 +6164,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "「引用付きでコピー」は、エージェントの回答を根拠となった文字起こしの行と一緒に、Markdown またはプレーンテキストでクリップボードに置きます。",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "ミーティングを開き、ヘッダーの「レポートを作成」を押してテンプレートを選びます。レポートはミーティングのカードに載り、文字起こしと一緒に移動します。",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "設定 › 要約とレポート › 書く言語：要約の行とすべてのレポートは、通話が何語であっても、あなたが読む言語で届きます。",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "タイトルはミーティングの言語のまま。要約とすべてのレポートは、フィールドの見出しも含めてこの言語で書かれます。",
     ]
 
     static let ko: [String: String] = [
@@ -6744,7 +6744,6 @@ extension Localization {
         "Who does what, by when — one line per task": "누가 무엇을 언제까지 — 작업당 한 줄",
         "Why we met and what we set out to settle": "왜 모였고 무엇을 결정하려 했는지",
         "%d more": "%d명 더",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "제목은 회의의 언어를 유지하고, 요약과 모든 보고서는 이 언어로 작성됩니다. 보고서의 항목 이름은 입력한 그대로 유지됩니다.",
         "About “%@”:": "“%@”에 대해:",
         "Replace the report with a new “%@” one?": "보고서를 새 “%@” 보고서로 대체할까요?",
         "Replace report": "보고서 대체",
@@ -6918,6 +6917,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "인용과 함께 복사는 에이전트의 답변을 근거가 된 대본 줄과 함께 Markdown 또는 일반 텍스트로 클립보드에 넣습니다.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "회의를 열고 헤더의 보고서 작성을 누른 뒤 템플릿을 고르세요. 보고서는 회의 카드에 놓이고 대본과 함께 이동합니다.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "설정 › 요약 및 보고서 › 작성 언어: 요약 줄과 모든 보고서가 통화 언어와 관계없이 당신이 읽는 언어로 옵니다.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "제목은 회의의 언어를 유지합니다. 요약과 모든 보고서는 필드 제목까지 포함해 이 언어로 작성됩니다.",
     ]
 
     static let vi: [String: String] = [
@@ -7497,7 +7497,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Ai làm gì, đến khi nào — mỗi việc một dòng",
         "Why we met and what we set out to settle": "Vì sao chúng tôi họp và muốn giải quyết điều gì",
         "%d more": "%d nữa",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Tiêu đề giữ ngôn ngữ của cuộc họp; bản tóm tắt và mọi báo cáo được viết bằng ngôn ngữ này. Tên trường trong báo cáo giữ nguyên như đã nhập.",
         "About “%@”:": "Về “%@”:",
         "Replace the report with a new “%@” one?": "Thay báo cáo bằng báo cáo “%@” mới?",
         "Replace report": "Thay báo cáo",
@@ -7671,6 +7670,7 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Sao chép kèm trích dẫn đặt câu trả lời của trợ lý vào bảng tạm cùng các dòng bản ghi mà nó dựa vào, dạng Markdown hoặc văn bản thuần.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Mở một cuộc họp, bấm Viết báo cáo ở tiêu đề, rồi chọn mẫu. Báo cáo nằm trên thẻ cuộc họp và đi cùng bản ghi.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Cài đặt › Tóm tắt và báo cáo › Viết bằng: dòng tóm tắt và mọi báo cáo đến bằng ngôn ngữ bạn đọc, dù cuộc gọi dùng ngôn ngữ nào.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "Tiêu đề giữ ngôn ngữ của cuộc họp; tóm tắt và mọi báo cáo được viết bằng ngôn ngữ này, kể cả tiêu đề các trường.",
     ]
 
     static let tl: [String: String] = [
@@ -8250,7 +8250,6 @@ extension Localization {
         "Who does what, by when — one line per task": "Sino ang gagawa ng ano, kailan — isang linya bawat gawain",
         "Why we met and what we set out to settle": "Bakit kami nagkita at ano ang nais naming ayusin",
         "%d more": "%d pa",
-        "The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed.": "Nananatili ang wika ng meeting sa pamagat; ang buod at bawat report ay isinusulat sa wikang ito. Nananatili ang mga pangalan ng field sa report gaya ng na-type.",
         "About “%@”:": "Tungkol sa “%@”:",
         "Replace the report with a new “%@” one?": "Palitan ang report ng bagong “%@”?",
         "Replace report": "Palitan ang report",
@@ -8424,5 +8423,6 @@ extension Localization {
         "Copy with quotes puts the agent’s answer on the clipboard with the transcript lines it drew from, as Markdown or plain text.": "Inilalagay ng Kopyahin kasama ang mga sipi ang sagot ng agent sa clipboard kasama ang mga linya ng transcript na pinagbatayan nito, bilang Markdown o plain text.",
         "Open a meeting and press Write report in its header, then pick a template. The report lands on the meeting’s card and travels with its transcript.": "Magbukas ng meeting at pindutin ang Isulat ang report sa header nito, pagkatapos ay pumili ng template. Dumarating ang report sa card ng meeting at kasama ng transcript nito.",
         "Settings › Summaries & reports › Written in: the summary line and every report come in the language you read, whatever language the call was in.": "Settings › Mga buod at report › Isinusulat sa: ang linya ng buod at bawat report ay dumarating sa wikang binabasa mo, anuman ang wika ng tawag.",
+        "The title keeps the meeting’s language; the summary and every report are written in this one, field headings included.": "Nananatili sa wika ng meeting ang pamagat; ang buod at bawat report ay isinusulat sa wikang ito, kasama ang mga heading ng field.",
     ]
 }

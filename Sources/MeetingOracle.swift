@@ -52,7 +52,14 @@ protocol MeetingOracle {
     /// with exactly these fields, in this order, and nothing else. A
     /// missing field comes back as an empty string, never as prose about
     /// why it is missing.
-    func report(_ request: ReportRequest) async throws -> [String]
+    func report(_ request: ReportRequest) async throws -> ReportReply
+}
+
+/// What a report call returns: the answers in field order, and each
+/// field's heading in the report's language.
+struct ReportReply: Sendable {
+    let answers: [String]
+    let headings: [String]
 }
 
 /// What a report call sends: the instructions, the transcript, and the
@@ -62,6 +69,9 @@ struct ReportRequest: Sendable {
     let instructions: String
     let transcript: String
     let fields: [ReportField]
+    /// The language the report is written in, by its English name — the
+    /// headings are asked for in it too.
+    let language: String
 
     static let toolName = "write_report"
     static let toolDescription =
@@ -71,6 +81,7 @@ struct ReportRequest: Sendable {
     /// person's own text and may hold anything, and a JSON key that is
     /// somebody's typo is a schema that fails validation.
     static func key(_ index: Int) -> String { "field_\(index + 1)" }
+    static func headingKey(_ index: Int) -> String { "heading_\(index + 1)" }
 
     /// The function's parameters. `strict` adds what OpenAI's strict mode
     /// insists on and Anthropic's schema tolerates anyway.
@@ -82,11 +93,15 @@ struct ReportRequest: Sendable {
             if !instruction.isEmpty { description += ": \(instruction)" }
             description += ". Empty string if the conversation did not cover this."
             properties[Self.key(index)] = ["type": "string", "description": description]
+            properties[Self.headingKey(index)] = [
+                "type": "string",
+                "description": "The heading for \"\(field.name)\" in \(language): the same name, translated; exactly as given if it already is in \(language).",
+            ]
         }
         var schema: [String: Any] = [
             "type": "object",
             "properties": properties,
-            "required": fields.indices.map(Self.key),
+            "required": fields.indices.map(Self.key) + fields.indices.map(Self.headingKey),
         ]
         if strict { schema["additionalProperties"] = false }
         return schema
@@ -99,6 +114,20 @@ struct ReportRequest: Sendable {
             (arguments[Self.key(index)] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         }
+    }
+
+    /// The headings in field order; a heading the model left out or left
+    /// empty falls back to the field's own name.
+    func headings(from arguments: [String: Any]) -> [String] {
+        fields.enumerated().map { index, field in
+            let heading = (arguments[Self.headingKey(index)] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return heading.isEmpty ? field.name : heading
+        }
+    }
+
+    func reply(from arguments: [String: Any]) -> ReportReply {
+        ReportReply(answers: answers(from: arguments), headings: headings(from: arguments))
     }
 }
 

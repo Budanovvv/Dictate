@@ -100,12 +100,17 @@ final class MeetingReports: ObservableObject {
                                    language: Settings.shared.reportLanguage ?? Localization.shared.effective)
         Log.d("report: writing “\(job.template.name)” for \(url.lastPathComponent) with \(provider.productName)")
         do {
-            let answers = try await oracle.report(request)
+            let reply = try await oracle.report(request)
             let fields = job.template.usableFields
             let report = MeetingReport(
                 templateID: job.template.id, templateName: job.template.name,
                 writer: provider.productName, written: Date(),
-                answers: zip(fields, answers).map { .init(field: $0.name, text: $1) })
+                answers: fields.indices.map { i in
+                    let heading = i < reply.headings.count ? reply.headings[i] : fields[i].name
+                    return .init(field: fields[i].name,
+                                 text: i < reply.answers.count ? reply.answers[i] : "",
+                                 heading: heading == fields[i].name ? nil : heading)
+                })
             guard MeetingArchive.setReport(report, heading: L("Report"), in: url) else {
                 phases[url] = .failed(.other, job.template.name)
                 return
@@ -174,12 +179,18 @@ final class MeetingReports: ObservableObject {
             for it — never a sentence saying it was not discussed, and never \
             something invented to fill the space.
 
-            Write in \(language.englishName). Where a field holds one thought, \
-            write plain prose in short paragraphs. Where it holds several \
+            Write in \(language.englishName), the headings included: give each \
+            field's heading in that language. Where a field holds one \
+            thought, write plain prose — paragraphs of at most three \
+            sentences, a blank line between them. Where it holds several \
             things — decisions, actions, objections, names — write a list: \
             one item per line, each line starting with "- ", one thought per \
-            item, no nesting. No headings, no bold, and do not repeat the \
-            field's name inside its text.
+            item, no nesting. An item may open with a short lead-in and a \
+            colon ("Architecture: split the portal from the agent"); the \
+            reader's app sets the lead-in in bold. Where the wording itself \
+            matters, quote the speaker on a line of its own starting with \
+            "> ". No headings, no bold markup, and do not repeat the field's \
+            heading inside its text.
             """
 
         let dateLine = meeting.started.formatted(date: .long, time: .shortened)
@@ -196,7 +207,7 @@ final class MeetingReports: ObservableObject {
                 + "\n[Transcript truncated here — \(dropped) more characters were recorded after this point.]"
         }
         return ReportRequest(instructions: instructions, transcript: transcript,
-                             fields: template.usableFields)
+                             fields: template.usableFields, language: language.englishName)
     }
 }
 

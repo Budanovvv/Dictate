@@ -143,7 +143,7 @@ enum MeetingAgentTool: String, CaseIterable {
             for report in meeting.reports {
                 text += "Report (\(report.templateName), written by \(report.writer)):\n"
                 for answer in report.answers {
-                    text += "## \(answer.field)\n\(answer.isEmpty ? "Not discussed" : answer.text)\n"
+                    text += "## \(answer.title)\n\(answer.isEmpty ? "Not discussed" : answer.text)\n"
                 }
                 text += "\n"
             }

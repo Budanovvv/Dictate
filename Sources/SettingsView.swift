@@ -837,7 +837,7 @@ struct SettingsView: View {
                     .onChange(of: reportLanguage) { _, v in Settings.shared.reportLanguage = v }
             } label: {
                 rowLabel(L("Written in"),
-                         L("The title keeps the meeting’s language; the summary and every report are written in this one. Field names in a report stay exactly as typed."))
+                         L("The title keeps the meeting’s language; the summary and every report are written in this one, field headings included."))
             }
         } header: { Text(L("On this Mac")) }
     }

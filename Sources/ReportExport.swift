@@ -188,7 +188,7 @@ enum ReportExport {
         var lines = ["# \(MeetingReports.name(of: meeting))", "_\(dateLine(meeting))_", "",
                      "## \(L("Report")) · \(report.templateName)", ""]
         for answer in report.answers {
-            lines.append("### \(answer.field)")
+            lines.append("### \(answer.title)")
             lines.append("")
             lines.append(answer.isEmpty ? "_\(L("Not discussed"))_" : ReportText.markdown(answer.text))
             lines.append("")
@@ -201,7 +201,7 @@ enum ReportExport {
         var lines = [MeetingReports.name(of: meeting), dateLine(meeting),
                      "\(L("Report")) · \(report.templateName)", ""]
         for answer in report.answers {
-            lines.append(answer.field)
+            lines.append(answer.title)
             lines.append(answer.isEmpty ? L("Not discussed") : ReportText.plain(answer.text))
             lines.append("")
         }
@@ -237,7 +237,7 @@ enum ReportExport {
         let out = NSMutableAttributedString()
         func add(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular,
                  color: NSColor = .textColor, italic: Bool = false, after: CGFloat = 6,
-                 bullet: Bool = false) {
+                 bullet: Bool = false, quote: Bool = false, lead: String? = nil) {
             var font = NSFont.systemFont(ofSize: size, weight: weight)
             if italic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let paragraph = NSMutableParagraphStyle()
@@ -252,9 +252,18 @@ enum ReportExport {
                 paragraph.tabStops = [NSTextTab(textAlignment: .left, location: 14)]
                 line = "•\t" + text
             }
-            out.append(NSAttributedString(string: line + "\n", attributes: [
+            if quote {
+                paragraph.headIndent = 14
+                paragraph.firstLineHeadIndent = 14
+            }
+            let run = NSMutableAttributedString(string: line + "\n", attributes: [
                 .font: font, .foregroundColor: color, .paragraphStyle: paragraph,
-            ]))
+            ])
+            if let lead, let range = line.range(of: lead) {
+                run.addAttribute(.font, value: NSFont.systemFont(ofSize: size, weight: .semibold),
+                                 range: NSRange(range, in: line))
+            }
+            out.append(run)
         }
         /// A field's text as its blocks: paragraphs, and lists item by item.
         func addField(_ text: String) {
@@ -264,9 +273,13 @@ enum ReportExport {
                 switch block {
                 case .paragraph(let paragraph):
                     add(paragraph, size: 12, after: last ? 14 : 6)
+                case .quote(let quote):
+                    add(quote, size: 12, color: .secondaryLabelColor, italic: true,
+                        after: last ? 14 : 6, quote: true)
                 case .list(let items):
                     for (i, item) in items.enumerated() {
-                        add(item, size: 12, after: last && i == items.count - 1 ? 14 : 2, bullet: true)
+                        add(item, size: 12, after: last && i == items.count - 1 ? 14 : 2,
+                            bullet: true, lead: ReportText.leadIn(item).map { $0.lead + ":" })
                     }
                 }
             }
@@ -275,7 +288,7 @@ enum ReportExport {
         add(dateLine(meeting) + " · " + L("Report") + " · " + report.templateName,
             size: 11, color: .secondaryLabelColor, after: 16)
         for answer in report.answers {
-            add(answer.field, size: 13, weight: .semibold, after: 4)
+            add(answer.title, size: 13, weight: .semibold, after: 4)
             if answer.isEmpty {
                 add(L("Not discussed"), size: 12, color: .secondaryLabelColor, italic: true, after: 14)
             } else {

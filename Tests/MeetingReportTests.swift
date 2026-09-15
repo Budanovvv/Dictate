@@ -165,14 +165,14 @@ final class ReportRequestTests: XCTestCase {
         ReportRequest(instructions: "i", transcript: "t", fields: [
             ReportField(name: "Client profile", instruction: "Who they are"),
             ReportField(name: "Objections"),
-        ])
+        ], language: "English")
     }
 
     func testSchemaKeysArePositional() {
         let schema = request.schema(strict: true)
         let properties = schema["properties"] as? [String: Any]
-        XCTAssertEqual(Set(properties?.keys.map { $0 } ?? []), ["field_1", "field_2"])
-        XCTAssertEqual(schema["required"] as? [String], ["field_1", "field_2"])
+        XCTAssertEqual(Set(properties?.keys.map { $0 } ?? []), ["field_1", "field_2", "heading_1", "heading_2"])
+        XCTAssertEqual(schema["required"] as? [String], ["field_1", "field_2", "heading_1", "heading_2"])
         XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
         XCTAssertNil(request.schema(strict: false)["additionalProperties"])
         let first = properties?["field_1"] as? [String: Any]

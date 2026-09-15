@@ -35,3 +35,22 @@ final class ReportTextTests: XCTestCase {
         XCTAssertEqual(ReportText.markdown("Just prose."), "Just prose.")
     }
 }
+
+/// Quotes and lead-ins: the two marks the prompt asks for beyond lists.
+final class ReportTextMarkupTests: XCTestCase {
+    func testAQuoteLineIsAQuoteBlock() {
+        let blocks = ReportText.blocks("Decided.\n> We ship it as one file.\n- item")
+        XCTAssertEqual(blocks, [.paragraph("Decided."), .quote("We ship it as one file."), .list(["item"])])
+        XCTAssertEqual(ReportText.markdown("> a"), "> a")
+        XCTAssertEqual(ReportText.plain("> a"), "    “a”")
+    }
+
+    func testLeadInIsShortAndLabelLike() {
+        XCTAssertEqual(ReportText.leadIn("Architecture: split the portal from the agent")?.lead, "Architecture")
+        XCTAssertEqual(ReportText.leadIn("Architecture: split the portal from the agent")?.rest, "split the portal from the agent")
+        XCTAssertNil(ReportText.leadIn("The plan, as Tom put it after the break, was this: ship"))
+        XCTAssertNil(ReportText.leadIn("No colon here"))
+        XCTAssertNil(ReportText.leadIn("Time: "))
+        XCTAssertEqual(ReportText.markdown("- Next: send the quote"), "- **Next:** send the quote")
+    }
+}

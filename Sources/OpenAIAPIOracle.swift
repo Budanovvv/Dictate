@@ -197,7 +197,7 @@ struct OpenAIAPIOracle: MeetingOracle {
     /// reasoning that counts against the same ceiling.
     private let reportMaxTokens = 8192
 
-    func report(_ request: ReportRequest) async throws -> [String] {
+    func report(_ request: ReportRequest) async throws -> ReportReply {
         guard let key = APIKey.current(.openai) else { throw Failure.noKey }
         let tool: [String: Any] = [
             "type": "function",
@@ -235,7 +235,7 @@ struct OpenAIAPIOracle: MeetingOracle {
         else {
             throw Failure.failed(L("The model returned no report."))
         }
-        return request.answers(from: arguments)
+        return request.reply(from: arguments)
     }
 
     /// One request, the whole reply as JSON. Same retry manners as `send`.

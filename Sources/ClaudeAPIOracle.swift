@@ -194,7 +194,7 @@ struct ClaudeAPIOracle: MeetingOracle {
     /// thinking that counts against the same ceiling.
     private let reportMaxTokens = 8192
 
-    func report(_ request: ReportRequest) async throws -> [String] {
+    func report(_ request: ReportRequest) async throws -> ReportReply {
         guard let key = APIKey.current(.anthropic) else { throw Failure.noKey }
         let tool: [String: Any] = [
             "name": ReportRequest.toolName,
@@ -242,7 +242,7 @@ struct ClaudeAPIOracle: MeetingOracle {
         }), let input = use["input"] as? [String: Any] else {
             throw Failure.failed(L("The model returned no report."))
         }
-        return request.answers(from: input)
+        return request.reply(from: input)
     }
 
     /// One request, the whole reply as JSON. Same retry manners as `send`.
