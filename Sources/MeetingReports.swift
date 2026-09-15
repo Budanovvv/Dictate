@@ -174,9 +174,12 @@ final class MeetingReports: ObservableObject {
             for it — never a sentence saying it was not discussed, and never \
             something invented to fill the space.
 
-            Write in \(language.englishName). Plain prose, short paragraphs; a \
-            list only where the content genuinely is a list. No headings, and \
-            do not repeat the field's name inside its text.
+            Write in \(language.englishName). Where a field holds one thought, \
+            write plain prose in short paragraphs. Where it holds several \
+            things — decisions, actions, objections, names — write a list: \
+            one item per line, each line starting with "- ", one thought per \
+            item, no nesting. No headings, no bold, and do not repeat the \
+            field's name inside its text.
             """
 
         let dateLine = meeting.started.formatted(date: .long, time: .shortened)

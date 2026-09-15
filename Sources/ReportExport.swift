@@ -180,7 +180,7 @@ enum ReportExport {
         for answer in report.answers {
             lines.append("### \(answer.field)")
             lines.append("")
-            lines.append(answer.isEmpty ? "_\(L("Not discussed"))_" : answer.text)
+            lines.append(answer.isEmpty ? "_\(L("Not discussed"))_" : ReportText.markdown(answer.text))
             lines.append("")
         }
         lines.append("_\(L("Written by Dictate on this Mac from the transcript"))_")
@@ -192,7 +192,7 @@ enum ReportExport {
                      "\(L("Report")) · \(report.templateName)", ""]
         for answer in report.answers {
             lines.append(answer.field)
-            lines.append(answer.isEmpty ? L("Not discussed") : answer.text)
+            lines.append(answer.isEmpty ? L("Not discussed") : ReportText.plain(answer.text))
             lines.append("")
         }
         lines.append(L("Written by Dictate on this Mac from the transcript"))
@@ -214,7 +214,7 @@ enum ReportExport {
             var row = [cell(MeetingReports.name(of: meeting)), cell(f.string(from: meeting.started))]
             for field in fields {
                 let answer = report.answers.first { $0.field == field }
-                row.append(cell(answer.map { $0.isEmpty ? L("Not discussed") : $0.text } ?? ""))
+                row.append(cell(answer.map { $0.isEmpty ? L("Not discussed") : ReportText.plain($0.text) } ?? ""))
             }
             rows.append(row.joined(separator: ","))
         }
@@ -226,15 +226,40 @@ enum ReportExport {
     static func attributed(_ meeting: ArchivedMeeting, report: MeetingReport) -> NSAttributedString {
         let out = NSMutableAttributedString()
         func add(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular,
-                 color: NSColor = .textColor, italic: Bool = false, after: CGFloat = 6) {
+                 color: NSColor = .textColor, italic: Bool = false, after: CGFloat = 6,
+                 bullet: Bool = false) {
             var font = NSFont.systemFont(ofSize: size, weight: weight)
             if italic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
             let paragraph = NSMutableParagraphStyle()
             paragraph.paragraphSpacing = after
             paragraph.lineHeightMultiple = 1.15
-            out.append(NSAttributedString(string: text + "\n", attributes: [
+            var line = text
+            if bullet {
+                // A hanging indent: the bullet in the margin, wrapped lines
+                // aligned under the first word.
+                paragraph.headIndent = 14
+                paragraph.firstLineHeadIndent = 0
+                paragraph.tabStops = [NSTextTab(textAlignment: .left, location: 14)]
+                line = "•\t" + text
+            }
+            out.append(NSAttributedString(string: line + "\n", attributes: [
                 .font: font, .foregroundColor: color, .paragraphStyle: paragraph,
             ]))
+        }
+        /// A field's text as its blocks: paragraphs, and lists item by item.
+        func addField(_ text: String) {
+            let blocks = ReportText.blocks(text)
+            for (index, block) in blocks.enumerated() {
+                let last = index == blocks.count - 1
+                switch block {
+                case .paragraph(let paragraph):
+                    add(paragraph, size: 12, after: last ? 14 : 6)
+                case .list(let items):
+                    for (i, item) in items.enumerated() {
+                        add(item, size: 12, after: last && i == items.count - 1 ? 14 : 2, bullet: true)
+                    }
+                }
+            }
         }
         add(MeetingReports.name(of: meeting), size: 18, weight: .semibold, after: 2)
         add(dateLine(meeting) + " · " + L("Report") + " · " + report.templateName,
@@ -244,7 +269,7 @@ enum ReportExport {
             if answer.isEmpty {
                 add(L("Not discussed"), size: 12, color: .secondaryLabelColor, italic: true, after: 14)
             } else {
-                add(answer.text, size: 12, after: 14)
+                addField(answer.text)
             }
         }
         add(L("Written by Dictate on this Mac from the transcript"), size: 10,

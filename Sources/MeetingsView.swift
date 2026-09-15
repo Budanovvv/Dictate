@@ -3829,11 +3829,35 @@ private struct TranscriptPane: View {
                         .italic()
                         .foregroundStyle(.tertiary)
                 } else {
-                    Text(answer.text)
-                        .font(.system(size: textScale.body))
-                        .lineSpacing(textScale.extraLeading / 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    // Paragraphs and lists as the text carries them
+                    // (ReportText): a list of decisions reads as a list,
+                    // whatever marker the model typed.
+                    ForEach(Array(ReportText.blocks(answer.text).enumerated()), id: \.offset) { _, block in
+                        switch block {
+                        case .paragraph(let paragraph):
+                            Text(paragraph)
+                                .font(.system(size: textScale.body))
+                                .lineSpacing(textScale.extraLeading / 2)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        case .list(let items):
+                            VStack(alignment: .leading, spacing: 3) {
+                                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                        Text("•")
+                                            .font(.system(size: textScale.body))
+                                            .foregroundStyle(.secondary)
+                                        Text(item)
+                                            .font(.system(size: textScale.body))
+                                            .lineSpacing(textScale.extraLeading / 2)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                            }
+                            .padding(.leading, 2)
+                        }
+                    }
                 }
             }
         }

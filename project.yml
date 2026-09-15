@@ -125,6 +125,8 @@ targets:
       # The Ask conversation store — deliberately dependency-free (plain
       # Codable + FileManager) so its round-trip/cap/rename rules test here.
       - path: Sources/AskHistoryStore.swift
+      # A report field read as paragraphs and lists — pure string work.
+      - path: Sources/ReportText.swift
       # Pulled in by RecordingHUD, which the tests compile.
       - path: Sources/DesignSystem.swift
       - path: Sources/LanguageList.swift
