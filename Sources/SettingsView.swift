@@ -135,6 +135,10 @@ struct SettingsView: View {
     @State private var confirmRemoveTemplate = false
     @State private var reportLanguage = Settings.shared.reportLanguage
     @FocusState private var focusedTemplateField: UUID?
+    /// The field row a drag is over, and each row's height (upper half =
+    /// before, lower half = after).
+    @State private var dropTarget: UUID?
+    @State private var rowHeights: [UUID: CGFloat] = [:]
     @ObservedObject private var templateStore = ReportTemplateStore.shared
     /// Meetings with a report per template, for the Written reports row.
     /// nil until counted, so the row never claims zero before it has looked.
@@ -1297,7 +1301,7 @@ struct SettingsView: View {
                 .multilineTextAlignment(.leading)
                 VStack(alignment: .leading, spacing: 8) {
                     rowLabel(L("Fields"),
-                             L("A field with no instruction goes by its name alone. A field the call did not cover reads “Not discussed”."))
+                             L("Drag a field by its handle to reorder. An instruction can be as long as it needs to be and is sent with every report; a field without one goes by its name alone. A field the call did not cover reads “Not discussed”."))
                     templateFields(draft)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1386,55 +1390,23 @@ struct SettingsView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    /// The fields, as rows in one box (design 9.2, turn 33 Collapse): a
+    /// drag handle before the name, the name in bold, the instruction
+    /// wrapping to as many lines as it needs — it is a prompt, not a
+    /// caption — and Remove as the only control. Reordering is the handle:
+    /// drop on the upper half of a row to land before it, the lower half
+    /// to land after.
     private func templateFields(_ template: ReportTemplate) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(template.fields.enumerated()), id: \.element.id) { index, field in
-                HStack(spacing: 6) {
-                    TextField("", text: fieldBinding(field.id, \.name), prompt: Text(L("Field name")))
-                        .labelsHidden()
-                        .templateField()
-                        .frame(width: 190)
-                        .focused($focusedTemplateField, equals: field.id)
-                        .accessibilityLabel(L("Field name"))
-                    TextField("", text: fieldBinding(field.id, \.instruction),
-                              prompt: Text(L("Instruction (optional)")))
-                        .labelsHidden()
-                        .templateField()
-                        .frame(maxWidth: .infinity)
-                        .accessibilityLabel(L("Instruction (optional)"))
-                    HStack(spacing: 2) {
-                        Button { moveTemplateField(field.id, by: -1) } label: {
-                            Image(systemName: "chevron.up")
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(width: 18, height: 18)
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .disabled(index == 0)
-                        .accessibilityLabel(L("Move up"))
-                        Button { moveTemplateField(field.id, by: 1) } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 11, weight: .semibold))
-                                .frame(width: 18, height: 18)
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .disabled(index == template.fields.count - 1)
-                        .accessibilityLabel(L("Move down"))
-                        Button {
-                            var updated = template
-                            updated.fields.removeAll { $0.id == field.id }
-                            templateDraft = updated
-                        } label: {
-                            Image(systemName: "minus.circle")
-                                .font(.system(size: 13))
-                                .frame(width: 20, height: 18)
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .accessibilityLabel(L("Remove field"))
-                    }
-                    .padding(.leading, 4)
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 0) {
+                ForEach(Array(template.fields.enumerated()), id: \.element.id) { index, field in
+                    if index > 0 { Divider() }
+                    templateFieldRow(field, in: template)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.quaternary.opacity(0.35)))
+            .frame(maxWidth: 400, alignment: .leading)
             Button {
                 var updated = template
                 let field = ReportField(name: "")
@@ -1446,8 +1418,65 @@ struct SettingsView: View {
             }
             .buttonStyle(.dsSmall)
             .controlSize(.small)
-            .padding(.top, 2)
         }
+    }
+
+    private func templateFieldRow(_ field: ReportField, in template: ReportTemplate) -> some View {
+        let targeted = dropTarget == field.id
+        return HStack(alignment: .top, spacing: 9) {
+            // The handle: three dotted bars, the width of a thumb's edge.
+            VStack(spacing: 2) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 0.5).fill(.quaternary).frame(width: 10, height: 2)
+                }
+            }
+            .frame(width: 10, height: 14)
+            .padding(.top, 3)
+            .contentShape(Rectangle())
+            .help(L("Drag to reorder"))
+            .draggable(field.id.uuidString)
+            .accessibilityLabel(L("Drag to reorder"))
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("", text: fieldBinding(field.id, \.name), prompt: Text(L("Field name")))
+                    .labelsHidden()
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, weight: .semibold))
+                    .focused($focusedTemplateField, equals: field.id)
+                    .accessibilityLabel(L("Field name"))
+                TextField("", text: fieldBinding(field.id, \.instruction),
+                          prompt: Text(L("No instruction — goes by its name alone")), axis: .vertical)
+                    .labelsHidden()
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11.5))
+                    .lineSpacing(2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1...12)
+                    .accessibilityLabel(L("No instruction — goes by its name alone"))
+            }
+            Button {
+                var updated = template
+                updated.fields.removeAll { $0.id == field.id }
+                templateDraft = updated
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 20, height: 20)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.6)))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L("Remove field"))
+            .accessibilityLabel(L("Remove field"))
+        }
+        .padding(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+        .background(targeted ? DS.selectionTint : Color.clear)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeights[field.id] = $0 }
+        .dropDestination(for: String.self) { items, location in
+            guard let raw = items.first, let dragged = UUID(uuidString: raw) else { return false }
+            let after = location.y > (rowHeights[field.id] ?? 0) / 2
+            moveTemplateField(dragged, nextTo: field.id, after: after)
+            return true
+        } isTargeted: { dropTarget = $0 ? field.id : (dropTarget == field.id ? nil : dropTarget) }
     }
 
     private func loadTemplate() {
@@ -1457,18 +1486,17 @@ struct SettingsView: View {
         templateDraft = templateID.flatMap { templateStore.template(id: $0) }
     }
 
-    private func moveTemplateField(_ id: UUID, by offset: Int) {
-        guard var updated = templateDraft,
-              let index = updated.fields.firstIndex(where: { $0.id == id }),
-              updated.fields.indices.contains(index + offset) else { return }
-        // The focused field commits through AppKit's field editor when it
-        // loses focus; taking the focus away BEFORE the rows move keeps that
-        // commit on the row it belongs to.
-        focusedTemplateField = nil
-        updated.fields.swapAt(index, index + offset)
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { templateDraft = updated }
+    /// Reorders by drop: the dragged field lands before or after the target.
+    private func moveTemplateField(_ id: UUID, nextTo target: UUID, after: Bool) {
+        guard var updated = templateDraft, id != target,
+              let from = updated.fields.firstIndex(where: { $0.id == id }) else { return }
+        let field = updated.fields.remove(at: from)
+        guard var to = updated.fields.firstIndex(where: { $0.id == target }) else {
+            updated.fields.insert(field, at: from); return
+        }
+        if after { to += 1 }
+        updated.fields.insert(field, at: to)
+        templateDraft = updated
     }
 
     private func templateBinding<T>(_ template: ReportTemplate,

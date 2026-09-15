@@ -1113,12 +1113,11 @@ struct MeetingsView: View {
             Divider()
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
-            Text(L("Library"))
-                .font(DS.sectionLabel)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-                .padding(.bottom, 3)
+            // Each section folds (design turn 33, Collapse): a disclosure
+            // on the heading, the state kept per section, so twenty
+            // sources or a dozen templates can be closed when not in use.
+            sectionHead(L("Library"), count: nil, key: "library", top: 8)
+            if sectionOpen("library") {
             navRow(icon: "rectangle.grid.1x2", title: L("All Meetings"),
                    count: meetings.count,
                    selected: selection != .ask && !starredOnly && !recentOnly
@@ -1147,39 +1146,13 @@ struct MeetingsView: View {
                 if recentOnly { starredOnly = false; sourceFilter = nil; reportsOnly = false; reportTemplateFilter = nil }
                 leaveAsk()
             }
-            // Reports (design 9.1 collection): a section of its own — All
-            // reports, then one row per template, each opening the
-            // collection in place of the list and the reading pane.
-            let kinds = reportKinds
-            if !kinds.isEmpty {
-                Text(L("Reports"))
-                    .font(DS.sectionLabel)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 14)
-                    .padding(.bottom, 3)
-                navRow(icon: "doc.text", title: L("All reports"),
-                       count: kinds.reduce(0) { $0 + $1.count },
-                       selected: reportsOnly && reportTemplateFilter == nil) {
-                    openCollection(nil)
-                }
-                ForEach(kinds, id: \.name) { kind in
-                    navRow(icon: "doc.text", title: kind.name, count: kind.count,
-                           selected: reportTemplateFilter == kind.name) {
-                        openCollection(kind.name)
-                    }
-                }
             }
             let sources = sourcesPresent
             // Shown whenever anything is bucketed at all (design): even one
             // "Other browser calls" row tells where the archive came from.
             if !sources.isEmpty || sourceFilter != nil {
-                Text(L("Sources"))
-                    .font(DS.sectionLabel)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-                    .padding(.bottom, 3)
+                sectionHead(L("Sources"), count: sources.count, key: "sources", top: 8)
+                if sectionOpen("sources") {
                 ForEach(sources, id: \.name) { source in
                     let name = source.name == Self.otherSourcesBucket
                         ? L("Other browser calls") : source.name
@@ -1191,11 +1164,69 @@ struct MeetingsView: View {
                         leaveAsk()
                     }
                 }
+                }
+            }
+            // Reports (design 9.1 collection): a section of its own — All
+            // reports, then one row per template, each opening the
+            // collection in place of the list and the reading pane.
+            let kinds = reportKinds
+            if !kinds.isEmpty {
+                sectionHead(L("Reports"), count: kinds.reduce(0) { $0 + $1.count }, key: "reports", top: 8)
+                if sectionOpen("reports") {
+                    navRow(icon: "doc.text", title: L("All reports"),
+                           count: kinds.reduce(0) { $0 + $1.count },
+                           selected: reportsOnly && reportTemplateFilter == nil) {
+                        openCollection(nil)
+                    }
+                    ForEach(kinds, id: \.name) { kind in
+                        navRow(icon: "doc.text", title: kind.name, count: kind.count,
+                               selected: reportTemplateFilter == kind.name) {
+                            openCollection(kind.name)
+                        }
+                    }
+                }
             }
         }
         .padding(.horizontal, MeetingsChrome.sidebarInset)
         .padding(.bottom, 6)
     }
+
+    /// A sidebar section heading with its disclosure and count (design
+    /// turn 33, Collapse). The fold is remembered per section.
+    private func sectionHead(_ title: String, count: Int?, key: String, top: CGFloat) -> some View {
+        let open = sectionOpen(key)
+        return Button {
+            var closed = Set(UserDefaults.standard.stringArray(forKey: "meetingsNavCollapsed") ?? [])
+            if open { closed.insert(key) } else { closed.remove(key) }
+            UserDefaults.standard.set(Array(closed), forKey: "meetingsNavCollapsed")
+            collapsedSections = closed
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: open ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+                Text(title)
+                    .font(DS.sectionLabel)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let count {
+                    Text("\(count)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, top)
+            .padding(.bottom, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(open ? [] : .isSelected)
+    }
+
+    private func sectionOpen(_ key: String) -> Bool { !collapsedSections.contains(key) }
 
     private func toggleSidebar() {
         withAnimation(.easeInOut(duration: DS.reveal)) { sidebarHidden.toggle() }
@@ -2108,6 +2139,9 @@ struct MeetingsView: View {
     /// True while Library › Reports is open — the collection stands in
     /// for the list and the pane (design 9.1).
     @State private var reportsOnly = false
+    /// Sidebar sections folded shut, remembered across launches.
+    @State private var collapsedSections: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: "meetingsNavCollapsed") ?? [])
     /// The collection's selection for a batch, and the batch being asked about.
     @State private var batchSelection: Set<URL> = []
     @State private var batchRequest: BatchRequest?
@@ -3871,12 +3905,12 @@ private struct TranscriptPane: View {
             .frame(maxWidth: DS.readingMeasure, alignment: .leading)
     }
 
-    /// Whether a row is open: the preferred (else first) row by default,
-    /// each flipped by its own click.
+    /// Whether a row is open. Every row arrives collapsed (design turn 33,
+    /// Collapse): a report is a row until it is asked for, so the reading
+    /// surface stays the summary, the outline and the transcript. Each
+    /// click flips its own row; nothing is remembered between visits.
     private func isOpen(_ templateName: String) -> Bool {
-        let defaultOpen = reports.first { $0.templateName == preferredReport }?.templateName
-            ?? reports.first?.templateName
-        return (templateName == defaultOpen) != reportToggles.contains(templateName)
+        reportToggles.contains(templateName)
     }
 
     private func toggleReport(_ templateName: String) {

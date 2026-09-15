@@ -35,6 +35,9 @@ struct ReportsCollection: View {
 
     /// The row last clicked without ⌘/⇧ — the anchor of a ⇧-range.
     @State private var anchor: URL?
+    /// "No report yet" arrives collapsed (design turn 33, Collapse): one
+    /// line with its count and Write all; the arrow reveals the meetings.
+    @State private var missingOpen = false
 
     // MARK: - Facts
 
@@ -93,7 +96,7 @@ struct ReportsCollection: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: templateName) { selected = []; anchor = nil }
+        .onChange(of: templateName) { selected = []; anchor = nil; missingOpen = false }
     }
 
     // MARK: - No template chosen (collectionNone)
@@ -195,11 +198,21 @@ struct ReportsCollection: View {
                     row(meeting, snippet: snippet(for: meeting), trailing: .date)
                 }
                 if !batchRunning, !missing.isEmpty || !failed.isEmpty {
-                    HStack(spacing: 10) {
-                        Text(Lf("No report yet · %d meetings", missing.count))
-                            .font(DS.sectionLabel)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
+                    HStack(spacing: 8) {
+                        Button { missingOpen.toggle() } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: missingOpen ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 12)
+                                Text(Lf("No report yet · %d meetings", missing.count))
+                                    .font(DS.sectionLabel)
+                                    .foregroundStyle(.secondary)
+                                Spacer(minLength: 8)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         if template != nil, canWrite, missing.count > 1 {
                             Button(Lf("Write all %d…", missing.count)) { onWrite(missing) }
                                 .buttonStyle(.dsSmall).controlSize(.small)
@@ -207,8 +220,10 @@ struct ReportsCollection: View {
                     }
                     .padding(EdgeInsets(top: 14, leading: 18, bottom: 6, trailing: 18))
                     .overlay(alignment: .top) { Divider() }
-                    ForEach(missing, id: \.url) { meeting in
-                        thinRow(meeting)
+                    if missingOpen {
+                        ForEach(missing, id: \.url) { meeting in
+                            thinRow(meeting)
+                        }
                     }
                 }
             }
@@ -219,8 +234,8 @@ struct ReportsCollection: View {
 
     private var footer: some View {
         Text(batchRunning
-             ? L("Each report is written and kept inside its own meeting’s file as it finishes. A refusal stops that meeting only; the rest continue.")
-             : L("Every report is kept inside its meeting’s file. Export reports… makes copies in a folder you choose, as Markdown, plain text or PDF, plus a CSV with one row per meeting."))
+             ? L("A refusal stops that meeting only; the rest continue.")
+             : L("Every report is kept inside its meeting’s file."))
             .font(.system(size: 11))
             .lineSpacing(2)
             .foregroundStyle(.secondary)
