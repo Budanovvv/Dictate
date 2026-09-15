@@ -715,7 +715,6 @@ extension Localization {
         "Write report": "Написать отчёт",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ ограничивает частоту запросов. Ничего не потеряно — попробуйте через минуту.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Этот Mac офлайн. Ничего не отправлено — попробуйте, когда вернётся связь.",
-        "Open report": "Открыть отчёт",
         "Write a “%@” report?": "Написать отчёт «%@»?",
         "Action items": "Задачи",
         "Dates and deadlines": "Даты и сроки",
@@ -743,8 +742,6 @@ extension Localization {
         "About “%@”:": "По встрече «%@»:",
         "Replace the report with a new “%@” one?": "Заменить отчёт новым по шаблону «%@»?",
         "Replace report": "Заменить отчёт",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Уже написанный отчёт будет заменён, его PDF тоже. Транскрипт уйдёт в %@ на вашем ключе.",
-        "Write with": "Написать по шаблону",
         "Written · replaces it": "Есть · будет заменён",
         "Dictate updated to %@.": "Dictate обновился до %@.",
         "Dismiss": "Закрыть",
@@ -858,6 +855,10 @@ extension Localization {
         "%d meetings, reports included": "встреч: %d, включая отчёты",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Загрузите модель встреч в разделе «Резюме и отчёты» или добавьте ключ для агента.",
         "Calls": "Звонки",
+        "Reports folder": "Папка отчётов",
+        "%d PDFs written before %@": "PDF, записанных до %@: %d",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate больше не пишет PDF сам. Эти файлы ваши — храните или удаляйте; в приложении от них ничего не зависит.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "Уже написанный отчёт будет заменён. Эта расшифровка отправится в %@ по вашему ключу.",
     ]
 
     static let uk: [String: String] = [
@@ -1414,7 +1415,6 @@ extension Localization {
         "Write report": "Написати звіт",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ обмежує частоту запитів. Нічого не втрачено — спробуйте за хвилину.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Цей Mac офлайн. Нічого не надіслано — спробуйте, коли з’явиться зв’язок.",
-        "Open report": "Відкрити звіт",
         "Write a “%@” report?": "Написати звіт «%@»?",
         "Action items": "Завдання",
         "Dates and deadlines": "Дати й терміни",
@@ -1442,8 +1442,6 @@ extension Localization {
         "About “%@”:": "Щодо зустрічі «%@»:",
         "Replace the report with a new “%@” one?": "Замінити звіт новим за шаблоном «%@»?",
         "Replace report": "Замінити звіт",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Уже написаний звіт буде замінено, його PDF теж. Транскрипт піде до %@ на вашому ключі.",
-        "Write with": "Написати за шаблоном",
         "Written · replaces it": "Є · буде замінено",
         "Dictate updated to %@.": "Dictate оновився до %@.",
         "Dismiss": "Закрити",
@@ -1557,6 +1555,10 @@ extension Localization {
         "%d meetings, reports included": "зустрічей: %d, включно зі звітами",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Завантажте модель зустрічей у розділі «Резюме та звіти» або додайте ключ для агента.",
         "Calls": "Дзвінки",
+        "Reports folder": "Тека звітів",
+        "%d PDFs written before %@": "PDF, записаних до %@: %d",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate більше не пише PDF сам. Ці файли ваші — зберігайте або видаляйте; у програмі від них нічого не залежить.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "Уже написаний звіт буде замінено. Ця розшифровка піде до %@ за вашим ключем.",
     ]
 
     static let es: [String: String] = [
@@ -2122,7 +2124,6 @@ extension Localization {
         "Write report": "Escribir informe",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ está limitando las solicitudes. No se perdió nada: inténtelo de nuevo en un minuto.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está sin conexión. No se envió nada: inténtelo cuando vuelva la conexión.",
-        "Open report": "Abrir el informe",
         "Write a “%@” report?": "¿Escribir un informe “%@”?",
         "Action items": "Tareas",
         "Dates and deadlines": "Fechas y plazos",
@@ -2150,8 +2151,6 @@ extension Localization {
         "About “%@”:": "Sobre “%@”:",
         "Replace the report with a new “%@” one?": "¿Sustituir el informe por uno nuevo “%@”?",
         "Replace report": "Sustituir informe",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "El informe ya escrito se sustituye, y su PDF también. Envía esta transcripción a %@ con su clave.",
-        "Write with": "Escribir con",
         "Written · replaces it": "Escrito · se sustituye",
         "Dictate updated to %@.": "Dictate se actualizó a %@.",
         "Dismiss": "Cerrar",
@@ -2265,6 +2264,10 @@ extension Localization {
         "%d meetings, reports included": "%d reuniones, informes incluidos",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Descarga el modelo de reuniones en Resúmenes e informes o añade una clave para el agente.",
         "Calls": "Llamadas",
+        "Reports folder": "Carpeta de informes",
+        "%d PDFs written before %@": "%d PDF escritos antes de %@",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate ya no escribe PDF por su cuenta. Son tuyos: consérvalos o bórralos; nada en la app depende de ellos.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "El informe ya escrito se sustituye. Envía esta transcripción a %@ con tu clave.",
     ]
 
     static let pt: [String: String] = [
@@ -2830,7 +2833,6 @@ extension Localization {
         "Write report": "Escrever relatório",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ está limitando as solicitações. Nada foi perdido: tente de novo em um minuto.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Este Mac está offline. Nada foi enviado: tente de novo quando a conexão voltar.",
-        "Open report": "Abrir o relatório",
         "Write a “%@” report?": "Escrever um relatório “%@”?",
         "Action items": "Tarefas",
         "Dates and deadlines": "Datas e prazos",
@@ -2858,8 +2860,6 @@ extension Localization {
         "About “%@”:": "Sobre “%@”:",
         "Replace the report with a new “%@” one?": "Substituir o relatório por um novo “%@”?",
         "Replace report": "Substituir relatório",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "O relatório já escrito é substituído, e o PDF também. Envia esta transcrição para %@ com a sua chave.",
-        "Write with": "Escrever com",
         "Written · replaces it": "Escrito · será substituído",
         "Dictate updated to %@.": "O Dictate foi atualizado para %@.",
         "Dismiss": "Fechar",
@@ -2973,6 +2973,10 @@ extension Localization {
         "%d meetings, reports included": "%d reuniões, relatórios incluídos",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Transfira o modelo de reuniões em Resumos e relatórios ou adicione uma chave para o agente.",
         "Calls": "Chamadas",
+        "Reports folder": "Pasta de relatórios",
+        "%d PDFs written before %@": "%d PDFs escritos antes da %@",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "O Dictate não escreve mais PDFs por conta própria. Eles são seus para guardar ou apagar; nada no app depende deles.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "O relatório já escrito é substituído. Envia esta transcrição para %@ com a sua chave.",
     ]
 
     static let fr: [String: String] = [
@@ -3538,7 +3542,6 @@ extension Localization {
         "Write report": "Rédiger le rapport",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ limite le débit des requêtes. Rien n’est perdu : réessayez dans une minute.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Ce Mac est hors ligne. Rien n’a été envoyé : réessayez quand la connexion sera revenue.",
-        "Open report": "Ouvrir le rapport",
         "Write a “%@” report?": "Rédiger un rapport « %@ » ?",
         "Action items": "Actions",
         "Dates and deadlines": "Dates et échéances",
@@ -3566,8 +3569,6 @@ extension Localization {
         "About “%@”:": "À propos de « %@ » :",
         "Replace the report with a new “%@” one?": "Remplacer le rapport par un nouveau « %@ » ?",
         "Replace report": "Remplacer le rapport",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Le rapport déjà rédigé est remplacé, son PDF aussi. Envoie cette transcription à %@ avec votre clé.",
-        "Write with": "Rédiger avec",
         "Written · replaces it": "Rédigé · sera remplacé",
         "Dictate updated to %@.": "Dictate est passé à la version %@.",
         "Dismiss": "Fermer",
@@ -3681,6 +3682,10 @@ extension Localization {
         "%d meetings, reports included": "%d réunions, rapports compris",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Téléchargez le modèle de réunions dans Résumés et rapports, ou ajoutez une clé pour l’agent.",
         "Calls": "Appels",
+        "Reports folder": "Dossier des rapports",
+        "%d PDFs written before %@": "%d PDF écrits avant %@",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate n’écrit plus de PDF de lui-même. Ils sont à vous, à garder ou à supprimer ; rien dans l’app n’en dépend.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "Le rapport déjà rédigé est remplacé. Envoie cette transcription à %@ avec votre clé.",
     ]
 
     static let de: [String: String] = [
@@ -4246,7 +4251,6 @@ extension Localization {
         "Write report": "Bericht schreiben",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ drosselt die Anfragen. Nichts ist verloren – versuchen Sie es in einer Minute erneut.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Dieser Mac ist offline. Nichts wurde gesendet – versuchen Sie es erneut, sobald die Verbindung zurück ist.",
-        "Open report": "Bericht öffnen",
         "Write a “%@” report?": "Bericht „%@“ schreiben?",
         "Action items": "Aufgaben",
         "Dates and deadlines": "Termine und Fristen",
@@ -4274,8 +4278,6 @@ extension Localization {
         "About “%@”:": "Zu „%@“:",
         "Replace the report with a new “%@” one?": "Bericht durch einen neuen „%@“-Bericht ersetzen?",
         "Replace report": "Bericht ersetzen",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Der bereits geschriebene Bericht wird ersetzt, sein PDF ebenfalls. Sendet dieses Transkript mit Ihrem Schlüssel an %@.",
-        "Write with": "Schreiben mit",
         "Written · replaces it": "Geschrieben · wird ersetzt",
         "Dictate updated to %@.": "Dictate wurde auf %@ aktualisiert.",
         "Dismiss": "Schließen",
@@ -4389,6 +4391,10 @@ extension Localization {
         "%d meetings, reports included": "%d Meetings, Berichte eingeschlossen",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Laden Sie das Meeting-Modell unter „Zusammenfassungen & Berichte“ herunter oder fügen Sie einen Schlüssel für den Agenten hinzu.",
         "Calls": "Anrufe",
+        "Reports folder": "Berichte-Ordner",
+        "%d PDFs written before %@": "%d PDFs, geschrieben vor %@",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate schreibt keine PDFs mehr von sich aus. Sie gehören Ihnen – behalten oder löschen; nichts in der App hängt davon ab.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "Der bereits geschriebene Bericht wird ersetzt. Sendet dieses Transkript mit Ihrem Schlüssel an %@.",
     ]
 
     static let zh: [String: String] = [
@@ -4954,7 +4960,6 @@ extension Localization {
         "Write report": "写报告",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ 正在限制请求频率。没有任何丢失，请一分钟后再试。",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "此 Mac 处于离线状态。未发送任何内容，请在恢复连接后再试。",
-        "Open report": "打开报告",
         "Write a “%@” report?": "写一份“%@”报告？",
         "Action items": "行动项",
         "Dates and deadlines": "日期与截止期限",
@@ -4982,8 +4987,6 @@ extension Localization {
         "About “%@”:": "关于“%@”：",
         "Replace the report with a new “%@” one?": "用新的“%@”报告替换现有报告？",
         "Replace report": "替换报告",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "已写好的报告及其 PDF 将被替换。会用你的密钥把此转录发送给 %@。",
-        "Write with": "用模板撰写",
         "Written · replaces it": "已写 · 将被替换",
         "Dictate updated to %@.": "Dictate 已更新到 %@。",
         "Dismiss": "关闭",
@@ -5097,6 +5100,10 @@ extension Localization {
         "%d meetings, reports included": "%d 场会议，含报告",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "在「摘要与报告」中下载会议模型，或为代理添加密钥。",
         "Calls": "通话",
+        "Reports folder": "报告文件夹",
+        "%d PDFs written before %@": "%@ 之前写入的 %d 个 PDF",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate 不再自行写入 PDF。这些文件归您所有，可保留或删除；应用中没有任何功能依赖它们。",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "已写出的报告将被替换。会通过您的密钥将此转录发送给 %@。",
     ]
 
     static let ja: [String: String] = [
@@ -5662,7 +5669,6 @@ extension Localization {
         "Write report": "レポートを書く",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ がリクエストを制限しています。何も失われていません。1 分後にもう一度お試しください。",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "この Mac はオフラインです。何も送信されていません。接続が戻ってからもう一度お試しください。",
-        "Open report": "レポートを開く",
         "Write a “%@” report?": "「%@」レポートを書きますか？",
         "Action items": "アクション項目",
         "Dates and deadlines": "日付と期限",
@@ -5690,8 +5696,6 @@ extension Localization {
         "About “%@”:": "「%@」について：",
         "Replace the report with a new “%@” one?": "レポートを新しい「%@」レポートに置き換えますか？",
         "Replace report": "レポートを置き換える",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "すでに書かれたレポートと PDF は置き換えられます。この文字起こしをあなたのキーで %@ に送ります。",
-        "Write with": "テンプレートで書く",
         "Written · replaces it": "作成済み · 置き換えます",
         "Dictate updated to %@.": "Dictate は %@ に更新されました。",
         "Dismiss": "閉じる",
@@ -5805,6 +5809,10 @@ extension Localization {
         "%d meetings, reports included": "%d 件のミーティング、レポートを含む",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "「要約とレポート」でミーティングモデルをダウンロードするか、エージェント用のキーを追加してください。",
         "Calls": "通話",
+        "Reports folder": "レポートフォルダ",
+        "%d PDFs written before %@": "%@ より前に作成された PDF %d 件",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate はもう自動で PDF を作成しません。これらはあなたのものです。残しても削除しても構いません。アプリ内で依存するものはありません。",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "作成済みのレポートは置き換えられます。この文字起こしをあなたのキーで %@ に送ります。",
     ]
 
     static let ko: [String: String] = [
@@ -6370,7 +6378,6 @@ extension Localization {
         "Write report": "보고서 쓰기",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@에서 요청 속도를 제한하고 있습니다. 잃은 것은 없으니 1분 뒤에 다시 시도하세요.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "이 Mac은 오프라인입니다. 아무것도 보내지 않았으니 연결이 돌아오면 다시 시도하세요.",
-        "Open report": "보고서 열기",
         "Write a “%@” report?": "“%@” 보고서를 쓸까요?",
         "Action items": "실행 항목",
         "Dates and deadlines": "날짜와 기한",
@@ -6398,8 +6405,6 @@ extension Localization {
         "About “%@”:": "“%@”에 대해:",
         "Replace the report with a new “%@” one?": "보고서를 새 “%@” 보고서로 대체할까요?",
         "Replace report": "보고서 대체",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "이미 작성된 보고서와 PDF가 대체됩니다. 이 전사를 내 키로 %@에 보냅니다.",
-        "Write with": "템플릿으로 쓰기",
         "Written · replaces it": "작성됨 · 대체됩니다",
         "Dictate updated to %@.": "Dictate가 %@(으)로 업데이트되었습니다.",
         "Dismiss": "닫기",
@@ -6513,6 +6518,10 @@ extension Localization {
         "%d meetings, reports included": "회의 %d개, 보고서 포함",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "요약 및 보고서에서 회의 모델을 다운로드하거나 에이전트용 키를 추가하세요.",
         "Calls": "통화",
+        "Reports folder": "보고서 폴더",
+        "%d PDFs written before %@": "%@ 이전에 작성된 PDF %d개",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate는 더 이상 스스로 PDF를 쓰지 않습니다. 이 파일들은 보관하든 삭제하든 자유입니다. 앱의 어떤 기능도 이에 의존하지 않습니다.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "이미 작성된 보고서가 교체됩니다. 이 대본을 본인 키로 %@에 보냅니다.",
     ]
 
     static let vi: [String: String] = [
@@ -7078,7 +7087,6 @@ extension Localization {
         "Write report": "Viết báo cáo",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "%@ đang giới hạn tần suất yêu cầu. Không mất gì cả — hãy thử lại sau một phút.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Mac này đang ngoại tuyến. Chưa gửi gì cả — hãy thử lại khi có kết nối.",
-        "Open report": "Mở báo cáo",
         "Write a “%@” report?": "Viết báo cáo “%@”?",
         "Action items": "Việc cần làm",
         "Dates and deadlines": "Ngày và hạn chót",
@@ -7106,8 +7114,6 @@ extension Localization {
         "About “%@”:": "Về “%@”:",
         "Replace the report with a new “%@” one?": "Thay báo cáo bằng báo cáo “%@” mới?",
         "Replace report": "Thay báo cáo",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Báo cáo đã viết sẽ bị thay thế, cả PDF của nó. Gửi bản ghi này tới %@ bằng khóa của bạn.",
-        "Write with": "Viết bằng",
         "Written · replaces it": "Đã viết · sẽ thay thế",
         "Dictate updated to %@.": "Dictate đã cập nhật lên %@.",
         "Dismiss": "Đóng",
@@ -7221,6 +7227,10 @@ extension Localization {
         "%d meetings, reports included": "%d cuộc họp, gồm cả báo cáo",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "Tải mô hình cuộc họp trong Tóm tắt và báo cáo, hoặc thêm khóa cho trợ lý.",
         "Calls": "Cuộc gọi",
+        "Reports folder": "Thư mục báo cáo",
+        "%d PDFs written before %@": "%d PDF được ghi trước %@",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Dictate không còn tự ghi PDF nữa. Các tệp này là của bạn, giữ hay xóa tùy ý; không có gì trong ứng dụng phụ thuộc vào chúng.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "Báo cáo đã viết sẽ bị thay thế. Gửi bản ghi này đến %@ bằng khóa của bạn.",
     ]
 
     static let tl: [String: String] = [
@@ -7786,7 +7796,6 @@ extension Localization {
         "Write report": "Isulat ang report",
         "%@ is rate limiting. Nothing was lost — try again in a minute.": "Nililimitahan ng %@ ang dalas ng mga request. Walang nawala — subukan ulit sa loob ng isang minuto.",
         "This Mac is offline. Nothing was sent — try again when the connection returns.": "Offline ang Mac na ito. Walang ipinadala — subukan ulit kapag bumalik na ang koneksyon.",
-        "Open report": "Buksan ang report",
         "Write a “%@” report?": "Isulat ang report na “%@”?",
         "Action items": "Mga aksyon",
         "Dates and deadlines": "Mga petsa at deadline",
@@ -7814,8 +7823,6 @@ extension Localization {
         "About “%@”:": "Tungkol sa “%@”:",
         "Replace the report with a new “%@” one?": "Palitan ang report ng bagong “%@”?",
         "Replace report": "Palitan ang report",
-        "The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.": "Papalitan ang naisulat nang report, pati ang PDF nito. Ipinapadala ang transcript na ito sa %@ gamit ang key mo.",
-        "Write with": "Isulat gamit ang",
         "Written · replaces it": "Naisulat na · papalitan",
         "Dictate updated to %@.": "Na-update ang Dictate sa %@.",
         "Dismiss": "Isara",
@@ -7929,5 +7936,9 @@ extension Localization {
         "%d meetings, reports included": "%d meeting, kasama ang mga report",
         "Download the meeting model under Summaries & reports, or add a key for the agent.": "I-download ang meeting model sa ilalim ng Mga buod at report, o magdagdag ng key para sa agent.",
         "Calls": "Mga tawag",
+        "Reports folder": "Folder ng mga report",
+        "%d PDFs written before %@": "%d PDF na naisulat bago ang %@",
+        "Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them.": "Hindi na kusang sumusulat ng PDF ang Dictate. Sa iyo ang mga ito, itago man o burahin; walang umaasa sa mga ito sa app.",
+        "The report already written is replaced. Sends this transcript to %@ on your key.": "Papalitan ang report na naisulat na. Ipinapadala ang transcript na ito sa %@ gamit ang key mo.",
     ]
 }

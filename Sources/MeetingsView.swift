@@ -1657,16 +1657,6 @@ struct MeetingsView: View {
                                preferredReport: reportTemplateFilter,
                                reportPhase: reports.phases[meeting.url],
                                onWriteReport: { reports.write(meeting.url, with: $0) },
-                               onOpenReport: { report in
-                                   if let file = ReportExport.ensureFile(for: meeting, report: report) {
-                                       NSWorkspace.shared.open(file)
-                                   }
-                               },
-                               onRevealReport: { report in
-                                   if let file = ReportExport.ensureFile(for: meeting, report: report) {
-                                       NSWorkspace.shared.activateFileViewerSelecting([file])
-                                   }
-                               },
                                onCopyReport: { report in
                                    TranscriptCopy.put(ReportExport.markdown(meeting, report: report))
                                },
@@ -2872,10 +2862,6 @@ private struct TranscriptPane: View {
     /// Writes a report from the given template — "Write again" after a
     /// failure, and the head's pull-down.
     var onWriteReport: ((ReportTemplate) -> Void)? = nil
-    /// The report is a file of its own too (Reports folder): open it, or
-    /// show it in Finder.
-    var onOpenReport: ((MeetingReport) -> Void)? = nil
-    var onRevealReport: ((MeetingReport) -> Void)? = nil
     /// A row's own two links: the report as Markdown on the clipboard, and
     /// a copy of it anywhere. Both need the meeting's file, which the pane
     /// does not hold — so they are handed in, like the reveal above.
@@ -3893,26 +3879,9 @@ private struct TranscriptPane: View {
                 // and left an icon nobody could name.
                 .fixedSize()
                 .popover(isPresented: $templateChooserOpen, arrowEdge: .bottom) {
+                    // Templates only (design 9.1): the written reports are
+                    // rows on the card, with their own Copy and Export….
                     VStack(alignment: .leading, spacing: 0) {
-                        if !reports.isEmpty {
-                            ForEach(Array(reports.enumerated()), id: \.offset) { _, report in
-                                PopupRow(title: report.templateName, subtitle: L("Open report"),
-                                         icon: "doc.text", selected: false) {
-                                    templateChooserOpen = false
-                                    onOpenReport?(report)
-                                }
-                            }
-                            PopupRow(title: L("Show in Finder"), icon: "folder", selected: false) {
-                                templateChooserOpen = false
-                                if let first = reports.first { onRevealReport?(first) }
-                            }
-                            Divider().padding(.vertical, 4)
-                            Text(L("Write with"))
-                                .font(DS.sectionLabel)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                        }
                         if reportTemplates.isEmpty {
                             PopupRow(title: L("Set up templates…"),
                                      subtitle: L("No templates yet."), selected: false) {
@@ -3952,7 +3921,7 @@ private struct TranscriptPane: View {
                     Button(L("Cancel"), role: .cancel) { pendingTemplate = nil }
                 } message: {
                     Text(replacing
-                         ? Lf("The report already written is replaced; its PDF too. Sends this transcript to %@ on your key.",
+                         ? Lf("The report already written is replaced. Sends this transcript to %@ on your key.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName)
                          : Lf("Sends this transcript to %@ on your key. The report lands in the meeting’s file.",
                               (Settings.shared.askProvider ?? .anthropic).vendorName))

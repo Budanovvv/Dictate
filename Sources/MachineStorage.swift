@@ -21,6 +21,10 @@ struct MachineStorage: Sendable {
     let meetingCount: Int
     /// The debug audio dumps (`meetingAudioDump`), when the default is on.
     let debugDumpBytes: Int64
+    /// PDFs in the archive's Reports folder, written by versions that still
+    /// wrote them; nil when there is no such folder. Named in About, never
+    /// touched.
+    let reportsPDFCount: Int?
 
     static var applicationSupport: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -44,7 +48,10 @@ struct MachineStorage: Sendable {
             meetingArchiveBytes: size(of: archive),
             meetingCount: ((try? FileManager.default.contentsOfDirectory(atPath: archive.path)) ?? [])
                 .filter { $0.hasSuffix(".md") }.count,
-            debugDumpBytes: size(of: replayDirectory))
+            debugDumpBytes: size(of: replayDirectory),
+            reportsPDFCount: (try? FileManager.default.contentsOfDirectory(
+                atPath: archive.appendingPathComponent("Reports", isDirectory: true).path))
+                .map { $0.filter { $0.lowercased().hasSuffix(".pdf") }.count })
     }
 
     /// Bytes allocated under a directory, without opening anything.

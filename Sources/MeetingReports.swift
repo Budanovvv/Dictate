@@ -94,9 +94,9 @@ final class MeetingReports: ObservableObject {
                 phases[url] = .failed(.other)
                 return
             }
-            // And as a file of its own, in the archive's Reports folder —
-            // what "Open" and "Show in Finder" on the card point at.
-            ReportExport.writeFile(for: meeting, report: report)
+            // No file of its own any more (design turn 33): the report is
+            // kept inside the meeting's file, and Export… makes a copy on
+            // request. Folders written by earlier versions stay as they are.
             phases[url] = nil
             written += 1
             Log.d("report: written for \(url.lastPathComponent)")

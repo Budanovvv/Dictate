@@ -1594,6 +1594,24 @@ struct SettingsView: View {
                          storage.map { Lf("%d meetings, reports included", $0.meetingCount) }
                              ?? L("Your transcripts, as Markdown files you own."))
             }
+            // The folder earlier versions wrote PDFs into (design 9.2 About):
+            // shown only while it exists, named once, never touched.
+            if let storage, let pdfs = storage.reportsPDFCount {
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        Text(Lf("%d PDFs written before %@", pdfs, ReportExport.lastVersionWritingPDFs))
+                            .foregroundStyle(.secondary).monospacedDigit()
+                        Button(L("Show in Finder")) {
+                            NSWorkspace.shared.activateFileViewerSelecting([ReportExport.reportsDirectory])
+                        }
+                        .buttonStyle(.dsSmall)
+                        .controlSize(.small)
+                    }
+                } label: {
+                    rowLabel(L("Reports folder"),
+                             L("Dictate no longer writes PDFs on its own. These are yours to keep or delete; nothing in the app depends on them."))
+                }
+            }
             // Only while the hidden debug default is on and there is
             // something to show — a row for an instrument nobody turned on
             // would legalize it under a name nobody understands.

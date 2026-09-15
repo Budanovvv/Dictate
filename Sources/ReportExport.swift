@@ -38,39 +38,17 @@ enum ReportExport {
     /// The last format chosen, so the dialog opens on it next time.
     private static var lastFormat: Format = .markdown
 
-    // MARK: - The report's own file
+    // MARK: - The Reports folder of earlier versions
 
-    /// Where a report lives as a file of its own: a Reports folder inside
-    /// the archive, one PDF per meeting and template — the format that
-    /// opens on every desk and travels in mail; the Markdown stays in the
-    /// meeting's file as the source. A subfolder, not a sibling: the
-    /// archive reads every .md beside the transcripts as a meeting.
-    /// Written when the report is written, so the card can open it and
-    /// show it in Finder; rewritten on "Write again".
+    /// Versions up to this one wrote a PDF of every report into a Reports
+    /// folder inside the archive. Dictate no longer writes files on its
+    /// own (design turn 33): the report is kept in the meeting's file, and
+    /// Export… makes a copy on request. The folder is named once, in
+    /// About › Storage, and never touched — those files are the person's.
+    static let lastVersionWritingPDFs = "3.3.1"
+
     static var reportsDirectory: URL {
         MeetingArchive.directory.appendingPathComponent("Reports", isDirectory: true)
-    }
-
-    static func fileURL(for meeting: ArchivedMeeting, report: MeetingReport) -> URL {
-        reportsDirectory.appendingPathComponent(fileName(for: meeting, report: report) + ".pdf")
-    }
-
-    /// Writes the file, creating the folder; the URL it landed at.
-    @discardableResult
-    static func writeFile(for meeting: ArchivedMeeting, report: MeetingReport) -> URL? {
-        let url = fileURL(for: meeting, report: report)
-        try? FileManager.default.createDirectory(at: reportsDirectory, withIntermediateDirectories: true)
-        // A Markdown twin from the first build of this feature gives way.
-        try? FileManager.default.removeItem(at: url.deletingPathExtension().appendingPathExtension("md"))
-        guard pdf(meeting, report: report, to: url) else { return nil }
-        return url
-    }
-
-    /// The file, written now if an older report never had one.
-    static func ensureFile(for meeting: ArchivedMeeting, report: MeetingReport) -> URL? {
-        let url = fileURL(for: meeting, report: report)
-        if FileManager.default.fileExists(atPath: url.path) { return url }
-        return writeFile(for: meeting, report: report)
     }
 
     // MARK: - One meeting
