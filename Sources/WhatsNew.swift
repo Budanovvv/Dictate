@@ -30,6 +30,15 @@ enum WhatsNew {
     /// title and one line each, said from the reader's side.
     static func items(for version: String) -> [Item] {
         switch version {
+        // A maintenance release writes no showcase of its own: nobody
+        // arriving here from 3.3 or earlier has seen 3.3.1's notes yet, and
+        // what 3.3.2 actually changed is a line of fixes rather than a
+        // feature to open the app for.
+        case "3.3.2":
+            return items(for: "3.3.1") + [
+                Item(title: L("Small fixes"),
+                     line: L("The recording control can be dragged where you want it and no longer covers what it does not draw, and the list of meetings stays put while a call records.")),
+            ]
         case "3.3.1":
             return [
                 Item(title: L("Settings in six panes"),
