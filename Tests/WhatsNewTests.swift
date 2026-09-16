@@ -16,16 +16,31 @@ final class WhatsNewTests: XCTestCase {
         return String(parts[1])
     }
 
-    func testTheVersionBeingBuiltHasNotes() throws {
+    /// The shape of the notes for the version being built. A cycle just
+    /// opened has none yet, and that is allowed here — release.sh is the
+    /// gate that refuses to ship without them; this test keeps the ones
+    /// that exist in shape.
+    func testTheNotesForTheVersionBeingBuiltAreInShape() throws {
         let version = try marketingVersion()
         let items = WhatsNew.items(for: version)
-        XCTAssertFalse(items.isEmpty, "no What's new notes for \(version) — write them in WhatsNew.swift")
+        if items.isEmpty {
+            print("What's new: no notes yet for \(version) — release.sh will refuse to ship until they are written")
+            return
+        }
         XCTAssert((2...5).contains(items.count), "\(items.count) items for \(version): three or four is the shape")
         for item in items {
             XCTAssertFalse(item.title.isEmpty)
             XCTAssertFalse(item.line.isEmpty)
             XCTAssert(item.line.count >= 40, "a note says what changed and where: \(item.line)")
         }
+    }
+
+    /// The gate itself, as release.sh applies it: a "case" for the version.
+    func testReleaseScriptCanFindTheNotes() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let script = try String(contentsOf: root.appendingPathComponent("release.sh"), encoding: .utf8)
+        XCTAssert(script.contains("Sources/WhatsNew.swift"), "release.sh no longer checks for What's new notes")
+        XCTAssertFalse(WhatsNew.items(for: "3.3.1").isEmpty)
     }
 
     /// Places and files that left the product must not be promised by any
