@@ -85,6 +85,37 @@ final class MeetingPill {
     /// overwrite a remembered spot.
     private var positioningProgrammatically = false
 
+    /// The window is exactly as big as what the pill draws — the capsule
+    /// grows with a notice, the education card is another shape entirely, and
+    /// the clock widens at ten minutes. Anything larger would be an invisible
+    /// rectangle over someone's call, eating the clicks aimed at it.
+    ///
+    /// The TOP-left corner survives a resize: it is the corner the eye tracks,
+    /// and the corner the remembered spot is stored as.
+    private func resize(to size: CGSize) {
+        guard let panel, size.width > 1, size.height > 1 else { return }
+        // Whole points, so the window AppKit ends up with is the window this
+        // asked for — a fractional height would come back rounded, read as a
+        // new size, and set a resize bouncing off itself forever.
+        let want = CGSize(width: ceil(size.width), height: ceil(size.height))
+        let old = panel.frame
+        guard abs(old.width - want.width) >= 1
+                || abs(old.height - want.height) >= 1 else { return }
+        var frame = NSRect(x: old.minX, y: old.maxY - want.height,
+                           width: want.width, height: want.height)
+        // The card is wider and taller than the capsule it replaces: a pill
+        // left near an edge must not grow off the screen.
+        if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            frame.origin.x = min(max(frame.minX, visible.minX),
+                                 max(visible.maxX - frame.width, visible.minX))
+            frame.origin.y = min(max(frame.minY, visible.minY),
+                                 max(visible.maxY - frame.height, visible.minY))
+        }
+        positioningProgrammatically = true
+        panel.setFrame(frame, display: true)
+        positioningProgrammatically = false
+    }
+
     init(session: MeetingSession,
          onStop: @escaping () -> Void,
          onExpand: @escaping () -> Void,
@@ -152,9 +183,11 @@ final class MeetingPill {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let view = MeetingPillView(session: session, onStop: onStop,
-                                   onExpand: onExpand, onHide: onHide)
-        let hosting = NSHostingView(rootView: view)
-        hosting.frame = NSRect(origin: .zero, size: MeetingPillView.size)
+                                   onExpand: onExpand, onHide: onHide,
+                                   onSize: { [weak self] in self?.resize(to: $0) })
+        let hosting = PillHostingView(rootView: view)
+        hosting.layoutSubtreeIfNeeded()
+        hosting.frame = NSRect(origin: .zero, size: hosting.fittingSize)
 
         let panel = NSPanel(
             contentRect: hosting.frame,
@@ -166,10 +199,9 @@ final class MeetingPill {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .statusBar
-        // Drag it out of the way of whatever it lands on; where it is left is
-        // where the next meeting finds it (AppKit remembers the frame for the
-        // life of the process, which is as long as this panel exists).
-        panel.isMovableByWindowBackground = true
+        // Dragging lives in the view (MeetingPillView's WindowDragGesture),
+        // not here: a borderless window whose every pixel is SwiftUI has no
+        // background left for AppKit to grab, so this flag moved nothing.
         // All Spaces, not move-once: the pill is the recording's visible
         // mark and must be wherever the person is looking (owner's call,
         // 2026-08-29) — including other apps' full-screen Spaces.
@@ -186,8 +218,8 @@ final class MeetingPill {
         ) { [weak self] _ in
             MainActor.assumeIsolated {   // queue: .main observer, main by construction
                 guard let self, !self.positioningProgrammatically,
-                      let origin = self.panel?.frame.origin else { return }
-                Settings.shared.meetingPillOrigin = [origin.x, origin.y]
+                      let frame = self.panel?.frame else { return }
+                Settings.shared.meetingPillTopLeft = [frame.minX, frame.maxY]
                 // A hand-placed pill stays where the hand put it: dragging turns
                 // the display-following off until the next recording.
                 self.pinnedByDrag = true
@@ -207,13 +239,17 @@ final class MeetingPill {
         // clamped into a CURRENT screen, because the display it was left on
         // may be gone (unplugged monitor) and a pill off every screen is a
         // recording indicator nobody can see.
-        if let stored = Settings.shared.meetingPillOrigin, stored.count == 2 {
-            let point = NSPoint(x: stored[0], y: stored[1])
-            let screen = NSScreen.screens.first { $0.visibleFrame.contains(point) }
+        if let stored = Settings.shared.meetingPillTopLeft, stored.count == 2 {
+            let top = NSPoint(x: stored[0], y: stored[1])
+            // A point just INSIDE the pill, because the stored corner sits on
+            // the window's edge and a rectangle does not contain its own top.
+            let inside = NSPoint(x: top.x + 1, y: top.y - 1)
+            let screen = NSScreen.screens.first { $0.visibleFrame.contains(inside) }
                 ?? NSScreen.main
             if let visible = screen?.visibleFrame {
-                let x = min(max(point.x, visible.minX), visible.maxX - size.width)
-                let y = min(max(point.y, visible.minY), visible.maxY - size.height)
+                let x = min(max(top.x, visible.minX), visible.maxX - size.width)
+                let y = min(max(top.y - size.height, visible.minY),
+                            visible.maxY - size.height)
                 panel.setFrameOrigin(NSPoint(x: x, y: y))
                 return
             }
@@ -233,6 +269,19 @@ final class MeetingPill {
         let y = min(max(frame.maxY - size.height, visible.minY), visible.maxY - size.height)
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
+}
+
+/// The pill's hosting view, for one reason: it answers the FIRST mouse.
+///
+/// The pill is only ever looked at while someone else's app is frontmost —
+/// the call is. A click on a window of an inactive app is normally spent on
+/// activation and never reaches the view; this panel does not activate
+/// anything, so that click would be spent on nothing at all. Answering it
+/// means Stop stops on the first press, and a drag starts on the first press,
+/// without making the person visit Dictate first.
+@MainActor
+private final class PillHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// Lets a window decide, at the moment it is closed, whether it should close

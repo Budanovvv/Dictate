@@ -36,11 +36,27 @@ final class Settings: @unchecked Sendable {
         set { d.set(newValue, forKey: "agentOfferRuns") }
     }
 
-    /// Where a hand-dragged meeting pill was left, as [x, y] — nil when the
-    /// pill has never been dragged.
-    var meetingPillOrigin: [Double]? {
-        get { d.array(forKey: "meetingPillOrigin") as? [Double] }
-        set { d.set(newValue, forKey: "meetingPillOrigin") }
+    /// Where a hand-dragged meeting pill was left, as the TOP-left [x, y] —
+    /// nil when the pill has never been dragged.
+    ///
+    /// Top-left rather than AppKit's bottom-left because the pill's window is
+    /// now only as large as what it draws, and that height changes (a 42 pt
+    /// capsule, a much taller education card): anchored at the bottom, the
+    /// pill would slide down the screen every time the card appeared.
+    var meetingPillTopLeft: [Double]? {
+        get {
+            if let stored = d.array(forKey: "meetingPillTopLeft") as? [Double] {
+                return stored
+            }
+            // Carried over from the key this replaces, exactly: it held the
+            // bottom-left of a panel that was always 344×168 — mostly empty
+            // space above the capsule — so its top edge is the point this key
+            // stores now.
+            guard let legacy = d.array(forKey: "meetingPillOrigin") as? [Double],
+                  legacy.count == 2 else { return nil }
+            return [legacy[0], legacy[1] + 168]
+        }
+        set { d.set(newValue, forKey: "meetingPillTopLeft") }
     }
 
     var onboardingDone: Bool {

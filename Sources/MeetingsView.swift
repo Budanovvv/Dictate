@@ -5689,10 +5689,14 @@ struct MeetingPillView: View {
     /// bar — rather than a separate idea to be discovered.
     let onHide: () -> Void
 
-    /// The hosting panel's fixed frame — big enough for the widest variant
-    /// (the one-time education card); the drawn material is smaller and the
-    /// window shadow hugs it, so the spare space is invisible.
-    static let size = CGSize(width: 344, height: 168)
+    /// The size of what is actually drawn, reported on every change so the
+    /// panel can be exactly that big (MeetingPill.resize).
+    ///
+    /// It used to be a fixed 344×168 box — wide enough for the education
+    /// card, with the capsule in its top-left corner and the rest transparent.
+    /// Invisible, but not intangible: that empty margin sat over the call
+    /// underneath and swallowed every click aimed at it.
+    let onSize: (CGSize) -> Void
 
     @State private var gripHover = false
     /// One-time education: the first fold-away mid-recording expands the pill
@@ -5713,7 +5717,7 @@ struct MeetingPillView: View {
                 capsule
             }
         }
-        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { onSize($0) }
         .onAppear {
             guard !Settings.shared.meetingPillNoticeSeen, session.isActive else { return }
             Settings.shared.meetingPillNoticeSeen = true
@@ -5784,6 +5788,14 @@ struct MeetingPillView: View {
         .background(.ultraThinMaterial, in: Capsule(style: .continuous))
         .overlay(Capsule(style: .continuous)
             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+        // What the grip dots have always promised, finally attached to
+        // something. `isMovableByWindowBackground` on the panel cannot do it:
+        // that needs a title bar or a plain NSView under the pointer to grab,
+        // and this window is borderless with SwiftUI over every pixel — the
+        // hosting view takes the mouse-down and AppKit never sees it. The
+        // buttons keep their clicks: a child's gesture outranks the
+        // container's.
+        .gesture(WindowDragGesture())
     }
 
     /// The capsule's one-time teaching line — what tells "You" from
@@ -5813,6 +5825,9 @@ struct MeetingPillView: View {
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+        // The card is the same object wearing a different face; it moves the
+        // same way.
+        .gesture(WindowDragGesture())
     }
 
     /// The meeting glyph with its bars driven by the combined level — "the
