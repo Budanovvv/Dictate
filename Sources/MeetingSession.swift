@@ -29,6 +29,45 @@ private final class ActiveMirror: @unchecked Sendable {   // NSLock guards flag
 /// (processWindow/recognize/previewPass), exactly where it ran before; the
 /// static call-app probes are `nonisolated` because the detector's
 /// background probe calls them from off main by design.
+/// How loud each stream is right now — an object of its own, deliberately.
+///
+/// SwiftUI subscribes to an OBJECT, not to a property: every `@Published`
+/// write fires the one signal the object has, and a view that observes it
+/// rebuilds its whole body without ever being told what changed. A level
+/// arrives with every audio buffer — about twenty a second from the mic and
+/// the tap together — so while these three lived on the session, the meetings
+/// window re-ran its search, its grouping, its counted sidebar sections and
+/// its list twenty times a second for the length of every call.
+///
+/// That work was silent while each rebuild produced the same answer. The
+/// moment one didn't — two report kinds with equal counts, ordered by
+/// whatever the dictionary happened to say — the shuffle came out on screen
+/// at the speed of sound. Three of those were chased and fixed one at a time
+/// (the reader's place 2026-08-25, Sources 2026-09-01, Reports 2026-09-16);
+/// this removes the amplifier they all shared.
+///
+/// The session holds it as a `let`, so writing a level never fires the
+/// session's own signal. Only what actually draws a level watches this: the
+/// live window's channel meters and the pill's glyph. The dictation HUD has
+/// had exactly this arrangement since the burn was measured (`LevelReading`,
+/// GRABLI: "перерисовывать по событию").
+@MainActor
+final class MeetingLevels: ObservableObject {
+    /// Combined mic+tap 0…1 — the "you are being heard" signal, for the
+    /// surfaces that show one meter.
+    @Published fileprivate(set) var combined: Double = 0
+    /// The two streams metered separately — what tells "You" from "Call
+    /// audio" in the live window's channel meters.
+    @Published fileprivate(set) var you: Double = 0
+    @Published fileprivate(set) var them: Double = 0
+
+    fileprivate func silence() {
+        combined = 0
+        you = 0
+        them = 0
+    }
+}
+
 @MainActor
 final class MeetingSession: ObservableObject {
 
@@ -63,15 +102,11 @@ final class MeetingSession: ObservableObject {
     /// sitting silent (cold-start field complaint: "не видно ни хрена…
     /// потом разогрелось", 2026-08-09 16:25).
     @Published private(set) var modelWarming = false
-    /// Combined mic+tap audio level 0…1 for the window's equalizer — the
-    /// "you are being heard" signal, same philosophy as the HUD's dancing
-    /// bars meaning "sound is really being captured".
-    @Published private(set) var audioLevel: Double = 0
-    /// The two streams metered separately — what tells "You" from "Call
-    /// audio" in the live window's channel meters. `audioLevel` above
-    /// stays the combined meter for the surfaces that show one.
-    @Published private(set) var youLevel: Double = 0
-    @Published private(set) var themLevel: Double = 0
+    /// The equalizer's numbers — the "you are being heard" signal, same
+    /// philosophy as the HUD's dancing bars meaning "sound is really being
+    /// captured". On an object of their own, and NOT published from here:
+    /// see MeetingLevels for what that buys.
+    let levels = MeetingLevels()
     /// Between "Stop" and the transcript landing in the library: the last
     /// windows are still recognizing. The pill shows it so the stop click
     /// visibly did something instead of the pill just lingering.
@@ -381,7 +416,7 @@ final class MeetingSession: ObservableObject {
                 guard let self, self.isActive, !self.stopping else { return }
                 self.replayYouPCM.append(pcm)
                 let level = min(1.0, peak * 3)
-                if level > self.audioLevel { self.audioLevel = level }
+                if level > self.levels.combined { self.levels.combined = level }
             }
             replay.onThem = { [weak self] pcm, peak in
                 self?.appendThem(pcm, peak: peak)
@@ -463,8 +498,8 @@ final class MeetingSession: ObservableObject {
                 // AudioRecorder documents onLevel as delivered on main.
                 MainActor.assumeIsolated {
                     guard self.isActive else { return }
-                    self.audioLevel = max(level, self.audioLevel * 0.7)
-                    self.youLevel = max(level, self.youLevel * 0.7)
+                    self.levels.combined = max(level, self.levels.combined * 0.7)
+                    self.levels.you = max(level, self.levels.you * 0.7)
                 }
             }
             mic.start()
@@ -600,9 +635,7 @@ final class MeetingSession: ObservableObject {
         listeningFor = nil
         livePreview = nil
         modelWarming = false
-        audioLevel = 0
-        youLevel = 0
-        themLevel = 0
+        levels.silence()
         if let activity = powerActivity {
             ProcessInfo.processInfo.endActivity(activity)
             powerActivity = nil
@@ -792,8 +825,8 @@ final class MeetingSession: ObservableObject {
         // Their voices move the equalizer too — "hearing the call" is as
         // important a signal as "hearing you".
         let level = min(1.0, peak * 3)
-        if level > audioLevel { audioLevel = level }
-        themLevel = max(level, themLevel * 0.7)
+        if level > levels.combined { levels.combined = level }
+        levels.them = max(level, levels.them * 0.7)
     }
 
     private func evaluateWindows() {

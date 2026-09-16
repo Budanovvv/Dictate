@@ -2000,8 +2000,16 @@ struct MeetingsView: View {
         }
         var out: [(name: String, count: Int)] = ReportTemplateStore.shared.templates
             .filter(\.isUsable).map { ($0.name, counts[$0.name] ?? 0) }
-        for (name, count) in counts.sorted(by: { $0.value > $1.value })
-            where !out.contains(where: { $0.name == name }) {
+        // The templates above come from an array and hold their order. What
+        // follows does not: these are kinds no usable template accounts for
+        // any more, counted into a dictionary. Sorted by count alone, a tie
+        // was left to dictionary iteration — and the sidebar recomputes on
+        // every transcript rewrite, so two equal counts swapped places every
+        // few seconds of a call. Exactly what Sources was fixed for on
+        // 2026-09-01; the same tie-break by name.
+        for (name, count) in counts.sorted(by: {
+            $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key
+        }) where !out.contains(where: { $0.name == name }) {
             out.append((name, count))
         }
         return out
@@ -3181,7 +3189,7 @@ private struct TranscriptPane: View {
             }
             if let live, live.isActive {
                 Divider()
-                StatusStrip(session: live)
+                StatusStrip(session: live, levels: live.levels)
             }
             // The door to the agent, and only the door (audit 3.3, D5): the
             // sentence about questions never being limited to one meeting
@@ -5583,13 +5591,16 @@ private struct TurnView: View, Equatable {
 private struct StatusStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var session: MeetingSession
+    /// Watched apart from the session on purpose: the meters redraw with the
+    /// sound, and nothing else in the window has to (see MeetingLevels).
+    @ObservedObject var levels: MeetingLevels
     @ObservedObject private var loc = Localization.shared
 
     var body: some View {
         HStack(spacing: 16) {
             chip
-            meter(label: L("You"), level: session.youLevel, tint: DS.you)
-            meter(label: L("Call"), level: session.themLevel, tint: DS.them)
+            meter(label: L("You"), level: levels.you, tint: DS.you)
+            meter(label: L("Call"), level: levels.them, tint: DS.them)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, MeetingsChrome.inset)
@@ -5680,6 +5691,9 @@ private struct StatusStrip: View {
 /// and renamed when it is wrong — a pill is not.
 struct MeetingPillView: View {
     @ObservedObject var session: MeetingSession
+    /// The live loudness, watched apart from the session: the glyph's bars
+    /// move with the sound and nothing else here needs to (see MeetingLevels).
+    @ObservedObject var levels: MeetingLevels
     @ObservedObject private var loc = Localization.shared
     let onStop: () -> Void
     let onExpand: () -> Void
@@ -5835,7 +5849,7 @@ struct MeetingPillView: View {
     /// one red thing and it never pulses.
     private func meetingGlyph(width: CGFloat) -> some View {
         ZStack(alignment: .topTrailing) {
-            GlyphMark(state: .recording(level: session.audioLevel),
+            GlyphMark(state: .recording(level: levels.combined),
                       color: .primary, width: width)
             Circle().fill(DS.record)
                 .frame(width: width * 0.22, height: width * 0.22)

@@ -182,7 +182,8 @@ final class MeetingPill {
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let view = MeetingPillView(session: session, onStop: onStop,
+        let view = MeetingPillView(session: session, levels: session.levels,
+                                   onStop: onStop,
                                    onExpand: onExpand, onHide: onHide,
                                    onSize: { [weak self] in self?.resize(to: $0) })
         let hosting = PillHostingView(rootView: view)

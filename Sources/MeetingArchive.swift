@@ -117,7 +117,7 @@ struct ArchivedMeeting: Identifiable, Hashable {
     func sameContent(as other: ArchivedMeeting) -> Bool {
         url == other.url && title == other.title && summary == other.summary
             && tags == other.tags && sections == other.sections
-            && reports == other.reports
+            && reports == other.reports && source == other.source
             && entries.count == other.entries.count
             && zip(entries, other.entries).allSatisfy {
                 $0.time == $1.time && $0.speaker == $1.speaker && $0.text == $1.text
