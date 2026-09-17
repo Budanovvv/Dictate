@@ -30,6 +30,18 @@ enum WhatsNew {
     /// title and one line each, said from the reader's side.
     static func items(for version: String) -> [Item] {
         switch version {
+        // Its own notes, not 3.3.2's plus one: inheriting once more would
+        // show a person who updated from 3.3.2 the same four 3.3.1 items a
+        // second time, and two "Small fixes" would share one id.
+        case "3.3.3":
+            return [
+                Item(title: L("Templates in every language"),
+                     line: L("In Russian and Ukrainian, Settings › Templates could quit the app or show garbled counts under a template. It opens and reads correctly again, as does the PDF count in About › Storage.")),
+                Item(title: L("Written again means replaced"),
+                     line: L("Writing a report from a template that was deleted and made again under the same name now replaces the report on the meeting’s card instead of adding a second one. A card that already carries two keeps one the next time it is written.")),
+                Item(title: L("Settings read from the left"),
+                     line: L("Text in every settings row starts at the left edge. The field names and instructions in the template editor no longer sit against the right.")),
+            ]
         // A maintenance release writes no showcase of its own: nobody
         // arriving here from 3.3 or earlier has seen 3.3.1's notes yet, and
         // what 3.3.2 actually changed is a line of fixes rather than a

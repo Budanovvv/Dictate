@@ -47,12 +47,25 @@ final class WhatsNewTests: XCTestCase {
     /// note still shown — the sheet shows the newest notes there are.
     func testNotesDoNotNameWhatIsGone() {
         let gone = ["PDF in Dictate Meetings", "Settings › Meetings › Write summaries", "Agent tab", "This Mac tab"]
-        for version in ["3.3", "3.3.1"] {
+        for version in Self.shipped {
             for item in WhatsNew.items(for: version) {
                 for phrase in gone {
                     XCTAssertFalse(item.line.contains(phrase), "\(version): “\(phrase)” in “\(item.line)”")
                 }
             }
+        }
+    }
+
+    /// Every version with notes.
+    private static let shipped = ["3.3", "3.3.1", "3.3.2", "3.3.3"]
+
+    /// An item's id is its title, and the sheet lists items in a ForEach:
+    /// two items with one title render unpredictably. The trap is a version
+    /// built as "the previous notes plus Small fixes" done twice.
+    func testTitlesAreUniqueWithinAVersion() {
+        for version in Self.shipped {
+            let ids = WhatsNew.items(for: version).map(\.id)
+            XCTAssertEqual(Set(ids).count, ids.count, "\(version): repeated title in \(ids)")
         }
     }
 }
