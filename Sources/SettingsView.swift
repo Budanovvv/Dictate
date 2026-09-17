@@ -364,12 +364,12 @@ struct SettingsView: View {
     @ViewBuilder
     private var sectionForm: some View {
         switch tab {
-        case .dictation: Form { keysSection; languagesSection }.formStyle(.grouped)
-        case .meetings: Form { meetingsSection }.formStyle(.grouped)
-        case .writing: Form { readingSection; agentSection }.formStyle(.grouped)
-        case .templates: Form { templatesSection }.formStyle(.grouped)
-        case .general: Form { generalSection }.formStyle(.grouped)
-        case .about: Form { thisMacSection; storageSection; statusSection }.formStyle(.grouped)
+        case .dictation: Form { keysSection; languagesSection }.dsGroupedForm()
+        case .meetings: Form { meetingsSection }.dsGroupedForm()
+        case .writing: Form { readingSection; agentSection }.dsGroupedForm()
+        case .templates: Form { templatesSection }.dsGroupedForm()
+        case .general: Form { generalSection }.dsGroupedForm()
+        case .about: Form { thisMacSection; storageSection; statusSection }.dsGroupedForm()
         }
     }
 

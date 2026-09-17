@@ -129,6 +129,10 @@ check "tokenizer path is not in Documents" \
     bash -c "! strings '$BIN' | grep -q 'Documents/huggingface'"
 check "no quarantine xattrs on the sources" \
     bash -c "! xattr -lr Sources/ 2>/dev/null | grep -q quarantine"
+# Text reads from the left in every settings row: a grouped Form is built
+# only through dsGroupedForm() (DesignSystem.swift), which carries the rule.
+check "grouped forms go through dsGroupedForm()" \
+    bash -c "! grep -rn 'formStyle(.grouped)' Sources/ | grep -v DesignSystem.swift | grep -q ."
 
 # ── 3. Localization integrity (independent of unit tests) ─────────────────
 echo "==> Localization"

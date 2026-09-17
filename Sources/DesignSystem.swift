@@ -258,7 +258,42 @@ struct DSFieldChrome: ViewModifier {
     }
 }
 
+/// Text reads from the leading edge everywhere in this app — the rule the
+/// grouped Form breaks on its own. Its automatic `LabeledContent` lays the
+/// control column out at the trailing edge AND sets trailing text alignment
+/// around the column's content, so any text that wraps there — a field's
+/// instruction, a caption, a paragraph — comes out ragged-left in a window
+/// whose every other line starts at the left (the template editor's field
+/// rows, 2026-09-17). The column may sit on the right; its words do not.
+///
+/// A `.multilineTextAlignment(.leading)` on the Form does NOT fix it: the
+/// automatic style applies its own alignment closer to the leaves and wins
+/// (tried and photographed, 2026-09-17). This style wraps the content one
+/// step closer still, then hands the row to the automatic style for the
+/// layout itself — so the pane looks exactly as before, and reads left.
+struct DSLeadingTextLabeledContentStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        LabeledContent {
+            configuration.content.multilineTextAlignment(.leading)
+        } label: {
+            configuration.label
+        }
+        .labeledContentStyle(.automatic)
+    }
+}
+
 extension View {
+    /// Every settings pane is one of these, and nothing else builds a
+    /// grouped Form (test.sh holds `.formStyle(.grouped)` to this file):
+    /// the grouped layout, with every row's text reading from the left —
+    /// see `DSLeadingTextLabeledContentStyle`. Set once, here, so no row
+    /// has to remember it.
+    func dsGroupedForm() -> some View {
+        self.formStyle(.grouped)
+            .labeledContentStyle(DSLeadingTextLabeledContentStyle())
+            .multilineTextAlignment(.leading)
+    }
+
     func dsFieldChrome(radius: CGFloat = 10, onCard: Bool = false) -> some View {
         modifier(DSFieldChrome(radius: radius, onCard: onCard))
     }
