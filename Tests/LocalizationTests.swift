@@ -24,12 +24,17 @@ final class LocalizationTests: XCTestCase {
     }
 
     /// Placeholders in each translation match the key — a mismatch crashes String(format:).
+    /// Same placeholders in the SAME ORDER: Lf is String(format:), which
+    /// takes its arguments positionally, so a translation that puts the
+    /// name before the count hands %@ an Int and crashes. This test used to
+    /// compare the placeholders sorted and let exactly that through —
+    /// "%d meetings have a %@ report" in Russian and Ukrainian crashed the
+    /// Templates pane in 3.3.1 and 3.3.2 (audit, 2026-09-17).
     func testPlaceholdersMatch() throws {
         let pattern = try NSRegularExpression(pattern: "%[0-9.]*[d@fs]")
         func placeholders(_ s: String) -> [String] {
             pattern.matches(in: s, range: NSRange(s.startIndex..., in: s))
                 .compactMap { Range($0.range, in: s).map { String(s[$0]) } }
-                .sorted()
         }
         for (name, table) in Self.allTables {
             for (key, value) in table {

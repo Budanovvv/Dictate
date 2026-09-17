@@ -126,6 +126,62 @@ final class MeetingReportTests: XCTestCase {
         XCTAssertEqual(text.components(separatedBy: MeetingArchive.reportMarkerPrefix).count - 1, 2)
     }
 
+    func testRecreatedTemplateWithTheSameNameReplaces() {
+        // A template deleted and made again keeps its name and gets a new
+        // id; the card and the collection call that "already written", so
+        // the file replaces rather than appends (3.3.1 appended).
+        let first = MeetingReport(templateID: UUID(), templateName: "Sales call", writer: "Claude",
+                                  written: nil, answers: [.init(field: "Purpose", text: "old")])
+        let other = MeetingReport(templateID: UUID(), templateName: "Decisions & actions", writer: "Claude",
+                                  written: nil, answers: [.init(field: "Decisions", text: "keep")])
+        let again = MeetingReport(templateID: UUID(), templateName: "Sales call", writer: "ChatGPT",
+                                  written: nil, answers: [.init(field: "Purpose", text: "new")])
+        var text = MeetingArchive.applying(report: first, heading: "Report", to: sample)
+        text = MeetingArchive.applying(report: other, heading: "Report", to: text)
+        text = MeetingArchive.applying(report: again, heading: "Report", to: text)
+        let read = MeetingArchive.parseReports(markdown: text)
+        XCTAssertEqual(read.map(\.templateName), ["Sales call", "Decisions & actions"])
+        XCTAssertEqual(read.first?.templateID, again.templateID)
+        XCTAssertEqual(read.map(\.answers.first?.text), ["new", "keep"])
+        XCTAssertEqual(text.components(separatedBy: MeetingArchive.reportMarkerPrefix).count - 1, 2)
+    }
+
+    func testReportWithoutTemplateIDReplacesByName() {
+        let first = MeetingReport(templateID: nil, templateName: "Notes", writer: "Claude",
+                                  written: nil, answers: [.init(field: "F", text: "old")])
+        let again = MeetingReport(templateID: nil, templateName: "Notes", writer: "Claude",
+                                  written: nil, answers: [.init(field: "F", text: "new")])
+        let text = MeetingArchive.applying(report: again, heading: "Report",
+                                           to: MeetingArchive.applying(report: first, heading: "Report", to: sample))
+        let read = MeetingArchive.parseReports(markdown: text)
+        XCTAssertEqual(read.count, 1)
+        XCTAssertEqual(read.first?.answers.first?.text, "new")
+    }
+
+    func testDuplicateBlocksHealOnTheNextWrite() {
+        // A file 3.3.1 left with two "Sales call" blocks — the stale one
+        // first. Writing again keeps the block whose id matches and drops
+        // the other; the rest of the file is untouched.
+        let stale = MeetingReport(templateID: UUID(), templateName: "Sales call", writer: "Claude",
+                                  written: nil, answers: [.init(field: "F", text: "stale")])
+        let current = MeetingReport(templateID: UUID(), templateName: "Sales call", writer: "Claude",
+                                    written: nil, answers: [.init(field: "F", text: "current")])
+        let one = MeetingArchive.applying(report: stale, heading: "Report", to: sample)
+        let block = MeetingArchive.reportBlock(current, heading: "Report").joined(separator: "\n")
+        let contents = one.range(of: "## Contents")!
+        let two = one.replacingCharacters(in: contents, with: block + "\n\n## Contents")
+        XCTAssertEqual(MeetingArchive.parseReports(markdown: two).count, 2)
+        let rewritten = MeetingReport(templateID: current.templateID, templateName: "Sales call", writer: "Claude",
+                                      written: nil, answers: [.init(field: "F", text: "again")])
+        let healed = MeetingArchive.applying(report: rewritten, heading: "Report", to: two)
+        let read = MeetingArchive.parseReports(markdown: healed)
+        XCTAssertEqual(read.count, 1)
+        XCTAssertEqual(read.first?.templateID, current.templateID)
+        XCTAssertEqual(read.first?.answers.first?.text, "again")
+        XCTAssertEqual(MeetingArchive.parseSections(markdown: healed).count, 2)
+        XCTAssertEqual(MeetingArchive.parse(markdown: healed, youLabel: "You").count, 2)
+    }
+
     func testRemovingOneTemplateKeepsTheOther() {
         let id = UUID()
         let a = MeetingReport(templateID: id, templateName: "A", writer: "Claude", written: nil,

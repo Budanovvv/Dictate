@@ -131,15 +131,17 @@ extension MeetingArchive {
     /// Where each report block sits in `lines`: from its marker to the line
     /// before whatever follows it — the next report, the contents block,
     /// the first entry, a heading that is not one of the report's own.
-    private static func reportRanges(in lines: [String]) -> [(range: Range<Int>, id: UUID?)] {
-        var out: [(Range<Int>, UUID?)] = []
+    private static func reportRanges(in lines: [String])
+        -> [(range: Range<Int>, id: UUID?, name: String?)] {
+        var out: [(Range<Int>, UUID?, String?)] = []
         var start: Int? = nil
         var sawHeading = false
         func close(_ end: Int) {
             guard let from = start else { return }
             var to = end
             while to > from + 1, lines[to - 1].trimmingCharacters(in: .whitespaces).isEmpty { to -= 1 }
-            out.append((from..<to, parseReportMarker(lines[from])?.id))
+            let marker = parseReportMarker(lines[from])
+            out.append((from..<to, marker?.id, marker?.name))
             start = nil
         }
         for (index, raw) in lines.enumerated() {
@@ -220,9 +222,37 @@ extension MeetingArchive {
         var lines = markdown.components(separatedBy: .newlines)
         let block = reportBlock(report, heading: heading)
         let existing = reportRanges(in: lines)
-        if let same = existing.first(where: { $0.id != nil && $0.id == report.templateID }) {
-            lines.replaceSubrange(same.range, with: block)
-            return lines.joined(separator: "\n")
+        // The same report is the template's id OR its name — the card, the
+        // collection and "already written" all say so (hasReport, haveOne):
+        // a template deleted and made again under the same name has a new
+        // id and is still that report. Matching the id alone appended a
+        // second block under the same heading while the dialog promised a
+        // replacement (shipped in 3.3.1, audit of 2026-09-17). The block
+        // with the matching id survives when there is one, the first by
+        // name otherwise; every other match goes, so a file already holding
+        // two such blocks heals on its next write.
+        let matches = existing.indices.filter {
+            let r = existing[$0]
+            return (r.id != nil && r.id == report.templateID) || r.name == report.templateName
+        }
+        if let survivor = matches.first(where: { existing[$0].id != nil && existing[$0].id == report.templateID })
+            ?? matches.first {
+            var drop = IndexSet()
+            for i in matches where i != survivor {
+                var upper = existing[i].range.upperBound
+                while upper < lines.count, lines[upper].trimmingCharacters(in: .whitespaces).isEmpty {
+                    upper += 1
+                }
+                drop.insert(integersIn: existing[i].range.lowerBound..<upper)
+            }
+            let kept = existing[survivor].range
+            var out: [String] = []
+            for (index, line) in lines.enumerated() where !drop.contains(index) {
+                if index == kept.lowerBound { out.append(contentsOf: block) }
+                if kept.contains(index) { continue }
+                out.append(line)
+            }
+            return out.joined(separator: "\n")
         }
         guard let h1 = lines.firstIndex(where: { $0.hasPrefix("# ") }) else { return markdown }
         var at = lines.count

@@ -154,6 +154,11 @@ for name in ["ru","uk","es","pt","fr","de","zh","ja","ko","vi","tl"]:
     keys = {k.replace('\\"','"') for k in re.findall(r'\n        "((?:[^"\\]|\\.)*)":', m.group(1))}
     if used - keys: sys.exit(1)          # a used key is missing from a table
     if keys - used - dynamic: sys.exit(2)  # orphan: translated ×11 but never shown
+    # Placeholders in the same ORDER as the English key: Lf is String(format:),
+    # positional — a reordered "%@ … %d" hands %@ an Int and crashes (3.3.1).
+    spec = re.compile(r'%[0-9.]*[d@fs]')
+    for k, v in re.findall(r'\n        "((?:[^"\\]|\\.)*)":\s*"((?:[^"\\]|\\.)*)"', m.group(1)):
+        if spec.findall(k) != spec.findall(v): sys.exit(3)
 PYEOF
 then echo "  ✅ localization tables complete, no orphaned keys"; PASS=$((PASS+1))
 else echo "  ❌ localization tables: gaps or orphaned keys"; FAIL=$((FAIL+1)); fi
