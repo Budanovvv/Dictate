@@ -44,8 +44,11 @@ final class CallDetector {
     /// a recording started over it. `MeetingPolicy.isASecondCall` is the rule
     /// that reads it.
     private var answered = MeetingPolicy.AnsweredCall.nothing
-    /// Consecutive ticks with no call visible while still latched. A different
-    /// title only counts as a NEW call on the far side of such a gap.
+    /// Consecutive ticks where something holds the microphone but no call can
+    /// be seen on it — a browser parked on the mic between meetings. A
+    /// different title only counts as a NEW call on the far side of such a
+    /// gap. Ticks with the microphone FREE are deliberately not counted; see
+    /// the note where the episode's quiet is tallied.
     private var unseenTicks = 0
     private var quietTicks = 0
     /// Ticks the mic has been held by something that is not yet a call for
@@ -170,7 +173,15 @@ final class CallDetector {
         } else {
             patienceTicks = 0
             if inCall {
-                unseenTicks += 1
+                // NOT a gap between calls. A live Meet drops the microphone
+                // for ~10 s stretches around its lobby and permission screens,
+                // and it retitles the tab from the room code to the meeting's
+                // name across exactly that stretch — counting these ticks
+                // would read one call's own admission as a second call and
+                // put a card up in the middle of it. Only a browser sitting
+                // ON the microphone with no call to show is a gap; a free
+                // microphone is the episode's business, and quietTicks below
+                // ends the episode outright.
                 quietTicks += 1
                 if quietTicks == 1 { Log.d("call: holder quiet") }
                 // Five ticks (~20 s), not two: a live Meet releases the mic

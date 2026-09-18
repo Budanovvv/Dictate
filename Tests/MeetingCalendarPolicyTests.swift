@@ -134,6 +134,16 @@ final class MeetingCalendarPolicyTests: XCTestCase {
                        "already over")
     }
 
+    func testTheEndOfAnEventDoesNotStretchWithTheEarlyGrace() {
+        // The two graces answer different questions and must not share a
+        // constant: an event that finished six minutes ago is over, however
+        // generous the rule has become about joining early. Sharing them once
+        // widened this silently when earlyGrace went from five minutes to ten.
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(startOffset: -20 * 60, minutes: 14),
+                                                      startedAt: noon),
+                       "already over")
+    }
+
     func testBackToBackMeetingsPickTheOneThatJustStarted() {
         // The seam between two meetings is the case this rule exists for: both
         // are plausible for a recording begun there, and the one starting now

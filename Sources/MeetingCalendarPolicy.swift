@@ -56,6 +56,15 @@ enum MeetingCalendarPolicy {
     static let earlyGrace: TimeInterval = 10 * 60
     static let lateGrace: TimeInterval = 20 * 60
 
+    /// How long after an event ENDED a recording may still belong to it.
+    ///
+    /// Its own constant, and deliberately not `earlyGrace`: the two answer
+    /// different questions, and sharing them means widening the early side
+    /// silently lets a finished meeting lend its name for longer too. Five
+    /// minutes — a call that runs a little over is ordinary, a recording that
+    /// starts ten minutes after one ended belongs to whatever came next.
+    static let endedGrace: TimeInterval = 5 * 60
+
     /// The event this recording belongs to, or nil when nothing scheduled fits.
     ///
     /// Whether that event's TITLE is usable is a separate question — `name(of:)`
@@ -112,7 +121,7 @@ enum MeetingCalendarPolicy {
         if offset > lateGrace { return "\(Int((offset / 60).rounded())) min past its start" }
         // Recording that begins after the event was over belongs to whatever
         // came next, even if the clock is still inside the grace window.
-        if startedAt >= event.end.addingTimeInterval(earlyGrace) { return "already over" }
+        if startedAt >= event.end.addingTimeInterval(endedGrace) { return "already over" }
         return nil
     }
 
