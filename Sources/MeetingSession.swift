@@ -693,8 +693,11 @@ final class MeetingSession: ObservableObject {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         var parts = ["holders: " + names.joined(separator: ", ")]
         for name in names where MeetingPolicy.isBrowser(appNamed: name) {
-            let titles = browserWindowTitles(appNamed: name).map { String($0.prefix(40)) }
-            parts.append("\(name) windows: " + titles.joined(separator: " | "))
+            let walk = browserWindows(appNamed: name)
+            let detail = walk.titles.isEmpty
+                ? walk.note
+                : walk.titles.map { String($0.prefix(40)) }.joined(separator: " | ")
+            parts.append("\(name) windows: \(detail)")
         }
         return parts.joined(separator: "; ")
     }
@@ -717,23 +720,40 @@ final class MeetingSession: ObservableObject {
     /// empty list, never an error. One walk, shared by the platform check and
     /// the diagnostic dump.
     private nonisolated static func browserWindowTitles(appNamed name: String) -> [String] {
+        browserWindows(appNamed: name).titles
+    }
+
+    /// The same walk, plus WHY it came back empty.
+    ///
+    /// Three different failures used to collapse into one empty list, and on
+    /// 2026-09-18 that cost a diagnosis: Chrome held the microphone through a
+    /// meeting and the log said only `Google Chrome windows:` with nothing
+    /// after it. Was the app missing from NSWorkspace, did the AX call fail,
+    /// or were the windows simply untitled? The line could not say, and the
+    /// three have entirely different cures. It says now.
+    private nonisolated static func browserWindows(appNamed name: String) -> (titles: [String], note: String) {
         guard let app = NSWorkspace.shared.runningApplications
-            .first(where: { $0.localizedName == name }) else { return [] }
+            .first(where: { $0.localizedName == name }) else { return ([], "not a running app") }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
-        // These calls are synchronous IPC on the MAIN thread, on a 4 s timer
-        // — the default AX messaging timeout is ~6 s, so one beachballing
-        // browser would freeze dictation and all UI with it (review find,
-        // 2026-08-31). Half a second is plenty for a title.
+        // These calls are synchronous IPC, and the one at the start of a
+        // recording is on the MAIN thread — the default AX messaging timeout
+        // is ~6 s, so one beachballing browser would freeze dictation and all
+        // UI with it (review find, 2026-08-31). Half a second is plenty for a
+        // title, and a browser too busy to answer in that time says so in the
+        // note rather than passing for a browser with no windows.
         AXUIElementSetMessagingTimeout(ax, 0.5)
         var raw: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw) == .success,
-              let windows = raw as? [AXUIElement] else { return [] }
-        return windows.compactMap { window in
+        let status = AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &raw)
+        guard status == .success, let windows = raw as? [AXUIElement] else {
+            return ([], "windows unreadable (AX error \(status.rawValue))")
+        }
+        let titles: [String] = windows.compactMap { window in
             var t: CFTypeRef?
             guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &t) == .success,
                   let title = t as? String, !title.isEmpty else { return nil }
             return title
         }
+        return (titles, titles.isEmpty ? "\(windows.count) window(s), none titled" : "")
     }
 
     /// The late source probe: once a minute for ten minutes, until something

@@ -44,10 +44,16 @@ enum MeetingCalendarPolicy {
     ///
     /// Generous on the late side because that is how meetings actually run:
     /// people join, wait for the last person, and somebody remembers to hit
-    /// record several minutes in. Tight on the early side — a recording that
-    /// starts twenty minutes before an event is far more likely to be the
+    /// record several minutes in. Still tight on the early side — a recording
+    /// that starts twenty minutes before an event is far more likely to be the
     /// PREVIOUS conversation than an eager start on the next one.
-    static let earlyGrace: TimeInterval = 5 * 60
+    ///
+    /// Ten minutes, not five: joining early is ordinary, and five minutes lost
+    /// the owner a real meeting by TWENTY-FIVE SECONDS (2026-09-18, recording
+    /// begun 09:54:35 for an event at 10:00). Widening this is safe because
+    /// `match` takes the closest start, so a previous meeting still running
+    /// wins over the next one whenever it is nearer.
+    static let earlyGrace: TimeInterval = 10 * 60
     static let lateGrace: TimeInterval = 20 * 60
 
     /// The event this recording belongs to, or nil when nothing scheduled fits.

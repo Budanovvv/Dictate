@@ -44,6 +44,13 @@ final class MeetingCalendarPolicyTests: XCTestCase {
             events: [event()], startedAt: noon.addingTimeInterval(35 * 60)))
     }
 
+    func testJoiningAFewMinutesEarlyStillMatches() {
+        // The 2026-09-18 miss: recording begun 5 min 25 s before a 10:00
+        // meeting fell outside a five-minute grace by twenty-five seconds.
+        XCTAssertNotNil(MeetingCalendarPolicy.match(
+            events: [event()], startedAt: noon.addingTimeInterval(-6 * 60)))
+    }
+
     func testRecordingLongBeforeDoesNotMatch() {
         // A conversation twenty minutes before a booked meeting is the previous
         // conversation, not an eager start on the next one.
@@ -114,15 +121,15 @@ final class MeetingCalendarPolicyTests: XCTestCase {
                        "all-day")
         XCTAssertEqual(MeetingCalendarPolicy.rejection(event(attendees: false), startedAt: noon),
                        "no guests, no link")
-        // Six minutes early: outside the five-minute grace, and the reason has
-        // to say so rather than leaving it to be guessed.
-        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(), startedAt: noon.addingTimeInterval(-6 * 60)),
-                       "starts in 6 min")
+        // Twelve minutes early: outside the ten-minute grace, and the reason
+        // has to say so rather than leaving it to be guessed.
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(), startedAt: noon.addingTimeInterval(-12 * 60)),
+                       "starts in 12 min")
         XCTAssertEqual(MeetingCalendarPolicy.rejection(event(), startedAt: noon.addingTimeInterval(25 * 60)),
                        "25 min past its start")
         // Still inside the twenty-minute late grace, but the event itself
         // finished ten minutes ago: that name belongs to whatever came next.
-        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(startOffset: -20 * 60, minutes: 10),
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(startOffset: -20 * 60, minutes: 5),
                                                       startedAt: noon),
                        "already over")
     }
