@@ -153,6 +153,12 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "The second call is announced too": "Второй звонок тоже спросит",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Когда одна встреча переходила в следующую, а браузер не отпускал микрофон, карточка второго звонка не появлялась. Теперь каждый звонок распознаётся отдельно.",
+        "“Not this one” means only this one": "«Не этот» — значит только этот",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Отказ от звонка раньше выключал и все следующие. Теперь отказ касается только того звонка, для которого карточка была показана.",
+        "A meeting called “Daily” still counts": "Встреча с названием «Daily» тоже считается",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Событие календаря, названное только по жанру — «Daily», «Созвон», «Встреча», — распознаётся как записываемый звонок. Его тег и платформа попадают в транскрипт, а имя по-прежнему даёт сказанное.",
         "Settings": "Настройки",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain отказался сохранить ключ — он остался в поле. Разблокируйте связку и попробуйте снова.",
         "Couldn't reach the update server. Try again once you're online.": "Не удалось связаться с сервером обновлений. Попробуйте, когда появится сеть.",
@@ -914,6 +920,12 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "The second call is announced too": "Другий дзвінок теж запитає",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Коли одна зустріч переходила в наступну, а браузер не відпускав мікрофон, картка другого дзвінка не з’являлася. Тепер кожен дзвінок розпізнається окремо.",
+        "“Not this one” means only this one": "«Не цей» — означає лише цей",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Відмова від дзвінка раніше вимикала й усі наступні. Тепер відмова стосується лише того дзвінка, для якого картку було показано.",
+        "A meeting called “Daily” still counts": "Зустріч із назвою «Daily» теж рахується",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Подія календаря, названа лише за жанром — «Daily», «Созвон», «Зустріч», — розпізнається як записуваний дзвінок. Її тег і платформа потрапляють у транскрипт, а ім’я, як і раніше, дає сказане.",
         "Settings": "Налаштування",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain відмовився зберегти ключ — він залишився в полі. Розблокуйте в'язку і спробуйте ще раз.",
         "Couldn't reach the update server. Try again once you're online.": "Не вдалося зв'язатися з сервером оновлень. Спробуйте, коли з'явиться мережа.",
@@ -1666,6 +1678,12 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "The second call is announced too": "La segunda llamada también se anuncia",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Cuando una reunión pasaba directamente a la siguiente y el navegador no soltaba el micrófono, la tarjeta de la segunda llamada no aparecía. Ahora cada llamada se reconoce por separado.",
+        "“Not this one” means only this one": "«Esta no» significa solo esta",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Rechazar una llamada silenciaba todas las que venían después. Ahora rechaza solo aquella para la que se mostró la tarjeta.",
+        "A meeting called “Daily” still counts": "Una reunión llamada «Daily» también cuenta",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Un evento del calendario con un nombre solo genérico —Daily, Sync, Reunión— se reconoce como la llamada que se graba. Su etiqueta y su plataforma llegan a la transcripción, y el nombre sigue saliendo de lo que se dijo.",
         "Settings": "Ajustes",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "El llavero rechazó guardar la clave; sigue en el campo. Desbloquee el llavero e inténtelo de nuevo.",
         "Couldn't reach the update server. Try again once you're online.": "No se pudo contactar el servidor de actualizaciones. Inténtelo cuando esté en línea.",
@@ -2427,6 +2445,12 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "The second call is announced too": "A segunda chamada também é anunciada",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Quando uma reunião emendava na seguinte e o navegador não soltava o microfone, o cartão da segunda chamada não aparecia. Agora cada chamada é reconhecida por si.",
+        "“Not this one” means only this one": "«Esta não» significa apenas esta",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Recusar uma chamada silenciava todas as seguintes. Agora recusa apenas aquela para a qual o cartão foi mostrado.",
+        "A meeting called “Daily” still counts": "Uma reunião chamada «Daily» também conta",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Um evento de calendário com nome apenas genérico — Daily, Sync, Reunião — é reconhecido como a chamada gravada. A sua etiqueta e plataforma chegam à transcrição, e o nome continua a vir do que foi dito.",
         "Settings": "Definições",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "As Chaves recusaram salvar a chave — ela continua no campo. Desbloqueie as chaves e tente de novo.",
         "Couldn't reach the update server. Try again once you're online.": "Não foi possível contatar o servidor de atualizações. Tente de novo quando estiver online.",
@@ -3188,6 +3212,12 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "The second call is announced too": "Le deuxième appel est signalé aussi",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Quand une réunion enchaînait sur la suivante et que le navigateur ne relâchait jamais le micro, la carte du deuxième appel n’apparaissait pas. Chaque appel est désormais reconnu pour lui-même.",
+        "“Not this one” means only this one": "« Pas celui-ci » ne vaut que pour celui-ci",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Refuser un appel faisait taire tous les suivants. Le refus ne porte plus que sur l’appel pour lequel la carte a été montrée.",
+        "A meeting called “Daily” still counts": "Une réunion intitulée « Daily » compte aussi",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Un événement d’agenda nommé seulement par son genre — Daily, Sync, Réunion — est reconnu comme l’appel enregistré. Son étiquette et sa plateforme arrivent dans la transcription, et le nom vient toujours de ce qui a été dit.",
         "Settings": "Réglages",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Le trousseau a refusé d'enregistrer la clé — elle reste dans le champ. Déverrouillez le trousseau et réessayez.",
         "Couldn't reach the update server. Try again once you're online.": "Impossible de joindre le serveur de mise à jour. Réessayez une fois en ligne.",
@@ -3949,6 +3979,12 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "The second call is announced too": "Der zweite Anruf wird auch gemeldet",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Ging eine Besprechung direkt in die nächste über und gab der Browser das Mikrofon nie frei, erschien die Karte für den zweiten Anruf nicht. Jeder Anruf wird jetzt für sich erkannt.",
+        "“Not this one” means only this one": "„Nicht dieser“ heißt nur dieser",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Ein abgelehnter Anruf brachte bisher auch alle folgenden zum Schweigen. Die Ablehnung gilt jetzt nur dem Anruf, für den die Karte gezeigt wurde.",
+        "A meeting called “Daily” still counts": "Auch eine Besprechung namens „Daily“ zählt",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Ein Kalendereintrag, der nur die Gattung nennt — Daily, Sync, Besprechung —, wird als der aufgezeichnete Anruf erkannt. Sein Tag und seine Plattform landen im Transkript, den Namen liefert weiterhin das Gesagte.",
         "Settings": "Einstellungen",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Der Schlüsselbund hat das Speichern verweigert — der Schlüssel bleibt im Feld. Entsperren Sie den Schlüsselbund und versuchen Sie es erneut.",
         "Couldn't reach the update server. Try again once you're online.": "Der Update-Server ist nicht erreichbar. Versuchen Sie es, sobald Sie online sind.",
@@ -4710,6 +4746,12 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "The second call is announced too": "第二通通话也会提示",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "当一场会议紧接着下一场、浏览器始终没有释放麦克风时，第二通通话的卡片不会出现。现在每一通通话都会被单独识别。",
+        "“Not this one” means only this one": "“不是这个”只针对这一通",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "此前拒绝一通通话，会让之后的所有通话都不再提示。现在拒绝只对显示该卡片的那一通生效。",
+        "A meeting called “Daily” still counts": "名为“Daily”的会议同样算数",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "日历中只以类别命名的事件——Daily、Sync、会议——会被识别为正在录制的通话。它的标签和平台会写入转录，名称仍由通话内容决定。",
         "Settings": "设置",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "钥匙串拒绝保存密钥——它仍留在输入框中。解锁钥匙串后重试。",
         "Couldn't reach the update server. Try again once you're online.": "无法连接更新服务器。联网后再试一次。",
@@ -5471,6 +5513,12 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "The second call is announced too": "2 件目の通話もお知らせします",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "会議が次の会議にそのまま続き、ブラウザがマイクを手放さないままだと、2 件目の通話のカードが出ませんでした。今はそれぞれの通話を個別に認識します。",
+        "“Not this one” means only this one": "「これではない」はその通話だけ",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "通話を断ると、以降のすべての通話まで黙ってしまっていました。今はカードが表示されたその通話だけを断ります。",
+        "A meeting called “Daily” still counts": "「Daily」という名前の会議も対象です",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "種別だけを名前にしたカレンダーの予定 — Daily、Sync、会議 — も、録音中の通話として認識します。タグとプラットフォームが文字起こしに入り、名前は話された内容から付きます。",
         "Settings": "設定",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "キーチェーンがキーの保存を拒否しました — キーは入力欄に残っています。キーチェーンのロックを解除してからもう一度お試しください。",
         "Couldn't reach the update server. Try again once you're online.": "アップデートサーバーに接続できません。オンラインになったらもう一度お試しください。",
@@ -6232,6 +6280,12 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "The second call is announced too": "두 번째 통화도 알려 드립니다",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "한 회의가 다음 회의로 바로 이어지고 브라우저가 마이크를 놓지 않으면 두 번째 통화의 카드가 나타나지 않았습니다. 이제 통화마다 따로 인식합니다.",
+        "“Not this one” means only this one": "‘이 통화 아님’은 이 통화에만",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "통화를 거절하면 그 뒤의 모든 통화까지 조용해졌습니다. 이제 카드가 표시된 그 통화만 거절합니다.",
+        "A meeting called “Daily” still counts": "‘Daily’라는 이름의 회의도 인정합니다",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "종류만 이름으로 붙은 캘린더 일정 — Daily, Sync, 회의 — 도 녹음 중인 통화로 인식합니다. 태그와 플랫폼이 기록에 담기고, 이름은 여전히 대화 내용에서 나옵니다.",
         "Settings": "설정",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "키체인이 키 저장을 거부했습니다 — 키는 입력란에 남아 있습니다. 키체인 잠금을 해제하고 다시 시도하세요.",
         "Couldn't reach the update server. Try again once you're online.": "업데이트 서버에 연결할 수 없습니다. 온라인 상태가 되면 다시 시도하세요.",
@@ -6993,6 +7047,12 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "The second call is announced too": "Cuộc gọi thứ hai cũng được báo",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Khi một cuộc họp nối thẳng sang cuộc sau mà trình duyệt không hề nhả micrô, thẻ của cuộc gọi thứ hai đã không xuất hiện. Giờ mỗi cuộc gọi được nhận ra riêng.",
+        "“Not this one” means only this one": "“Không phải cuộc này” chỉ là cuộc này",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Từ chối một cuộc gọi từng làm im luôn mọi cuộc gọi sau đó. Giờ chỉ từ chối đúng cuộc gọi đã hiện thẻ.",
+        "A meeting called “Daily” still counts": "Cuộc họp tên “Daily” vẫn được tính",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Sự kiện lịch chỉ đặt tên theo thể loại — Daily, Sync, Họp — vẫn được nhận là cuộc gọi đang ghi. Thẻ và nền tảng của nó vào bản ghi, còn tên vẫn lấy từ nội dung đã nói.",
         "Settings": "Cài đặt",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Keychain từ chối lưu khóa — khóa vẫn còn trong ô. Mở khóa keychain rồi thử lại.",
         "Couldn't reach the update server. Try again once you're online.": "Không thể kết nối máy chủ cập nhật. Thử lại khi có mạng.",
@@ -7754,6 +7814,12 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "The second call is announced too": "Inaanunsyo na rin ang ikalawang tawag",
+        "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Kapag dumugtong agad ang isang pulong sa susunod at hindi binitawan ng browser ang mikropono, hindi lumalabas ang kard para sa ikalawang tawag. Ngayon, bawat tawag ay kinikilala nang hiwalay.",
+        "“Not this one” means only this one": "Ang “Hindi ito” ay para lang dito",
+        "Declining a call used to silence every call that followed it. It now declines just the one it was shown for.": "Dati, ang pagtanggi sa isang tawag ay nagpapatahimik sa lahat ng sumunod. Ngayon, tinatanggihan lang nito ang tawag na pinakitaan ng kard.",
+        "A meeting called “Daily” still counts": "Bilang pa rin ang pulong na “Daily”",
+        "A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.": "Ang kaganapan sa kalendaryo na pinangalanan lang ayon sa uri — Daily, Sync, Pulong — ay kinikilala pa ring tawag na nirerekord. Napupunta sa transcript ang tag at plataporma nito, at galing pa rin sa pinag-usapan ang pangalan.",
         "Settings": "Mga Setting",
         "The Keychain refused to save the key — it stays in the field. Try again after unlocking the keychain.": "Tumanggi ang Keychain na i-save ang key — nanatili ito sa field. I-unlock ang keychain at subukan ulit.",
         "Couldn't reach the update server. Try again once you're online.": "Hindi maabot ang update server. Subukan ulit kapag online ka na.",

@@ -30,6 +30,19 @@ enum WhatsNew {
     /// title and one line each, said from the reader's side.
     static func items(for version: String) -> [Item] {
         switch version {
+        // Three repairs to one story — the app noticing a call — so they are
+        // told as three, not folded into "Small fixes". Two of them are
+        // silences a person could never have reported precisely: a card that
+        // did not come, and a refusal that carried further than it was meant to.
+        case "3.3.4":
+            return [
+                Item(title: L("The second call is announced too"),
+                     line: L("When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.")),
+                Item(title: L("“Not this one” means only this one"),
+                     line: L("Declining a call used to silence every call that followed it. It now declines just the one it was shown for.")),
+                Item(title: L("A meeting called “Daily” still counts"),
+                     line: L("A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.")),
+            ]
         // Its own notes, not 3.3.2's plus one: inheriting once more would
         // show a person who updated from 3.3.2 the same four 3.3.1 items a
         // second time, and two "Small fixes" would share one id.
