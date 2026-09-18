@@ -39,13 +39,32 @@ enum MeetingCalendar {
         }
     }
 
-    /// The name this meeting already has, or nil to let the model invent one.
+    /// What the calendar knows about the call being recorded.
+    ///
+    /// `title` is optional on purpose, and it is the whole point of this being
+    /// a struct rather than a name: an event can be beyond doubt the meeting on
+    /// the microphone and still have a title too generic to borrow. When that
+    /// happens the model names the transcript, but the platform and the
+    /// calendar it came from are facts either way and must survive.
+    struct Scheduled {
+        /// The name the meeting already has, or nil when its title only names
+        /// the genre ("Daily", "Sync") and the model should try instead.
+        let title: String?
+        /// Which calendar it sits in — "Work", "valentyn@wholecall.ai". Becomes
+        /// the transcript's tag.
+        let calendar: String
+        /// The platform its conference link points at — the Sources group.
+        let platform: String?
+    }
+
+    /// What was scheduled at the moment recording began, or nil when nothing
+    /// in the calendar fits.
     ///
     /// Called at session START, which is the point of doing this at all: the
     /// transcript can carry its real name from the first line, the file is
     /// created under that name instead of being renamed at the end, and the
     /// window shows it while the call is still running.
-    static func scheduledTitle(at start: Date) -> (title: String, calendar: String, platform: String?)? {
+    static func scheduled(at start: Date) -> Scheduled? {
         // Access is the only hard gate. The naming SETTING gates the title
         // alone: the platform (the sidebar's Sources group) is harmless
         // metadata, and losing "Google Meet" because auto-naming is off was
@@ -60,14 +79,32 @@ enum MeetingCalendar {
         let raw = store.events(matching: predicate)
         let events = raw.map(fact(from:))
         guard let match = MeetingCalendarPolicy.match(events: events, startedAt: start) else {
-            Log.d("calendar: no scheduled meeting matched (\(events.count) event(s) nearby)")
+            Log.d("calendar: no scheduled meeting matched (\(events.count) event(s) nearby\(nearestNote(events, start)))")
             return nil
         }
-        Log.d("calendar: named from \"\(match.calendarName)\" — \(match.title)")
         // The event's conference link also names the PLATFORM — the sidebar's
         // Sources group. Best-effort: nil when the link names nothing known.
         let platform = raw.first { ($0.title ?? "") == match.title }.flatMap(platform(of:))
-        return (match.title, match.calendarName, platform)
+        guard let title = MeetingCalendarPolicy.name(of: match) else {
+            Log.d("calendar: matched in \"\(match.calendarName)\" but the title only names the genre — keeping the platform and the tag, the model will name it")
+            return Scheduled(title: nil, calendar: match.calendarName, platform: platform)
+        }
+        Log.d("calendar: named from \"\(match.calendarName)\" — \(title)")
+        return Scheduled(title: title, calendar: match.calendarName, platform: platform)
+    }
+
+    /// The nearest event and the guard that refused it, for the "no match" line.
+    ///
+    /// A bare count of nearby events is undiagnosable — telling a 25-second
+    /// overshoot of the early grace from a declined invitation needed a
+    /// separate EventKit probe (2026-09-18). No titles: the reason is enough,
+    /// and a private calendar has no business in a log file.
+    private static func nearestNote(_ events: [MeetingCalendarPolicy.Event], _ start: Date) -> String {
+        guard let nearest = events.min(by: {
+            abs($0.start.timeIntervalSince(start)) < abs($1.start.timeIntervalSince(start))
+        }), let why = MeetingCalendarPolicy.rejection(nearest, startedAt: start) else { return "" }
+        let offset = Int((start.timeIntervalSince(nearest.start) / 60).rounded())
+        return "; closest \(offset >= 0 ? "+" : "")\(offset) min — \(why)"
     }
 
     /// "Google Meet" / "Zoom" / "Microsoft Teams"… from the event's own link.

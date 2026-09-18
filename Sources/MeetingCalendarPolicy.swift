@@ -50,7 +50,10 @@ enum MeetingCalendarPolicy {
     static let earlyGrace: TimeInterval = 5 * 60
     static let lateGrace: TimeInterval = 20 * 60
 
-    /// The event this recording belongs to, or nil to let the model name it.
+    /// The event this recording belongs to, or nil when nothing scheduled fits.
+    ///
+    /// Whether that event's TITLE is usable is a separate question — `name(of:)`
+    /// answers it. This one only decides which meeting is on the microphone.
     ///
     /// - Parameters:
     ///   - events: everything the calendar holds near the recording's start.
@@ -65,19 +68,46 @@ enum MeetingCalendarPolicy {
         }
     }
 
+    /// The NAME this event may lend a transcript, or nil when its title only
+    /// names the genre.
+    ///
+    /// Deliberately NOT part of `match`: "is this recording that event" and "is
+    /// that event's title worth borrowing" are different questions, and
+    /// answering them together cost a real meeting (owner, 2026-09-18). A daily
+    /// standup with eight guests and a Meet link matched on every count and was
+    /// thrown away whole because it was called "Daily" — and the platform and
+    /// the calendar's tag went down with the title, though neither is a name.
+    static func name(of event: Event) -> String? {
+        isUsefulTitle(event.title) ? event.title : nil
+    }
+
     static func isPlausible(_ event: Event, startedAt: Date) -> Bool {
-        guard !event.isAllDay, !event.declined else { return false }
+        rejection(event, startedAt: startedAt) == nil
+    }
+
+    /// Why this event is not the meeting being recorded — nil when it is.
+    ///
+    /// One source of truth for the rule and for the log. A miss used to print
+    /// only how many events were nearby, which said nothing about WHICH guard
+    /// refused them: diagnosing the owner's 2026-09-18 misses needed a separate
+    /// EventKit probe, because a five-minute overshoot and a declined invite
+    /// looked identical in the log. Titles are never returned here — the reason
+    /// is enough, and a private calendar should not end up in a log file.
+    static func rejection(_ event: Event, startedAt: Date) -> String? {
+        if event.isAllDay { return "all-day" }
+        if event.declined { return "declined" }
         // An event nobody else was invited to and with nowhere to call in to is
         // not a meeting this app is recording. Either signal is enough: a
         // walk-in with one colleague has attendees and no link; a webinar link
         // may carry no attendee list at all.
-        guard event.hasAttendees || event.hasConferenceLink else { return false }
-        guard isUsefulTitle(event.title) else { return false }
+        if !(event.hasAttendees || event.hasConferenceLink) { return "no guests, no link" }
         let offset = startedAt.timeIntervalSince(event.start)
-        guard offset >= -earlyGrace, offset <= lateGrace else { return false }
+        if offset < -earlyGrace { return "starts in \(Int((-offset / 60).rounded())) min" }
+        if offset > lateGrace { return "\(Int((offset / 60).rounded())) min past its start" }
         // Recording that begins after the event was over belongs to whatever
         // came next, even if the clock is still inside the grace window.
-        return startedAt < event.end.addingTimeInterval(earlyGrace)
+        if startedAt >= event.end.addingTimeInterval(earlyGrace) { return "already over" }
+        return nil
     }
 
     /// Placeholder titles a calendar is full of. "Meeting", "Call", "1:1",

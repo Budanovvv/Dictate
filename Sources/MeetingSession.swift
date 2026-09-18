@@ -652,10 +652,25 @@ final class MeetingSession: ObservableObject {
     /// forgotten-recording check call it from Task.detached — the AX walks
     /// are synchronous IPC that must never run on (or require) the main
     /// actor.
-    nonisolated static func detectCallApp() -> String? {
+    nonisolated static func detectCallApp() -> String? { detectCall()?.platform }
+
+    /// The call on the microphone right now: which platform it runs on, and a
+    /// string that tells THIS call apart from the next one on that platform.
+    ///
+    /// The identity is the browser window title that named the call. It costs
+    /// nothing — the title is already read to name the platform — and it is the
+    /// only handle available for the question the microphone cannot answer:
+    /// whether a call appearing now is the one already asked about. A mic
+    /// episode was the old answer, and it is not a boundary: on 2026-09-18 a
+    /// browser held the microphone unbroken across two meetings 24 minutes
+    /// apart, and the second one was never announced.
+    ///
+    /// A native call app has no such handle, so its own name stands in — two
+    /// Zoom calls inside one unbroken episode still read as one call.
+    nonisolated static func detectCall() -> (platform: String, identity: String)? {
         let names = AudioInputDevices.appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
         for name in names {
-            if let hit = MeetingPolicy.callApp(named: name) { return hit.name }
+            if let hit = MeetingPolicy.callApp(named: name) { return (hit.name, hit.name) }
         }
         // A browser holding the mic is a web call — Meet above all, which
         // never appears as an app. The browser's window titles name the
@@ -664,7 +679,9 @@ final class MeetingSession: ObservableObject {
         // active tab titles a window, so a miss here is retried by the
         // session's source probe.
         for name in names where MeetingPolicy.isBrowser(appNamed: name) {
-            if let hit = browserCallPlatform(appNamed: name) { return hit }
+            for title in browserWindowTitles(appNamed: name) {
+                if let hit = MeetingPolicy.callPlatform(inWindowTitle: title) { return (hit, title) }
+            }
         }
         return nil
     }
@@ -717,13 +734,6 @@ final class MeetingSession: ObservableObject {
                   let title = t as? String, !title.isEmpty else { return nil }
             return title
         }
-    }
-
-    private nonisolated static func browserCallPlatform(appNamed name: String) -> String? {
-        for title in browserWindowTitles(appNamed: name) {
-            if let hit = MeetingPolicy.callPlatform(inWindowTitle: title) { return hit }
-        }
-        return nil
     }
 
     /// The late source probe: once a minute for ten minutes, until something
@@ -1551,9 +1561,11 @@ final class MeetingSession: ObservableObject {
         // Read here, before the file exists, so the name is on the first line
         // and in the file name — no end-of-session rename, which is its own
         // source of bugs (a window left pointing at the old path, 2026-08-19).
-        let scheduled = MeetingCalendar.scheduledTitle(at: sessionStart)
+        let scheduled = MeetingCalendar.scheduled(at: sessionStart)
         // The TITLE respects the naming setting; the platform below does not
-        // (harmless metadata for the Sources group).
+        // (harmless metadata for the Sources group). The title is also nil when
+        // the event had one but it only named the genre — the match itself
+        // still stands, and the tag and platform below come from it.
         scheduledTitle = MeetingCalendar.isEnabled ? scheduled?.title : nil
         let url = dir.appendingPathComponent(
             MeetingArchive.fileName(stamp: Self.fileStamp(sessionStart), title: scheduledTitle))
@@ -1568,18 +1580,23 @@ final class MeetingSession: ObservableObject {
         lateSource = nil
         if source == nil { startSourceProbe() }
         let sourceLine = source.map { "<!-- source: \($0) -->\n" } ?? ""
+        // The calendar a meeting came from is a classification its owner
+        // already made — "work", "clients" — so it becomes a tag without
+        // anyone being asked to think. Free vocabulary is the only kind that
+        // survives, since the tags people must remember to apply are the ones
+        // they stop applying in week three.
+        //
+        // Written whether or not the event lent its title: a standup called
+        // "Daily" is still a WholeCall meeting, and filing it as one was
+        // exactly what the old coupling threw away (owner, 2026-09-18).
+        let tag = MeetingCalendar.isEnabled
+            ? scheduled.flatMap { MeetingTags.fromCalendarName($0.calendar) } : nil
+        let tagLine = tag.map { "\(MeetingTags.tagLine([$0]))\n" } ?? ""
         let header: String
         if let scheduledTitle {
-            // The calendar a meeting came from is a classification its owner
-            // already made — "work", "clients" — so it becomes a tag without
-            // anyone being asked to think. Free vocabulary is the only kind
-            // that survives, since the tags people must remember to apply are
-            // the ones they stop applying in week three.
-            let tag = scheduled.flatMap { MeetingTags.fromCalendarName($0.calendar) }
-            let tagLine = tag.map { "\(MeetingTags.tagLine([$0]))\n" } ?? ""
             header = "# \(scheduledTitle)\n_\(Self.dateLine(sessionStart))_\n\(sourceLine)\(tagLine)\n"
         } else {
-            header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\(sourceLine)\n"
+            header = "# \(L("Meeting transcript")) — \(DateFormatter.localizedString(from: Date(), dateStyle: .long, timeStyle: .short))\n\(sourceLine)\(tagLine)\n"
         }
         try header.data(using: .utf8)!.write(to: url)
         fileHandle = try FileHandle(forWritingTo: url)

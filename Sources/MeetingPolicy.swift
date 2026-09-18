@@ -643,4 +643,50 @@ enum MeetingPolicy {
         return ["chrome", "safari", "arc", "edge", "firefox", "brave",
                 "opera", "vivaldi", "dia"].contains { lower.contains($0) }
     }
+
+    // MARK: - A second call inside one microphone episode
+
+    /// What the owner has already answered for, as the detector holds it.
+    enum AnsweredCall: Equatable {
+        /// Nobody was asked: the recording was started from the pill, so there
+        /// is no title to compare a later call against.
+        case nothing
+        /// Asked about a browser call whose window title named nothing.
+        case unnamed
+        /// Asked about the call this window title names.
+        case named(String)
+    }
+
+    /// Ticks with no call visible at all before a DIFFERENT title may count as
+    /// a new call. Two (~8 s): one would be too few, since a title can go
+    /// unreadable for a single probe, and five would have missed the owner's
+    /// live repro — he left a call and joined the next eight seconds later.
+    static let newCallTicks = 2
+
+    /// The same gap when there is no title to compare against — five ticks
+    /// (~20 s), the episode's own constant. With nothing to check the identity
+    /// against, a title that merely went unreadable for a moment (Chrome
+    /// returned no windows at all on 2026-09-18) must not be read as one
+    /// meeting ending and the next beginning.
+    static let newMeetingTicks = 5
+
+    /// A detector already latched onto a call can see a call on the microphone
+    /// right now. Is a second meeting beginning, or is this still the first?
+    ///
+    /// The microphone episode used to answer this, and it answered wrongly
+    /// twice in one morning (owner, 2026-09-18): a browser held the mic
+    /// unbroken across two meetings 24 minutes apart, so the second was never
+    /// announced, and "not this one" silenced everything that followed. The
+    /// title the call was named by is the cheapest thing that tells them apart
+    /// — and the gap requirement is what keeps a call being RETITLED from
+    /// looking like a new one, since Meet swaps the room code for the meeting's
+    /// name the moment you are let in.
+    static func isASecondCall(identity: String, answered: AnsweredCall, unseenTicks: Int) -> Bool {
+        switch answered {
+        // The call asked about namelessly has simply become readable.
+        case .unnamed: return false
+        case .named(let previous): return previous != identity && unseenTicks >= newCallTicks
+        case .nothing: return unseenTicks >= newMeetingTicks
+        }
+    }
 }

@@ -521,3 +521,83 @@ final class AutoStopTests: XCTestCase {
             now: now), .keep)
     }
 }
+
+/// A second call beginning inside one unbroken microphone episode.
+///
+/// The episode used to be the boundary between calls, and on 2026-09-18 it
+/// swallowed a real meeting whole: a browser held the microphone from one call
+/// into the next 24 minutes later, so the second one was never announced, and
+/// answering "not this one" had silenced everything after it. These tests are
+/// the two halves of the replacement — a different title after a break is a new
+/// call; a different title without one is the same call, retitled.
+final class SecondCallTests: XCTestCase {
+
+    func testADifferentCallAfterABreakIsAnnounced() {
+        // The owner's morning: one meeting answered for, nothing on the mic for
+        // a while, then another meeting — the card he never got.
+        XCTAssertTrue(MeetingPolicy.isASecondCall(
+            identity: "Meet - Product Dayily - Google Chrome",
+            answered: .named("Meet - Daily - Google Chrome"),
+            unseenTicks: 8))
+    }
+
+    func testTheSameCallIsNeverAnnouncedTwice() {
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Daily - Google Chrome",
+            answered: .named("Meet - Daily - Google Chrome"),
+            unseenTicks: 30))
+    }
+
+    func testACallBeingRetitledIsNotANewCall() {
+        // Meet swaps the room code for the meeting's name the moment you are
+        // let in. The title changes with no break at all, and a card for it
+        // would land seconds after the one just answered.
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Product Dayily - Google Chrome",
+            answered: .named("Meet – abc-defg-hij - Google Chrome"),
+            unseenTicks: 0))
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Product Dayily - Google Chrome",
+            answered: .named("Meet – abc-defg-hij - Google Chrome"),
+            unseenTicks: MeetingPolicy.newCallTicks - 1))
+    }
+
+    func testANamelessCallGettingATitleIsStillThatCall() {
+        // The card fired on patience, without a name. A title appearing later
+        // is the same call becoming readable — never a second card.
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Daily - Google Chrome",
+            answered: .unnamed,
+            unseenTicks: 99))
+    }
+
+    func testStoppingARecordingWithoutLeavingTheCallBringsNoCard() {
+        // Nobody was ever asked (the recording began from the pill), and the
+        // call is still there the moment it ends: that is the recording's own
+        // call, not a new one.
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Daily - Google Chrome", answered: .nothing, unseenTicks: 0))
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Daily - Google Chrome",
+            answered: .nothing,
+            unseenTicks: MeetingPolicy.newMeetingTicks - 1))
+    }
+
+    func testAMeetingAfterAPillRecordingEndedIsAnnounced() {
+        XCTAssertTrue(MeetingPolicy.isASecondCall(
+            identity: "Meet - Product Dayily - Google Chrome",
+            answered: .nothing,
+            unseenTicks: MeetingPolicy.newMeetingTicks))
+    }
+
+    func testAnUnreadableTitleForOneProbeIsNotABreak() {
+        // A single tick where Chrome answered with no windows at all is the
+        // 2026-09-18 failure, and it must never manufacture a second card.
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Meet - Daily - Google Chrome",
+            answered: .named("Meet - Daily - Google Chrome"),
+            unseenTicks: 1))
+        XCTAssertFalse(MeetingPolicy.isASecondCall(
+            identity: "Zoom", answered: .nothing, unseenTicks: 1))
+    }
+}

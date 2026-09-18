@@ -80,18 +80,51 @@ final class MeetingCalendarPolicyTests: XCTestCase {
 
     func testPlaceholderTitlesAreRefusedSoTheModelCanTry() {
         // "Meeting" names the genre, not the meeting. A summary of what was
-        // actually said beats it, so the rule steps aside.
+        // actually said beats it, so the rule declines to lend the name.
         for junk in ["Meeting", "call", "1:1", "Sync", "Weekly", "созвон", "Встреча."] {
-            XCTAssertNil(MeetingCalendarPolicy.match(events: [event(junk)], startedAt: noon),
+            XCTAssertNil(MeetingCalendarPolicy.name(of: event(junk)),
                          "\(junk) should not name a transcript")
         }
     }
 
     func testARealTitleContainingAPlaceholderWordSurvives() {
         for good in ["Weekly sync with Chuck", "Call with the ISO auditor", "Product review: pricing"] {
-            XCTAssertNotNil(MeetingCalendarPolicy.match(events: [event(good)], startedAt: noon),
-                            "\(good) should name a transcript")
+            XCTAssertEqual(MeetingCalendarPolicy.name(of: event(good)), good)
         }
+    }
+
+    func testAGenericTitleStillIdentifiesTheMeeting() {
+        // The owner's 2026-09-18 standup: eight guests, a Meet link, started a
+        // minute before recording — and called "Daily". Refusing its NAME is
+        // right; refusing the match threw away the platform and the calendar's
+        // tag with it, which are facts and not names.
+        let daily = event("Daily", attendees: true, link: true, calendar: "valentyn@wholecall.ai")
+        let match = MeetingCalendarPolicy.match(events: [daily], startedAt: noon)
+        XCTAssertEqual(match?.calendarName, "valentyn@wholecall.ai")
+        XCTAssertNil(MeetingCalendarPolicy.name(of: daily))
+    }
+
+    func testARefusalSaysWhichGuardRefused() {
+        // A bare count of nearby events is undiagnosable — telling a narrow
+        // overshoot from a declined invite cost a separate EventKit probe.
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(), startedAt: noon), nil)
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(declined: true), startedAt: noon),
+                       "declined")
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(allDay: true), startedAt: noon),
+                       "all-day")
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(attendees: false), startedAt: noon),
+                       "no guests, no link")
+        // Six minutes early: outside the five-minute grace, and the reason has
+        // to say so rather than leaving it to be guessed.
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(), startedAt: noon.addingTimeInterval(-6 * 60)),
+                       "starts in 6 min")
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(), startedAt: noon.addingTimeInterval(25 * 60)),
+                       "25 min past its start")
+        // Still inside the twenty-minute late grace, but the event itself
+        // finished ten minutes ago: that name belongs to whatever came next.
+        XCTAssertEqual(MeetingCalendarPolicy.rejection(event(startOffset: -20 * 60, minutes: 10),
+                                                      startedAt: noon),
+                       "already over")
     }
 
     func testBackToBackMeetingsPickTheOneThatJustStarted() {
