@@ -1561,16 +1561,12 @@ struct MeetingsView: View {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = meeting.url.lastPathComponent
         panel.canCreateDirectories = true
-        NSApp.activate()
-        // Next runloop turn: activation must settle or the save panel can
-        // open behind the frontmost app (same family as the update-alert
-        // hang, 2026-08-31).
-        DispatchQueue.main.async {
-        panel.begin { response in
+        Log.d("export: transcript — opening the save panel (sheet=\(FilePanels.meetingsWindow != nil))")
+        FilePanels.present(panel) { response in
+            Log.d("export: transcript panel closed response=\(response.rawValue)")
             guard response == .OK, let destination = panel.url else { return }
             try? FileManager.default.removeItem(at: destination)
             try? FileManager.default.copyItem(at: meeting.url, to: destination)
-        }
         }
     }
 
@@ -2874,66 +2870,47 @@ struct TranscriptMenuAction {
     let perform: () -> Void
 }
 
-/// A button that pops a hand-built NSMenu under itself. Exists because
-/// SwiftUI's Menu will not drop while the app is not frontmost, and clicks
-/// in a non-activating panel never make it frontmost — NSMenu's own
-/// tracking has no such requirement.
-private struct AnchoredMenuButton<Label: View>: View {
+/// The ⋯ button: a popover of rows, the same vocabulary as Write report's
+/// template chooser.
+///
+/// Neither of the two menus this used to be survives this window. SwiftUI's
+/// Menu will not drop while the app is not frontmost (3.2). The NSMenu that
+/// replaced it does drop — but onto the wrong Space: with the window floating
+/// over another app's full-screen Space on the second display, the menu
+/// window is placed on that display's desktop, invisible, and sits there
+/// tracking (owner, 2026-11-06: "three dots do nothing"; measured on the
+/// running app and in a standalone harness — every NSMenu entry point,
+/// before and after activation, whatever the collection behaviour). A
+/// popover is a child of the window and goes wherever the window is.
+private struct PopoverMenuButton<Label: View>: View {
     let actions: [TranscriptMenuAction]
     @ViewBuilder let label: () -> Label
-
-    /// A stable box for the anchor NSView — @State keeps the same instance
-    /// across re-renders while the representable fills it in.
-    @State private var anchor = MenuAnchor.Holder()
+    @State private var open = false
 
     var body: some View {
-        Button {
-            guard let view = anchor.view else { return }
-            let menu = NSMenu()
-            for action in actions {
-                if action.dividerBefore { menu.addItem(.separator()) }
-                menu.addItem(ClosureMenuItem(action))
+        Button { open.toggle() } label: { label() }
+            .buttonStyle(.plain)
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
+                        if action.dividerBefore {
+                            Divider().padding(.vertical, 4).padding(.horizontal, 8)
+                        }
+                        PopupRow(title: action.title, destructive: action.destructive,
+                                 selected: false) {
+                            open = false
+                            // After the popover is gone: Rename… opens a
+                            // popover of its own and Export… a sheet, and
+                            // neither should race this one's dismissal.
+                            DispatchQueue.main.async { action.perform() }
+                        }
+                    }
+                }
+                .padding(6)
+                .frame(minWidth: 200)
+                .fixedSize()
             }
-            // Non-flipped coordinates: the view spans y ∈ [0, h], so "just
-            // below the button" is a little under zero.
-            menu.popUp(positioning: nil,
-                       at: NSPoint(x: view.bounds.minX, y: -4),
-                       in: view)
-        } label: { label() }
-        .buttonStyle(.plain)
-        .background(MenuAnchor(holder: anchor))
     }
-}
-
-/// The invisible NSView the menu is positioned against.
-private struct MenuAnchor: NSViewRepresentable {
-    final class Holder { weak var view: NSView? }
-    let holder: Holder
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        holder.view = view
-        return view
-    }
-    func updateNSView(_ view: NSView, context: Context) { holder.view = view }
-}
-
-/// An NSMenuItem that carries its own closure — no shared target object,
-/// no representedObject plumbing.
-private final class ClosureMenuItem: NSMenuItem {
-    private let perform: () -> Void
-    init(_ action: TranscriptMenuAction) {
-        perform = action.perform
-        super.init(title: action.title, action: #selector(run), keyEquivalent: "")
-        target = self
-        if action.destructive {
-            // The red SwiftUI's .destructive role used to paint.
-            attributedTitle = NSAttributedString(
-                string: action.title,
-                attributes: [.foregroundColor: NSColor.systemRed])
-        }
-    }
-    required init(coder: NSCoder) { fatalError("unused") }
-    @objc private func run() { perform() }
 }
 
 private struct TranscriptPane: View {
@@ -3570,15 +3547,13 @@ private struct TranscriptPane: View {
     }
 
     private var menuButton: some View {
-        // A hand-built NSMenu, not SwiftUI's Menu: Menu refuses to drop
-        // while the app is not frontmost, and in this non-activating panel
-        // the app almost never is — since 3.2 ("Settings never activates
-        // the app") the ⋯ was three dots that did nothing. NSMenu tracks
-        // without activation; the status-bar menu is the in-house proof.
-        AnchoredMenuButton(actions: menuActions) {
+        // A popover, not a menu of either kind — see PopoverMenuButton.
+        PopoverMenuButton(actions: menuActions) {
+            // The muted style on the glyph only: put on the button, it
+            // flowed into the popover and greyed every row.
             ChromeGlyph(icon: "ellipsis", hovering: menuHovering)
+                .foregroundStyle(.secondary)
         }
-        .foregroundStyle(.secondary)
         .fixedSize()
         .onHover { menuHovering = $0 }
         .accessibilityLabel(L("Meeting actions"))

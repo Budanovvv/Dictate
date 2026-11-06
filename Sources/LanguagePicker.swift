@@ -47,6 +47,8 @@ struct PopupRow: View {
     /// Keep the icon's width even without an icon, so rows in a list that has
     /// icons stay aligned.
     var reservesIcon = false
+    /// A row that throws something away (the ⋯ menu's Delete) — in red.
+    var destructive = false
     let selected: Bool
     let action: () -> Void
 
@@ -60,6 +62,7 @@ struct PopupRow: View {
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
+                        .foregroundStyle(destructive ? AnyShapeStyle(Color.red) : AnyShapeStyle(ForegroundStyle()))
                     if !subtitle.isEmpty, subtitle.lowercased() != title.lowercased() {
                         Text(subtitle).font(.caption).foregroundStyle(.secondary)
                     }

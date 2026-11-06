@@ -98,6 +98,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             // The title still exists for the Window menu, for accessibility and
             // for the screenshot tooling that finds this window by name.
             panel.title = L("Meetings")
+            // How a save panel finds the window to hang itself on as a sheet
+            // (FilePanels) — a sheet is the one way it reliably shows up when
+            // this window floats over another app's full-screen Space.
+            panel.identifier = FilePanels.meetingsWindowID
             // The header row's height is MeetingsChrome.headerHeight and it is
             // chosen to sit on the band AppKit centres the traffic lights in
             // (see there). Growing the title bar instead — an empty
@@ -177,15 +181,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         meetingMinimized = false
         meetingPill?.hide()
         applyMeetingWindowMode()
-        // A fresh open goes to the screen the user is on (the click is the
-        // honest signal); a window already visible is never moved.
-        if let panel = meetingWindow, !panel.isVisible {
-            let mouse = NSEvent.mouseLocation
-            if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
-               panel.screen !== screen {
+        // Opening the library from the menu brings it to the user: to the
+        // display under the pointer and to the Space they are looking at.
+        // A window already there is left exactly where it is. A live call
+        // keeps its window where it is — that one is on every Space by design.
+        //
+        // Neither "visible" nor "on the active Space" means "in front of
+        // them", and both used to be read that way (2026-11-06, the owner on
+        // two displays: "I open Meetings and it throws me to the other
+        // screen"). Measured on the running app, eight cases:
+        //  - with a Space per display, the current Space of EVERY display
+        //    counts as active, so a window open on the other display passed
+        //    for "here", stayed there, and activation sent the focus across;
+        //  - a window closed in a full-screen Space and opened from the desktop
+        //    of the SAME display came back in the full-screen Space — macOS
+        //    remembers it; only moving the frame to another display changed
+        //    the Space, which is why closing on one display and opening on the
+        //    other always worked;
+        //  - orderOut + orderFront does not help (harness): the Space is
+        //    remembered across it.
+        // What moves the window is .moveToActiveSpace for the one orderFront;
+        // the ordinary behaviour comes back half a second later — the delay
+        // the harness used — and the window stays put. Only
+        // .moveToActiveSpace, never combined: mixing it with the full-screen
+        // flags left a window nobody could see (2026-08-31).
+        let pointerScreen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+        if let panel = meetingWindow {
+            let otherScreen = pointerScreen != nil && panel.screen !== pointerScreen
+            let bringHere = focus && !meeting.isActive
+                && (!panel.isVisible || !panel.isOnActiveSpace || otherScreen)
+            if bringHere || !panel.isVisible, otherScreen, let screen = pointerScreen {
                 let vis = screen.visibleFrame
                 panel.setFrameOrigin(NSPoint(x: vis.midX - panel.frame.width / 2,
                                              y: vis.midY - panel.frame.height / 2))
+            }
+            if bringHere {
+                Log.d("meeting: bringing the library here (visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) otherScreen=\(otherScreen))")
+                panel.collectionBehavior = [.moveToActiveSpace]
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    // Whatever the session is by now — a call may have started.
+                    self?.applyMeetingWindowMode()
+                }
             }
         }
         // Only an explicit "open the library" with no call running may take the

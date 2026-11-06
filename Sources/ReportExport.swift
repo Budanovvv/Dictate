@@ -68,23 +68,19 @@ enum ReportExport {
         }
         panel.allowedContentTypes = [lastFormat.type]
         panel.nameFieldStringValue = fileName(for: meeting, report: report) + "." + lastFormat.fileExtension
-        // The same manners as the transcript export: activate first, then
-        // open — a save panel from a non-activating window otherwise lands
-        // behind everything.
-        NSApp.activate()
-        Log.d("export: report “\(report.templateName)” — opening the save panel")
-        DispatchQueue.main.async {
-            panel.begin { response in
-                Log.d("export: panel closed response=\(response.rawValue) url=\(panel.url?.lastPathComponent ?? "-")")
-                guard response == .OK, let url = panel.url else { return }
-                let format = chooser.format
-                lastFormat = format
-                let ok = write(meeting, report: report, format: format, to: url)
-                Log.d("export: \(format.fileExtension) written=\(ok)")
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                Log.d("export: panel visible=\(panel.isVisible) key=\(panel.isKeyWindow) level=\(panel.level.rawValue) app active=\(NSApp.isActive)")
-            }
+        // A sheet on the meetings window (FilePanels): a free panel from
+        // there never reaches a full-screen Space.
+        Log.d("export: report “\(report.templateName)” — opening the save panel (sheet=\(FilePanels.meetingsWindow != nil))")
+        FilePanels.present(panel) { response in
+            Log.d("export: panel closed response=\(response.rawValue) url=\(panel.url?.lastPathComponent ?? "-")")
+            guard response == .OK, let url = panel.url else { return }
+            let format = chooser.format
+            lastFormat = format
+            let ok = write(meeting, report: report, format: format, to: url)
+            Log.d("export: \(format.fileExtension) written=\(ok)")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            Log.d("export: panel visible=\(panel.isVisible) onActiveSpace=\(panel.isOnActiveSpace) key=\(panel.isKeyWindow) app active=\(NSApp.isActive)")
         }
     }
 
@@ -123,28 +119,25 @@ enum ReportExport {
                                     csv: L("Also one table (CSV): a row per meeting, a column per field"))
         panel.accessoryView = chooser
         panel.isAccessoryViewDisclosed = true
-        NSApp.activate()
-        Log.d("export: “\(template.name)” × \(meetings.count) — opening the folder panel")
-        DispatchQueue.main.async {
-            panel.begin { response in
-                Log.d("export: folder panel closed response=\(response.rawValue)")
-                guard response == .OK, let folder = panel.url else { return }
-                let format = chooser.format
-                lastFormat = format
-                var written = 0
-                for meeting in meetings {
-                    guard let report = meeting.reports.first(where: { $0.templateID == template.id || $0.templateName == template.name }) else { continue }
-                    let url = folder.appendingPathComponent(
-                        fileName(for: meeting, report: report) + "." + format.fileExtension)
-                    if write(meeting, report: report, format: format, to: url) { written += 1 }
-                }
-                if chooser.wantsCSV {
-                    let url = folder.appendingPathComponent(safe(template.name) + ".csv")
-                    try? csv(meetings, template: template).write(to: url, atomically: true, encoding: .utf8)
-                }
-                Log.d("report: exported \(written) as \(format.rawValue)")
-                NSWorkspace.shared.activateFileViewerSelecting([folder])
+        Log.d("export: “\(template.name)” × \(meetings.count) — opening the folder panel (sheet=\(FilePanels.meetingsWindow != nil))")
+        FilePanels.present(panel) { response in
+            Log.d("export: folder panel closed response=\(response.rawValue)")
+            guard response == .OK, let folder = panel.url else { return }
+            let format = chooser.format
+            lastFormat = format
+            var written = 0
+            for meeting in meetings {
+                guard let report = meeting.reports.first(where: { $0.templateID == template.id || $0.templateName == template.name }) else { continue }
+                let url = folder.appendingPathComponent(
+                    fileName(for: meeting, report: report) + "." + format.fileExtension)
+                if write(meeting, report: report, format: format, to: url) { written += 1 }
             }
+            if chooser.wantsCSV {
+                let url = folder.appendingPathComponent(safe(template.name) + ".csv")
+                try? csv(meetings, template: template).write(to: url, atomically: true, encoding: .utf8)
+            }
+            Log.d("report: exported \(written) as \(format.rawValue)")
+            NSWorkspace.shared.activateFileViewerSelecting([folder])
         }
     }
 
