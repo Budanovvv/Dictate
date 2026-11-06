@@ -34,6 +34,8 @@ enum WhatsNew {
         // told as three, not folded into "Small fixes". Two of them are
         // silences a person could never have reported precisely: a card that
         // did not come, and a refusal that carried further than it was meant to.
+        // The fourth is the meetings window over a full-screen app, where ⋯
+        // and Export… did nothing and opening it threw you to another screen.
         case "3.3.4":
             return [
                 Item(title: L("The second call is announced too"),
@@ -42,6 +44,8 @@ enum WhatsNew {
                      line: L("Declining a call used to silence every call that followed it. It now declines just the one it was shown for.")),
                 Item(title: L("A meeting called “Daily” still counts"),
                      line: L("A calendar event named only for its genre — Daily, Sync, Meeting — is recognised as the call being recorded. Its tag and platform reach the transcript, while the name still comes from what was said.")),
+                Item(title: L("Works over full-screen apps"),
+                     line: L("With Meetings open over a full-screen app, the ⋯ menu and Export… appear right there instead of on another desktop, and opening Meetings brings the window to the screen you are on rather than taking you to it.")),
             ]
         // Its own notes, not 3.3.2's plus one: inheriting once more would
         // show a person who updated from 3.3.2 the same four 3.3.1 items a
