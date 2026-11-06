@@ -140,6 +140,16 @@ fi
     || { echo "!! Build or signing failed"; exit 1; }
 echo "==> Done: $APP"
 
+# xcodebuild registers every product with LaunchServices, and the record
+# outlives the file: by 2026-10-12 the Mac listed nine Dictates (build dirs,
+# old DerivedData, Sparkle's /Volumes/dmg.* mounts) under one bundle id —
+# duplicates in Spotlight/Open With, and `open -b` free to pick any of them.
+# Only /Applications should be known to the system.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+find "$DD/Build/Products" -name "*.app" -type d -prune 2>/dev/null \
+    | while read -r a; do "$LSREGISTER" -u "$a" 2>/dev/null || true
+        "$LSREGISTER" -u "$a/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app" 2>/dev/null || true; done
+
 if [ "$INSTALL" = 1 ]; then
     # Graceful quit first: an instant pkill can land mid model-download/verify
     # and corrupt the model state (see the project's local notes).

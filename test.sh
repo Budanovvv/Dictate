@@ -96,6 +96,13 @@ if [ "$MODE" != "--quick" ]; then
         echo "  ❌ unit tests failed to run"; FAIL=$((FAIL+1))
     fi
     rm -f /tmp/dictate-e2e
+    # The test run leaves a Debug Dictate.app that xcodebuild registered with
+    # LaunchServices — a duplicate in Spotlight/Open With (see build.sh).
+    LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    for a in "$DD/Build/Products/Debug/Dictate.app" \
+             "$DD/Build/Products/Debug/Dictate.app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"; do
+        "$LSREGISTER" -u "$a" 2>/dev/null || true
+    done
 
     echo "==> Release build"
     if ./build.sh >/dev/null 2>&1; then
