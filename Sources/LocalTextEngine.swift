@@ -805,6 +805,7 @@ actor LlamaServer {
         }
         process = nil
         port = nil
+        output?.fileHandleForReading.readabilityHandler = nil
         output = nil
         Self.clearPidFile()
     }
@@ -817,7 +818,14 @@ actor LlamaServer {
     private nonisolated func drain(_ pipe: Pipe) {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            // Empty means EOF: the helper is gone. The handler keeps firing at
+            // EOF forever, so it has to take itself off — otherwise every
+            // idle unload leaves a thread spinning on read() at 100% CPU.
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
+            guard let text = String(data: data, encoding: .utf8) else { return }
             for line in text.split(whereSeparator: \.isNewline)
             where line.localizedCaseInsensitiveContains("error")
                 || line.localizedCaseInsensitiveContains("failed")
