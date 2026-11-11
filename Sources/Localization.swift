@@ -153,6 +153,8 @@ func Lf(_ en: String, _ args: CVarArg...) -> String {
 
 extension Localization {
     static let ru: [String: String] = [
+        "Quiet after a summary": "Тишина после саммари",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "После того как саммари или отчёт писались на этом Mac, Dictate мог держать целое ядро процессора занятым до самого выхода — грея Mac и сажая батарею. Теперь он затихает, как только модель выгружена.",
         "The second call is announced too": "Второй звонок тоже спросит",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Когда одна встреча переходила в следующую, а браузер не отпускал микрофон, карточка второго звонка не появлялась. Теперь каждый звонок распознаётся отдельно.",
         "“Not this one” means only this one": "«Не этот» — значит только этот",
@@ -922,6 +924,8 @@ extension Localization {
     ]
 
     static let uk: [String: String] = [
+        "Quiet after a summary": "Тиша після підсумку",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Після того як підсумок чи звіт писалися на цьому Mac, Dictate міг тримати ціле ядро процесора зайнятим до самого виходу — гріючи Mac і висаджуючи батарею. Тепер він затихає, щойно модель вивантажено.",
         "The second call is announced too": "Другий дзвінок теж запитає",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Коли одна зустріч переходила в наступну, а браузер не відпускав мікрофон, картка другого дзвінка не з’являлася. Тепер кожен дзвінок розпізнається окремо.",
         "“Not this one” means only this one": "«Не цей» — означає лише цей",
@@ -1682,6 +1686,8 @@ extension Localization {
     ]
 
     static let es: [String: String] = [
+        "Quiet after a summary": "En calma tras un resumen",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Después de escribir un resumen o un informe en este Mac, Dictate podía mantener ocupado un núcleo entero del procesador hasta cerrarlo, calentando el Mac y gastando batería. Ahora se calma en cuanto el modelo se descarga.",
         "The second call is announced too": "La segunda llamada también se anuncia",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Cuando una reunión pasaba directamente a la siguiente y el navegador no soltaba el micrófono, la tarjeta de la segunda llamada no aparecía. Ahora cada llamada se reconoce por separado.",
         "“Not this one” means only this one": "«Esta no» significa solo esta",
@@ -2451,6 +2457,8 @@ extension Localization {
     ]
 
     static let pt: [String: String] = [
+        "Quiet after a summary": "Em silêncio após um resumo",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Depois de escrever um resumo ou relatório neste Mac, o Dictate podia manter um núcleo inteiro do processador ocupado até ser fechado, aquecendo o Mac e gastando bateria. Agora ele se acalma assim que o modelo é descarregado.",
         "The second call is announced too": "A segunda chamada também é anunciada",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Quando uma reunião emendava na seguinte e o navegador não soltava o microfone, o cartão da segunda chamada não aparecia. Agora cada chamada é reconhecida por si.",
         "“Not this one” means only this one": "«Esta não» significa apenas esta",
@@ -3220,6 +3228,8 @@ extension Localization {
     ]
 
     static let fr: [String: String] = [
+        "Quiet after a summary": "Au calme après un résumé",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Après la rédaction d’un résumé ou d’un rapport sur ce Mac, Dictate pouvait occuper un cœur entier du processeur jusqu’à sa fermeture, chauffant le Mac et vidant la batterie. Il se calme désormais dès que le modèle est déchargé.",
         "The second call is announced too": "Le deuxième appel est signalé aussi",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Quand une réunion enchaînait sur la suivante et que le navigateur ne relâchait jamais le micro, la carte du deuxième appel n’apparaissait pas. Chaque appel est désormais reconnu pour lui-même.",
         "“Not this one” means only this one": "« Pas celui-ci » ne vaut que pour celui-ci",
@@ -3989,6 +3999,8 @@ extension Localization {
     ]
 
     static let de: [String: String] = [
+        "Quiet after a summary": "Ruhe nach einer Zusammenfassung",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Nachdem auf diesem Mac eine Zusammenfassung oder ein Bericht geschrieben wurde, konnte Dictate einen ganzen Prozessorkern bis zum Beenden auslasten – der Mac wurde warm und der Akku leerte sich. Jetzt wird es ruhig, sobald das Modell entladen ist.",
         "The second call is announced too": "Der zweite Anruf wird auch gemeldet",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Ging eine Besprechung direkt in die nächste über und gab der Browser das Mikrofon nie frei, erschien die Karte für den zweiten Anruf nicht. Jeder Anruf wird jetzt für sich erkannt.",
         "“Not this one” means only this one": "„Nicht dieser“ heißt nur dieser",
@@ -4758,6 +4770,8 @@ extension Localization {
     ]
 
     static let zh: [String: String] = [
+        "Quiet after a summary": "总结之后不再占用",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "在这台 Mac 上生成总结或报告后，Dictate 可能会一直占满一个处理器核心直到退出，让 Mac 发热并消耗电量。现在模型一卸载，它就会安静下来。",
         "The second call is announced too": "第二通通话也会提示",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "当一场会议紧接着下一场、浏览器始终没有释放麦克风时，第二通通话的卡片不会出现。现在每一通通话都会被单独识别。",
         "“Not this one” means only this one": "“不是这个”只针对这一通",
@@ -5527,6 +5541,8 @@ extension Localization {
     ]
 
     static let ja: [String: String] = [
+        "Quiet after a summary": "要約のあとは静かに",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "この Mac で要約やレポートを作成したあと、Dictate が終了するまでプロセッサのコアを1つ占有し続け、Mac が熱くなりバッテリーを消耗することがありました。現在はモデルが解放されるとすぐに静かになります。",
         "The second call is announced too": "2 件目の通話もお知らせします",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "会議が次の会議にそのまま続き、ブラウザがマイクを手放さないままだと、2 件目の通話のカードが出ませんでした。今はそれぞれの通話を個別に認識します。",
         "“Not this one” means only this one": "「これではない」はその通話だけ",
@@ -6296,6 +6312,8 @@ extension Localization {
     ]
 
     static let ko: [String: String] = [
+        "Quiet after a summary": "요약 후에는 조용히",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "이 Mac에서 요약이나 보고서를 작성한 뒤 Dictate가 종료될 때까지 프로세서 코어 하나를 계속 점유해 Mac이 뜨거워지고 배터리가 소모될 수 있었습니다. 이제 모델이 내려가는 즉시 조용해집니다.",
         "The second call is announced too": "두 번째 통화도 알려 드립니다",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "한 회의가 다음 회의로 바로 이어지고 브라우저가 마이크를 놓지 않으면 두 번째 통화의 카드가 나타나지 않았습니다. 이제 통화마다 따로 인식합니다.",
         "“Not this one” means only this one": "‘이 통화 아님’은 이 통화에만",
@@ -7065,6 +7083,8 @@ extension Localization {
     ]
 
     static let vi: [String: String] = [
+        "Quiet after a summary": "Yên tĩnh sau bản tóm tắt",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Sau khi viết bản tóm tắt hoặc báo cáo trên máy Mac này, Dictate có thể chiếm trọn một lõi bộ xử lý cho đến khi thoát, làm Mac nóng lên và hao pin. Giờ đây ứng dụng yên lặng ngay khi mô hình được giải phóng.",
         "The second call is announced too": "Cuộc gọi thứ hai cũng được báo",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Khi một cuộc họp nối thẳng sang cuộc sau mà trình duyệt không hề nhả micrô, thẻ của cuộc gọi thứ hai đã không xuất hiện. Giờ mỗi cuộc gọi được nhận ra riêng.",
         "“Not this one” means only this one": "“Không phải cuộc này” chỉ là cuộc này",
@@ -7834,6 +7854,8 @@ extension Localization {
     ]
 
     static let tl: [String: String] = [
+        "Quiet after a summary": "Tahimik pagkatapos ng buod",
+        "After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.": "Pagkatapos sumulat ng buod o ulat sa Mac na ito, maaaring panatilihing abala ng Dictate ang isang buong core ng processor hanggang ito ay isara, kaya umiinit ang Mac at nauubos ang baterya. Ngayon ay tumatahimik na ito sa sandaling maialis ang model.",
         "The second call is announced too": "Inaanunsyo na rin ang ikalawang tawag",
         "When one meeting ran straight into the next and the browser never released the microphone, the card for the second call never appeared. Each call is now recognised on its own.": "Kapag dumugtong agad ang isang pulong sa susunod at hindi binitawan ng browser ang mikropono, hindi lumalabas ang kard para sa ikalawang tawag. Ngayon, bawat tawag ay kinikilala nang hiwalay.",
         "“Not this one” means only this one": "Ang “Hindi ito” ay para lang dito",

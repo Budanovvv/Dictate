@@ -30,6 +30,15 @@ enum WhatsNew {
     /// title and one line each, said from the reader's side.
     static func items(for version: String) -> [Item] {
         switch version {
+        // A maintenance release, told the 3.3.2 way: anyone arriving from
+        // 3.3.3 or earlier has not seen 3.3.4's notes yet, and the one fix —
+        // a core left spinning after the text model was put away — is a
+        // line, not a feature.
+        case "3.3.5":
+            return items(for: "3.3.4") + [
+                Item(title: L("Quiet after a summary"),
+                     line: L("After a summary or report was written on this Mac, Dictate could keep a whole processor core busy until it was quit, warming the Mac and draining the battery. It now goes quiet as soon as the model is put away.")),
+            ]
         // Three repairs to one story — the app noticing a call — so they are
         // told as three, not folded into "Small fixes". Two of them are
         // silences a person could never have reported precisely: a card that
