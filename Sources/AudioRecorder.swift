@@ -110,6 +110,21 @@ final class AudioRecorder: @unchecked Sendable {
     var onRecoveryFailed: ((_ nothingRecorded: Bool) -> Void)?
     /// Voice level 0…1, delivered on the main thread.
     var onLevel: ((Double) -> Void)?
+    /// The input chain came up — the mic is really recording from here on.
+    /// Delivered on the main thread, once per successful attach of the
+    /// current recording. Until then the press shows "turning on the
+    /// microphone", not "dictating": the attach can take seconds (see
+    /// AttachTimer) and speech before it is lost.
+    var onInputLive: (() -> Void)?
+    private var _inputLive = false
+    /// True once the current recording's input chain is attached.
+    var isInputLive: Bool { withLock { _inputLive } }
+    /// ioQueue-confined: the current engine's input node was instantiated
+    /// (attach or prewarm). A never-touched engine is dropped as is — asking
+    /// it for inputNode just to remove a tap that was never installed would
+    /// instantiate the IO unit against the default input first (AirPods in a
+    /// call: seconds, log 2026-11-13 10:31:27).
+    private var engineTouched = false
     private var configObserver: NSObjectProtocol?
     private var _isRecording = false
     private var isRecording: Bool {
@@ -190,6 +205,7 @@ final class AudioRecorder: @unchecked Sendable {
             _peakLevel = 0
             clippedSamples = 0
             totalSamples = 0
+            _inputLive = false
             generation += 1
             return generation
         }
@@ -228,12 +244,18 @@ final class AudioRecorder: @unchecked Sendable {
             return
         }
         Log.d("audio: fresh engine (\(reason))")
+        let t0 = DispatchTime.now().uptimeNanoseconds
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if engineTouched {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
         engine = AVAudioEngine()
+        engineTouched = false
         engineStale = false
         lastPinnedDeviceID = nil
+        let ms = Int(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6)
+        if ms >= 50 { Log.d("audio: fresh engine took \(ms)ms") }
         // queue: nil → the block runs on whatever thread posts the change;
         // hop onto ioQueue so it's serialized with the rest of the engine work.
         // The observer lives as long as the engine does — across recordings.
@@ -289,16 +311,43 @@ final class AudioRecorder: @unchecked Sendable {
         return e.domain == staleAttachError.domain && e.code == staleAttachError.code
     }
 
+    /// Per-step timing of the attach prelude. While a browser call holds the
+    /// mic, the first attach after it changes the mic's state stalls for
+    /// exactly 3.00 s somewhere between "pin device" and "mic mode" (and a
+    /// fresh engine stalls ~3 s before "pin device") — the press shows the
+    /// recording HUD but the first 3 s of speech are lost (live log
+    /// 2026-11-13 10:22:23, Meet in Safari). This names the blocking call.
+    /// Logged only when a step takes ≥500 ms (a healthy attach is ~50 ms in
+    /// the tap step alone), so the normal path stays quiet.
+    private struct AttachTimer {
+        private var steps: [(String, Double)] = []
+        private var t = DispatchTime.now().uptimeNanoseconds
+        mutating func mark(_ label: String) {
+            let now = DispatchTime.now().uptimeNanoseconds
+            steps.append((label, Double(now - t) / 1e6))
+            t = now
+        }
+        func logIfSlow() {
+            guard steps.contains(where: { $0.1 >= 500 }) else { return }
+            Log.d("audio: attach timing " + steps.map { "\($0.0)=\(Int($0.1))ms" }.joined(separator: " "))
+        }
+    }
+
     private func attachInput(generation gen: Int, override: AudioDeviceID? = nil) throws {
         // The blocking work below (HAL reads, VP enable, session start) can
         // outlive its recording during a rapid stop→start; a stale attach must
         // not write foreign/busy flags into the NEXT recording's fresh state.
         guard gen == currentGeneration else { throw Self.staleAttachError }
+        var timer = AttachTimer()
+        defer { timer.logIfSlow() }
+        engineTouched = true
         var input = engine.inputNode
+        timer.mark("inputNode")
         // Pin the input per the mic setting (default: built-in). Bluetooth
         // mics take seconds of HFP negotiation and record phone-call quality;
         // with the built-in mic pinned the headphones stay in music mode.
         let pinnedID = override ?? AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID)
+        timer.mark("resolve")
         func pin(_ id: AudioDeviceID) {
             var deviceID = id
             guard let unit = input.audioUnit else { return }
@@ -308,6 +357,7 @@ final class AudioRecorder: @unchecked Sendable {
             Log.d("audio: pin device id=\(deviceID) status=\(status)")
         }
         if let pinnedID { pin(pinnedID) }
+        timer.mark("pin")
         pinnedDeviceID = pinnedID
 
         // Forcing a different device mid-recording (the busy-mic fallback) swaps
@@ -323,6 +373,7 @@ final class AudioRecorder: @unchecked Sendable {
         // changed between recordings, fresh engine, busy-mic override).
         if override != nil || pinnedID != lastPinnedDeviceID {
             engine.reset()
+            timer.mark("reset")
         }
         lastPinnedDeviceID = pinnedID
 
@@ -343,11 +394,15 @@ final class AudioRecorder: @unchecked Sendable {
         // only delays the fast "mic busy" message + fallback path.
         if let pinnedID {
             let format = input.outputFormat(forBus: 0)
+            timer.mark("format")
             let reported = format.sampleRate
             let nominal = AudioInputDevices.nominalSampleRate(pinnedID)
+            timer.mark("nominal")
+            let builtIn = AudioInputDevices.isBuiltIn(pinnedID)
+            timer.mark("builtIn")
             let fp = Self.foreignFingerprint(reportedRate: reported, nominalRate: nominal,
                                              channelCount: Int(format.channelCount),
-                                             isBuiltIn: AudioInputDevices.isBuiltIn(pinnedID))
+                                             isBuiltIn: builtIn)
             let rateForeign = fp.rate
             let rawArrayForeign = fp.rawArray
             // Re-check after the HAL reads above — same stale-attach guard as
@@ -393,7 +448,9 @@ final class AudioRecorder: @unchecked Sendable {
             }
         }
 
+        timer.mark("probe")
         let inFormat = input.outputFormat(forBus: 0)
+        timer.mark("inFormat")
         Log.d("audio: input format \(Int(inFormat.sampleRate))Hz/\(inFormat.channelCount)ch")
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else {
             throw NSError(domain: "Dictate", code: 1, userInfo: [
@@ -411,10 +468,12 @@ final class AudioRecorder: @unchecked Sendable {
             }
             engine.prepare()
         }
+        timer.mark("tap")
         var startError: Error?
         try catchingObjCException {
             do { try engine.start() } catch { startError = error }
         }
+        timer.mark("start")
         if let startError { throw startError }
         setConverter(conv)
     }
@@ -454,6 +513,17 @@ final class AudioRecorder: @unchecked Sendable {
             try attachInput(generation: gen, override: override)
             rebuilding = false
             Log.d("audio: input attached (attempt \(attempt))")
+            let firstLive: Bool = withLock {
+                guard gen == generation, !_inputLive else { return false }
+                _inputLive = true
+                return true
+            }
+            if firstLive {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, gen == self.currentGeneration else { return }
+                    self.onInputLive?()
+                }
+            }
             scheduleMicBusyWatchdog(generation: gen)
             return
         } catch {
@@ -610,6 +680,38 @@ final class AudioRecorder: @unchecked Sendable {
         return (pcm, duration)
     }
 
+    /// Pays the first-attach cost before the press. While a call holds the
+    /// mic (AirPods as the default input, in call mode), the first attach
+    /// after the mic's state changed stalls: a fresh engine ~3–6 s, then the
+    /// first input-format read exactly 3.00 s — and the press spoke into a
+    /// dead mic for all of it (log 2026-11-13 10:31:27: 9 s, 0 bytes). Doing
+    /// the same steps here — fresh engine if stale, instantiate the input
+    /// node, pin, read the format — without starting the engine leaves the
+    /// next attach on the fast path (the second press was 0 ms). Nothing is
+    /// captured and the mic indicator stays off. Called when a call is
+    /// detected; a no-op while recording.
+    func prewarm(reason: String) {
+        ioQueue.async { [weak self] in
+            guard let self, !self.isRecording else { return }
+            let t0 = DispatchTime.now().uptimeNanoseconds
+            if self.engineStale { self.swapEngine(generation: self.currentGeneration, reason: "prewarm") }
+            self.engineTouched = true
+            let input = self.engine.inputNode
+            if let id = AudioInputDevices.resolveForRecording(setting: Settings.shared.micUID),
+               let unit = input.audioUnit {
+                var deviceID = id
+                AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice,
+                                     kAudioUnitScope_Global, 0, &deviceID,
+                                     UInt32(MemoryLayout<AudioDeviceID>.size))
+                if id != self.lastPinnedDeviceID { self.engine.reset() }
+                self.lastPinnedDeviceID = id
+            }
+            _ = input.outputFormat(forBus: 0)
+            let ms = Int(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6)
+            Log.d("audio: prewarm (\(reason)) took \(ms)ms")
+        }
+    }
+
     /// Stops recording. Returns (raw Int16 PCM, duration in seconds).
     func stop() -> (pcm: Data, duration: Double) {
         // Stop capturing and hand back the audio immediately (the caller needs
@@ -618,6 +720,7 @@ final class AudioRecorder: @unchecked Sendable {
         let pcm: Data = withLock {
             _isRecording = false
             _rebuilding = false
+            _inputLive = false
             generation += 1
             let p = samples
             samples = Data()

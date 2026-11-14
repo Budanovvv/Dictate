@@ -130,6 +130,19 @@ final class DictationController {
     }
 
     var onStateChange: ((State) -> Void)?
+    /// The current capture's mic really started recording (main thread).
+    /// Until then the pill says the microphone is turning on — see
+    /// AudioRecorder.onInputLive.
+    var onMicLive: (() -> Void)?
+    /// True once the current capture's input chain is attached.
+    var isMicLive: Bool { recorder.isInputLive }
+
+    /// Brings the mic chain to the fast path ahead of the next press (a call
+    /// was detected — see AudioRecorder.prewarm). Never during a capture.
+    func prewarmMic(reason: String) {
+        guard !capturing else { return }
+        recorder.prewarm(reason: reason)
+    }
     var onError: ((String) -> Void)?
     /// Voice level 0…1 while recording.
     var onLevel: ((Double) -> Void)?
@@ -263,6 +276,14 @@ final class DictationController {
             MainActor.assumeIsolated {
                 self.onLevel?(level)
                 self.liveLevelTick(level: level)
+            }
+        }
+        recorder.onInputLive = { @Sendable [weak self] in
+            guard let self else { return }
+            // Fired via DispatchQueue.main.async in rebuildInputChain.
+            MainActor.assumeIsolated {
+                guard self.capturing else { return }
+                self.onMicLive?()
             }
         }
         recorder.onMicBusyDetected = { @Sendable [weak self] in

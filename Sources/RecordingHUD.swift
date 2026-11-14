@@ -5,6 +5,9 @@ import SwiftUI
 final class HUDModel: ObservableObject {
     enum Mode: Equatable {
         case warming
+        /// Pressed, but the mic is not recording yet — the input chain is
+        /// still coming up (seconds with AirPods in a call). Speech now is lost.
+        case micStarting
         case recording, transcribing, empty, downloading, cancelled, copied, micBusy, tooQuiet,
              tooLoud, translateTip, translateDataMissing, inserted
     }
@@ -121,6 +124,18 @@ final class RecordingHUD {
             model.mode = .warming
         } else {
             guard model.mode == .warming else { return }
+            model.mode = .recording
+        }
+    }
+
+    /// The mic has not started recording yet (shown after a short grace)
+    /// / it has. Same flip pattern as setWarming: only from/to .recording.
+    func setMicStarting(_ on: Bool) {
+        if on {
+            guard model.mode == .recording else { return }
+            model.mode = .micStarting
+        } else {
+            guard model.mode == .micStarting else { return }
             model.mode = .recording
         }
     }
@@ -590,7 +605,7 @@ private struct HUDView: View {
         case .recording:
             GlyphMark(state: .recording(level: 1),
                       color: model.translate ? DS.translate : DS.accent)
-        case .transcribing, .warming:
+        case .transcribing, .warming, .micStarting:
             // The dots walk — a TimelineView that stops itself with the view;
             // recognizing has no level, so this is the surface's one motion.
             // Reduce Motion: a still triplet, no walking dot (audit 3.3, P1).
@@ -797,6 +812,10 @@ private struct HUDView: View {
             let key = KeyNames.displayName(model.translate
                 ? Settings.shared.translateKeyName : Settings.shared.hotkeyName)
             return Lf("Not ready yet — this takes a few seconds after launch. Keep holding %@ and it will start.", key)
+        case .micStarting:
+            let key = KeyNames.displayName(model.translate
+                ? Settings.shared.translateKeyName : Settings.shared.hotkeyName)
+            return Lf("Not recording yet — wait a moment before speaking. Keep holding %@.", key)
         default: return nil
         }
     }
@@ -821,6 +840,8 @@ private struct HUDView: View {
             return model.translate ? L("Translating…") : L("Recognizing…")
         case .warming:
             return L("Preparing the model for this Mac")
+        case .micStarting:
+            return L("Turning on the microphone…")
         case .translateTip:
             return Lf("Tip: hold %@ instead — your speech comes out in English.", model.tipKeyName)
         case .empty: return L("Sorry, I didn't catch that — could you say it again?")
@@ -867,7 +888,7 @@ private struct HUDView: View {
 
     private var metric: String? {
         switch model.mode {
-        case .recording, .warming: return timeString(model.elapsed)
+        case .recording, .warming, .micStarting: return timeString(model.elapsed)
         case .transcribing: return Lf("Words: %d", model.transcribeWords)
         default: return nil
         }
@@ -878,8 +899,8 @@ private struct HUDView: View {
         switch model.mode {
         case .recording: return .voice
         case .transcribing, .downloading: return .progress
-        case .warming, .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud, .translateTip,
-             .translateDataMissing, .inserted: return nil
+        case .warming, .micStarting, .empty, .cancelled, .copied, .micBusy, .tooQuiet, .tooLoud,
+             .translateTip, .translateDataMissing, .inserted: return nil
         }
     }
 

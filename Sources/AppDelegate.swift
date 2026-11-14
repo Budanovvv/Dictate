@@ -413,6 +413,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// one-time educational offer instead — and after two declines (or an
     /// explicit never), calls pass in silence.
     private func callDetected(platform: String?) {
+        // A call holds the mic now — the first dictation attach would stall
+        // for seconds (AirPods in call mode, 2026-11-13). Pay it up front.
+        dictation.prewarmMic(reason: "call")
         guard !meeting.isActive else { return }
         if Settings.shared.noticeCalls {
             Log.d("call: prompting")
@@ -550,6 +553,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         dictation.onError = { [weak self] message in
             DispatchQueue.main.async { self?.statusController.showError(message) }
         }
+        dictation.onMicLive = { [weak self] in
+            self?.hud.setMicStarting(false)
+        }
         dictation.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -560,6 +566,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                     self.hud.showRecording(translate: self.dictation.activeTranslate,
                                            alsoMeeting: self.meeting.isActive,
                                            queuedBehind: self.dictation.recognizingCount)
+                    // The mic normally attaches in tens of ms; when it hasn't
+                    // after a beat, say so instead of "Dictating" — speech
+                    // before the attach is lost (AirPods in a call: 3–9 s,
+                    // log 2026-11-13 10:31:27). The grace keeps the fast
+                    // path free of a one-frame flash.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                        guard let self, self.dictation.state == .recording,
+                              !self.dictation.isMicLive else { return }
+                        self.hud.setMicStarting(true)
+                    }
                     // Dictating in the first seconds after launch, before the
                     // model is loaded: the panel says it is preparing and to
                     // keep holding (design DictationOverlay: warming), then
@@ -887,6 +903,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         case "warming":
             hud.showRecording(translate: false, alsoMeeting: false, queuedBehind: 0)
             hud.setWarming(true)
+        case "micstarting":
+            hud.showRecording(translate: false, alsoMeeting: false, queuedBehind: 0)
+            hud.setMicStarting(true)
         case "recording":
             hud.showRecording()
             hud.setLivePreview("let's move the release to the fourteenth and tell the beta group")
