@@ -5587,7 +5587,14 @@ private struct StatusStrip: View {
     /// system ring (task progress, not a state).
     @ViewBuilder
     private var chip: some View {
-        if session.modelWarming {
+        if session.micStarting {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text(L("Turning on your microphone…")).font(.system(size: 11.5, weight: .medium))
+            }
+            .padding(.horizontal, 10).frame(height: 22)
+            .background(Capsule().fill(Color.primary.opacity(0.05)))
+        } else if session.modelWarming {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
                 Text(L("Warming up the model…")).font(.system(size: 11.5, weight: .medium))
@@ -5751,6 +5758,14 @@ struct MeetingPillView: View {
                     Text(L("Disk almost full — will stop to keep the transcript"))
                         .font(.system(size: 10.5))
                         .foregroundStyle(DS.warn)
+                        .lineLimit(2)
+                        .frame(maxWidth: 130, alignment: .leading)
+                } else if session.micStarting {
+                    // The You channel is not recording yet (3–6 s mid-call)
+                    // — said so the first words can be repeated.
+                    Text(L("Turning on your microphone…"))
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .frame(maxWidth: 130, alignment: .leading)
                 } else if let notice = session.deviceNotice {

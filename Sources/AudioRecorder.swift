@@ -327,9 +327,10 @@ final class AudioRecorder: @unchecked Sendable {
             steps.append((label, Double(now - t) / 1e6))
             t = now
         }
-        func logIfSlow() {
+        func logIfSlow(pinned: AudioDeviceID?) {
             guard steps.contains(where: { $0.1 >= 500 }) else { return }
-            Log.d("audio: attach timing " + steps.map { "\($0.0)=\(Int($0.1))ms" }.joined(separator: " "))
+            Log.d("audio: attach timing " + steps.map { "\($0.0)=\(Int($0.1))ms" }.joined(separator: " ")
+                  + " | " + AudioInputDevices.slowAttachContext(pinned: pinned))
         }
     }
 
@@ -339,7 +340,7 @@ final class AudioRecorder: @unchecked Sendable {
         // not write foreign/busy flags into the NEXT recording's fresh state.
         guard gen == currentGeneration else { throw Self.staleAttachError }
         var timer = AttachTimer()
-        defer { timer.logIfSlow() }
+        defer { timer.logIfSlow(pinned: pinnedDeviceID) }
         engineTouched = true
         var input = engine.inputNode
         timer.mark("inputNode")
@@ -708,7 +709,8 @@ final class AudioRecorder: @unchecked Sendable {
             }
             _ = input.outputFormat(forBus: 0)
             let ms = Int(Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6)
-            Log.d("audio: prewarm (\(reason)) took \(ms)ms")
+            Log.d("audio: prewarm (\(reason)) took \(ms)ms"
+                  + (ms >= 500 ? " | " + AudioInputDevices.slowAttachContext(pinned: self.lastPinnedDeviceID) : ""))
         }
     }
 

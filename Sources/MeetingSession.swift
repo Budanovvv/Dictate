@@ -102,6 +102,37 @@ final class MeetingSession: ObservableObject {
     /// sitting silent (cold-start field complaint: "не видно ни хрена…
     /// потом разогрелось", 2026-08-09 16:25).
     @Published private(set) var modelWarming = false
+    /// The You channel's mic has not started recording yet. During a call
+    /// (AirPods in call mode) the first attach can take 3–6 s, and the owner's
+    /// first words were silently missing from the transcript (log
+    /// 2026-11-13: five mid-call starts, all 3–6 s). Raised after a short
+    /// grace so the normal 0.1 s start never flashes it.
+    @Published private(set) var micStarting = false
+
+    /// Pays the mic's first-attach cost ahead of a recording — a call was
+    /// just detected, and the call card's Record is the likely next step
+    /// (see AudioRecorder.prewarm). Never during a session.
+    func prewarmMic() {
+        guard !isActive else { return }
+        mic.prewarm(reason: "call, meeting")
+    }
+
+    /// Starts the You channel and says so until it is really recording.
+    private func startMic() {
+        mic.onInputLive = { @Sendable [weak self] in
+            guard let self else { return }
+            // Delivered on main by AudioRecorder.rebuildInputChain.
+            MainActor.assumeIsolated { self.micStarting = false }
+        }
+        mic.start()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                guard self.isActive, !self.mic.isInputLive else { return }
+                self.micStarting = true
+            }
+        }
+    }
     /// The equalizer's numbers — the "you are being heard" signal, same
     /// philosophy as the HUD's dancing bars meaning "sound is really being
     /// captured". On an object of their own, and NOT published from here:
@@ -468,7 +499,7 @@ final class MeetingSession: ObservableObject {
                         MainActor.assumeIsolated {
                             guard self.isActive else { return }
                             self.youWindowStart = self.now
-                            self.mic.start()
+                            self.startMic()
                         }
                     }
                 }
@@ -502,7 +533,7 @@ final class MeetingSession: ObservableObject {
                     self.levels.you = max(level, self.levels.you * 0.7)
                 }
             }
-            mic.start()
+            startMic()
         }
         isActive = true
         // 0.5 s cadence is the window-cut resolution — half the shortest
@@ -635,6 +666,7 @@ final class MeetingSession: ObservableObject {
         listeningFor = nil
         livePreview = nil
         modelWarming = false
+        micStarting = false
         levels.silence()
         if let activity = powerActivity {
             ProcessInfo.processInfo.endActivity(activity)

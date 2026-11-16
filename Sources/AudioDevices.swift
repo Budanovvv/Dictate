@@ -45,6 +45,34 @@ enum AudioInputDevices {
         return string(id, kAudioObjectPropertyName)
     }
 
+    /// One log fragment describing the audio situation around a slow mic
+    /// attach: the default input (name, Bluetooth or not, running in some
+    /// process) and whether the pinned device is running somewhere. A 3.00 s
+    /// stall correlates with AirPods in call mode as the default input
+    /// (2026-11-13), but a prepared chain later went slow again with no new
+    /// call — this line is how the next slow attach explains itself.
+    static func slowAttachContext(pinned: AudioDeviceID?) -> String {
+        var addr = address(kAudioHardwarePropertyDefaultInputDevice)
+        var id = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var parts: [String] = []
+        if AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                      &addr, 0, nil, &size, &id) == noErr, id != 0 {
+            let t = transport(id)
+            let bt = t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE
+            parts.append("default=\"\(string(id, kAudioObjectPropertyName) ?? "?")\"")
+            parts.append("bt=\(bt)")
+            parts.append("defaultRunning=\(isRunningSomewhere(id))")
+            parts.append("defaultRate=\(Int(nominalSampleRate(id)))")
+        } else {
+            parts.append("default=?")
+        }
+        if let pinned { parts.append("pinnedRunning=\(isRunningSomewhere(pinned))") }
+        let others = appsRunningInput(excluding: ProcessInfo.processInfo.processIdentifier)
+        parts.append("inputApps=[\(others.joined(separator: ","))]")
+        return parts.joined(separator: " ")
+    }
+
     /// Device to pin for recording per the mic setting; nil → engine default.
     /// "" (the default) — built-in mic: no Bluetooth negotiation delays, no
     /// HFP quality drop, headphones stay in music mode. Falls back to the

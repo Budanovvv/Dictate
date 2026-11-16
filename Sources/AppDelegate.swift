@@ -416,6 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         // A call holds the mic now — the first dictation attach would stall
         // for seconds (AirPods in call mode, 2026-11-13). Pay it up front.
         dictation.prewarmMic(reason: "call")
+        meeting.prewarmMic()
         guard !meeting.isActive else { return }
         if Settings.shared.noticeCalls {
             Log.d("call: prompting")
