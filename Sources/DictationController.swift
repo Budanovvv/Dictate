@@ -41,8 +41,10 @@ final class DictationController {
         /// sleep, device not ready) — tell the user instead of failing silently.
         case nothingHeard
         /// Audio was captured but far too quiet for any speech — suggest moving
-        /// closer to the mic instead of the generic "didn't catch that".
-        case tooQuiet
+        /// closer to the mic instead of the generic "didn't catch that". The
+        /// payload names the app whose session on our mic muffled it (see
+        /// AudioRecorder.sharedHolder) — then distance is not the advice.
+        case tooQuiet(String?)
         /// Audio was captured but heavily clipped (input gain too high / too
         /// loud) — suggest backing off, so the distortion that defeats
         /// recognition is named.
@@ -86,6 +88,8 @@ final class DictationController {
         let clip: Double
         let micForeign: Bool
         let micBusyApp: String?
+        /// Another app running input on our mic at release (sharedHolder).
+        let mufflingApp: String?
         let language: String
         let appleTarget: String?
         let token: CancelToken
@@ -134,6 +138,9 @@ final class DictationController {
     /// Until then the pill says the microphone is turning on — see
     /// AudioRecorder.onInputLive.
     var onMicLive: (() -> Void)?
+    /// The current capture's mic is muffled by another app's session on it
+    /// (main thread; the payload names the app) — see AudioRecorder.onMicMuffled.
+    var onMicMuffled: ((String) -> Void)?
     /// True once the current capture's input chain is attached.
     var isMicLive: Bool { recorder.isInputLive }
 
@@ -284,6 +291,14 @@ final class DictationController {
             MainActor.assumeIsolated {
                 guard self.capturing else { return }
                 self.onMicLive?()
+            }
+        }
+        recorder.onMicMuffled = { @Sendable [weak self] app in
+            guard let self else { return }
+            // Fired via DispatchQueue.main.asyncAfter (muffled watchdog).
+            MainActor.assumeIsolated {
+                guard self.capturing else { return }
+                self.onMicMuffled?(app)
             }
         }
         recorder.onMicBusyDetected = { @Sendable [weak self] in
@@ -850,6 +865,7 @@ final class DictationController {
         let clip = recorder.clippedFraction
         let micForeign = recorder.sawForeignFormat
         let micBusyApp = recorder.busyAppName
+        let mufflingApp = recorder.sharedHolder
         let (pcm, duration) = rollover ? recorder.rollover() : recorder.stop()
         Self.play(Self.soundStop)
         // App that was frontmost at the RELEASE — the intended paste target.
@@ -899,6 +915,7 @@ final class DictationController {
                       clip: clip,
                       micForeign: micForeign,
                       micBusyApp: micBusyApp,
+                      mufflingApp: mufflingApp,
                       language: Settings.shared.language,
                       appleTarget: activeTranslate ? Settings.shared.translateTargetCode : nil,
                       token: CancelToken())
@@ -987,7 +1004,7 @@ final class DictationController {
                                                    foreignHeld: job.micForeign) {
         case .micBusy: emit(.micBusy(job.micBusyApp))
         case .tooLoud: emit(.tooLoud)
-        case .tooQuiet: emit(.tooQuiet)
+        case .tooQuiet: emit(.tooQuiet(job.mufflingApp))
         case .nothingHeard: emit(.nothingHeard)
         }
     }

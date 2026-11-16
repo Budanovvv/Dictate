@@ -557,6 +557,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         dictation.onMicLive = { [weak self] in
             self?.hud.setMicStarting(false)
         }
+        dictation.onMicMuffled = { [weak self] app in
+            self?.hud.setMuffled(by: app)
+        }
         dictation.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -651,7 +654,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 case .copiedInstead(let text): self.hud.showCopied(text: text)
                 case .micBusy(let appName): self.hud.showMicBusy(appName: appName)
                 case .nothingHeard: self.hud.showResult(success: false)
-                case .tooQuiet: self.hud.showTooQuiet()
+                case .tooQuiet(let app): self.hud.showTooQuiet(mufflingApp: app)
                 case .tooLoud: self.hud.showTooLoud()
                 case .translateDataMissing: self.hud.showTranslateDataMissing()
                 }
@@ -937,6 +940,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         case "empty": hud.showResult(success: false)
         case "micbusy": hud.showMicBusy(appName: "Zoom")
         case "tooquiet": hud.showTooQuiet()
+        case "tooquietmuffled": hud.showTooQuiet(mufflingApp: "Safari")
+        case "muffled":
+            hud.showRecording(translate: false, alsoMeeting: false, queuedBehind: 0)
+            hud.setMuffled(by: "Safari")
         case "tooloud": hud.showTooLoud()
         case "tip": hud.showTranslateTip(keyName: "Right ⌘")
         case "packmissing": hud.showTranslateDataMissing()

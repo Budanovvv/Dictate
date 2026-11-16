@@ -205,3 +205,51 @@ final class ModifierStateTrustTests: XCTestCase {
             lastRealFlagsEvent: flags, lastSyntheticPaste: paste))
     }
 }
+
+/// GRABLI, «Аудио», variant 3 (2026-11-16): another app's voice-processing
+/// session on our mic with NO format change — 48 kHz/1ch "free to record",
+/// but the voice ~28 dB down (peaks 0.003–0.007 against ≥0.1 normally),
+/// under the live preview's 0.02 gate. The pill sat still with no text and
+/// nothing said why. The verdict is only asked while another app runs input
+/// on our mic; these pin its timing and level edges.
+final class MuffledMicVerdictTests: XCTestCase {
+
+    func testMuffledSpeechAfterThreeSecondsIsMuffled() {
+        XCTAssertTrue(AudioRecorder.isMuffled(peak: 0.005, captureSeconds: 3.0))
+    }
+
+    func testTheFirstSecondsAreAGrace() {
+        // People start speaking within a second or two — silence before
+        // that is not evidence of anything.
+        XCTAssertFalse(AudioRecorder.isMuffled(peak: 0.0, captureSeconds: 2.9))
+    }
+
+    func testRealSpeechLevelIsNeverMuffled() {
+        XCTAssertFalse(AudioRecorder.isMuffled(peak: 0.15, captureSeconds: 10))
+        // The ceiling is the live preview's own gate: at or above it, the
+        // preview runs and the pill moves — there is nothing to explain.
+        XCTAssertFalse(AudioRecorder.isMuffled(peak: AudioRecorder.muffledPeakCeiling, captureSeconds: 10))
+    }
+}
+
+/// The holder is named from the app a person can close. WebKit runs a page's
+/// microphone in an XPC service whose running name is its owner's plus a
+/// role — the live 2026-11-16 holder was "Safari Graphics and Media".
+final class WebKitOwnerNameTests: XCTestCase {
+
+    func testSafariGPUServiceNamesSafari() {
+        XCTAssertEqual(AudioInputDevices.webKitOwnerName("Safari Graphics and Media"), "Safari")
+    }
+
+    func testOtherWebKitRolesNameTheirOwner() {
+        XCTAssertEqual(AudioInputDevices.webKitOwnerName("Safari Web Content"), "Safari")
+        XCTAssertEqual(AudioInputDevices.webKitOwnerName("Mail Networking"), "Mail")
+    }
+
+    func testPlainAppNamesPassThrough() {
+        XCTAssertEqual(AudioInputDevices.webKitOwnerName("Google Chrome"), "Google Chrome")
+        XCTAssertEqual(AudioInputDevices.webKitOwnerName("Zoom"), "Zoom")
+        // A bare role is not an owner — keep it rather than return "".
+        XCTAssertEqual(AudioInputDevices.webKitOwnerName(" Graphics and Media"), " Graphics and Media")
+    }
+}

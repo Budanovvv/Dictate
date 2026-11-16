@@ -34,6 +34,12 @@ final class HUDModel: ObservableObject {
     @Published var translate = false
     /// Name of the app holding the mic, for the .micBusy message (nil = generic).
     @Published var busyApp: String?
+    /// Another app is running input on our mic and the voice arrives
+    /// muffled (its voice-processing session; 2026-11-16, a Safari tab).
+    /// Said while recording — the equalizer sits still and no live text
+    /// comes, and without this line nothing says why — and on .tooQuiet,
+    /// where "move closer" would be the wrong advice. nil = not muffled.
+    @Published var mufflingApp: String?
     /// Display name of the translate key, for the .translateTip message.
     @Published var tipKeyName = ""
     /// Rolling live transcription shown while recording ("" = none yet).
@@ -106,6 +112,7 @@ final class RecordingHUD {
         model.queuedWords = queuedBehind > 0 ? model.transcribeWords : 0
         model.liveTypingApp = nil
         model.typedWords = 0
+        model.mufflingApp = nil
         model.mode = .recording
         model.level.value = 0
         model.elapsed = 0
@@ -274,7 +281,18 @@ final class RecordingHUD {
 
     /// Audio came in but was far too quiet / too loud for recognition — a
     /// specific nudge instead of the generic "didn't catch that".
-    func showTooQuiet() { showLevelNotice(.tooQuiet) }
+    func showTooQuiet(mufflingApp: String? = nil) {
+        model.mufflingApp = mufflingApp
+        showLevelNotice(.tooQuiet)
+    }
+
+    /// The current recording's mic is muffled by another app (see
+    /// HUDModel.mufflingApp). Recording keeps going — the words may still
+    /// be recognized, just with no live preview.
+    func setMuffled(by app: String) {
+        guard model.mode == .recording || model.mode == .micStarting else { return }
+        model.mufflingApp = app
+    }
     func showTooLoud() { showLevelNotice(.tooLoud) }
 
     private func showLevelNotice(_ mode: HUDModel.Mode) {
@@ -699,6 +717,14 @@ private struct HUDView: View {
                             .init(color: .black,
                                   location: model.liveText.count > 150 ? 0.3 : 0)],
                     startPoint: .top, endPoint: .bottom))
+        } else if model.mode == .recording, let app = model.mufflingApp {
+            // Where the live text would be — it is not coming (the voice is
+            // under the preview's level gate), and this is why.
+            Text(Lf("The microphone sounds muffled — %@ is using it, probably for a call. End the call there or choose another microphone in Settings.", app))
+                .font(.system(size: 13))
+                .foregroundStyle(DS.warn)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         } else if (model.mode == .inserted || model.mode == .copied),
                   !model.resultText.isEmpty {
             // What actually landed (or waits in the clipboard) — the
@@ -850,7 +876,11 @@ private struct HUDView: View {
                 return Lf("%@ is using the microphone right now — close it and try again", app)
             }
             return L("Another app is using the microphone right now — close it and try again")
-        case .tooQuiet: return L("That was very quiet — move closer to the microphone")
+        case .tooQuiet:
+            if let app = model.mufflingApp {
+                return Lf("That was very quiet — %@ is using the microphone and muffles it. End the call there and try again.", app)
+            }
+            return L("That was very quiet — move closer to the microphone")
         case .tooLoud: return L("That was too loud — move back a little from the microphone")
         case .translateDataMissing:
             return L("Translation data isn't downloaded — open Settings to get it")

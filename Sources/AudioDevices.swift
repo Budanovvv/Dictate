@@ -93,7 +93,40 @@ enum AudioInputDevices {
     /// bundle ID — reading these needs no tap entitlement (that's only for
     /// actually capturing another process's audio). Returns [] if nothing else
     /// is capturing or the API is unavailable.
+    /// Ordered user apps first: the name shown in "mic busy" is `.first`, and
+    /// a system daemon that always listens (corespeechd — Siri) used to win
+    /// it over the real holder. Live 2026-11-16: a Safari tab held the
+    /// built-in mic in voice processing, and the message named "CoreSpeech".
     static func appsRunningInput(excluding excludedPID: pid_t) -> [String] {
+        var names: [String] = []
+        var seen = Set<String>()
+        for holder in inputHolders(excluding: excludedPID).sorted(by: { $0.isUserApp && !$1.isUserApp })
+        where seen.insert(holder.name).inserted {
+            names.append(holder.name)
+        }
+        return names
+    }
+
+    /// The user-facing app (never a system daemon) running input on this
+    /// device right now, or nil. "Running input on our device" is what makes
+    /// another app's voice-processing session muffle what we get from the
+    /// same mic — without any format change to notice it by (2026-11-16:
+    /// 48 kHz/1ch "free to record", ~28 dB down, until Safari was quit).
+    static func userAppHolding(_ device: AudioDeviceID, excluding excludedPID: pid_t) -> String? {
+        inputHolders(excluding: excludedPID).first { $0.isUserApp && $0.devices.contains(device) }?.name
+    }
+
+    /// One process running audio input, as the HAL reports it.
+    struct InputHolder {
+        let name: String
+        /// Resolved through a running app or an .app path — a person can see
+        /// and close it. False for system daemons named only by bundle ID.
+        let isUserApp: Bool
+        /// Input devices this process is running on.
+        let devices: [AudioDeviceID]
+    }
+
+    static func inputHolders(excluding excludedPID: pid_t) -> [InputHolder] {
         var addr = address(kAudioHardwarePropertyProcessObjectList)
         var size: UInt32 = 0
         let system = AudioObjectID(kAudioObjectSystemObject)
@@ -101,24 +134,37 @@ enum AudioInputDevices {
         var procs = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(system, &addr, 0, nil, &size, &procs) == noErr else { return [] }
 
-        var names: [String] = []
-        var seen = Set<String>()
+        var holders: [InputHolder] = []
         for proc in procs {
             guard boolProperty(proc, kAudioProcessPropertyIsRunningInput) else { continue }
             let pid = pidProperty(proc)
             if pid == excludedPID { continue }
-            guard let name = appName(pid: pid, bundleID: string(proc, kAudioProcessPropertyBundleID)) else { continue }
-            if seen.insert(name).inserted { names.append(name) }
+            guard let (name, isUserApp) = appName(pid: pid, bundleID: string(proc, kAudioProcessPropertyBundleID))
+            else { continue }
+            holders.append(InputHolder(name: name, isUserApp: isUserApp, devices: inputDevices(ofProcess: proc)))
         }
-        return names
+        return holders
+    }
+
+    private static func inputDevices(ofProcess proc: AudioObjectID) -> [AudioDeviceID] {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioProcessPropertyDevices,
+                                              mScope: kAudioObjectPropertyScopeInput,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(proc, &addr, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(proc, &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids
     }
 
     /// Best display name for a capturing process: the running app's localized
     /// name (handles helper processes — Chrome's audio runs in a helper whose
     /// parent bundle is Google Chrome), else the bundle's last component.
-    private static func appName(pid: pid_t, bundleID: String?) -> String? {
+    /// The flag says whether a person can see the result as an app (see
+    /// InputHolder.isUserApp).
+    private static func appName(pid: pid_t, bundleID: String?) -> (String, Bool)? {
         if pid > 0, let app = NSRunningApplication(processIdentifier: pid), let n = app.localizedName {
-            return n
+            return (webKitOwnerName(n), true)
         }
         // Helper processes buried inside an app bundle (ChatGPT voice runs in
         // "Codex (Service)") aren't NSRunningApplications and expose no bundle
@@ -128,17 +174,29 @@ enum AudioInputDevices {
             var buf = [CChar](repeating: 0, count: 4096)
             if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0,
                let name = appBundleName(fromPath: String(cString: buf)) {
-                return name
+                return (name, true)
             }
         }
         if let bundleID {
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
                let n = app.localizedName {
-                return n
+                return (webKitOwnerName(n), true)
             }
-            return bundleID.split(separator: ".").last.map(String.init)
+            return bundleID.split(separator: ".").last.map { (String($0), false) }
         }
         return nil
+    }
+
+    /// WebKit runs a page's microphone in a shared XPC service whose running
+    /// name is its owner's plus a role — "Safari Graphics and Media" (seen
+    /// live 2026-11-16). A person knows the app, not the role. Pure for
+    /// testability; any other name passes through.
+    static func webKitOwnerName(_ name: String) -> String {
+        for suffix in [" Graphics and Media", " Web Content", " Networking"] where name.hasSuffix(suffix) {
+            let owner = String(name.dropLast(suffix.count))
+            if !owner.isEmpty { return owner }
+        }
+        return name
     }
 
     /// Owning app name from an executable path: the FIRST ".app" component

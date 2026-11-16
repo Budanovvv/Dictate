@@ -153,6 +153,40 @@ final class AudioRecorder: @unchecked Sendable {
         get { withLock { _busyAppName } }
         set { withLock { _busyAppName = newValue } }
     }
+    /// A user app running input on the very mic we record from, while the
+    /// format looks perfectly normal (the third shape of a foreign hold,
+    /// 2026-11-16: a Safari tab's voice-processing session on the built-in
+    /// mic — 48 kHz/1ch "free to record", yet every client but Safari got
+    /// sound ~28 dB down; no capture path got around it). nil = nobody else
+    /// on our mic. Read by the muffled-mic watchdog and after stop().
+    private var _sharedHolder: String?
+    private(set) var sharedHolder: String? {
+        get { withLock { _sharedHolder } }
+        set { withLock { _sharedHolder = newValue } }
+    }
+    /// The current recording's audio was weak enough, with sharedHolder on
+    /// our mic, to be reported as muffled by it (watchdog fired, once).
+    private var _muffledReported = false
+    private var muffledReported: Bool {
+        get { withLock { _muffledReported } }
+        set { withLock { _muffledReported = newValue } }
+    }
+    /// Fires once per capture on main when the mic is muffled by another
+    /// app's session on it (the argument names that app).
+    var onMicMuffled: ((String) -> Void)?
+    /// When the current capture began (start() or rollover()), uptime ns.
+    private var _captureStartedAt: UInt64 = 0
+    /// The recording generation whose muffled watchdog is running — a
+    /// rebuild within one recording must not start a second loop.
+    private var _muffledWatchGeneration = -1
+    /// ioQueue-confined: joining the foreign voice-processing session was
+    /// accepted but the engine then refused to start (-10875, kAUInitialize).
+    /// Live 2026-11-16 (macOS 27.2.1): every retry joined again and failed
+    /// again — 15 attempts, nothing recorded, the pill stuck on "Turning on
+    /// the microphone…" for the whole hold. Once seen, the raw-array hold
+    /// goes straight to the capture-session path; cleared as soon as an
+    /// attach finds the mic free again.
+    private var vpJoinUnusable = false
     /// The device we pinned for this recording — the one to avoid when falling
     /// back to another mic because this one is held elsewhere.
     private var _pinnedDeviceID: AudioDeviceID?
@@ -200,6 +234,9 @@ final class AudioRecorder: @unchecked Sendable {
             _sawForeignFormat = false
             _micBusyReported = false
             _busyAppName = nil
+            _sharedHolder = nil
+            _muffledReported = false
+            _captureStartedAt = DispatchTime.now().uptimeNanoseconds
             _pinnedDeviceID = nil
             _triedFallback = false
             _peakLevel = 0
@@ -393,6 +430,7 @@ final class AudioRecorder: @unchecked Sendable {
         // For fingerprint 1 we deliberately DON'T try VP: measured live in
         // Google Meet it cost ~1.1 s and still delivered nothing, so there it
         // only delays the fast "mic busy" message + fallback path.
+        var joinedVP = false
         if let pinnedID {
             let format = input.outputFormat(forBus: 0)
             timer.mark("format")
@@ -412,14 +450,20 @@ final class AudioRecorder: @unchecked Sendable {
             if rateForeign || rawArrayForeign {
                 sawForeignFormat = true
                 // Name the culprit for the "mic busy" message (best-effort).
+                // The app on OUR mic first — the busy message must name what
+                // the person can close, not an always-listening daemon.
                 let ourPID = ProcessInfo.processInfo.processIdentifier
-                busyAppName = AudioInputDevices.appsRunningInput(excluding: ourPID).first
+                let holder = AudioInputDevices.userAppHolding(pinnedID, excluding: ourPID)
+                sharedHolder = holder
+                busyAppName = holder ?? AudioInputDevices.appsRunningInput(excluding: ourPID).first
                 let detail = rateForeign
                     ? "\(Int(reported))Hz ≠ nominal \(Int(nominal))Hz"
                     : "raw \(format.channelCount)ch array at nominal rate"
                 Log.d("audio: mic mode=BUSY (\(detail) — another app holds the mic, voice-processing)\(busyAppName.map { " app=\($0)" } ?? "")")
-                var joinedVP = false
-                if rawArrayForeign {
+                if rawArrayForeign, vpJoinUnusable {
+                    Log.d("audio: VP join skipped (engine refused to start on it before)")
+                }
+                if rawArrayForeign, !vpJoinUnusable {
                     var vpError: Error?
                     do {
                         try catchingObjCException {
@@ -445,7 +489,15 @@ final class AudioRecorder: @unchecked Sendable {
                     return   // no tap, no engine — the session feeds append()
                 }
             } else if reported > 0 {
-                Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal — free to record)")
+                vpJoinUnusable = false   // the hold is over; VP may work next time
+                let holder = AudioInputDevices.userAppHolding(
+                    pinnedID, excluding: ProcessInfo.processInfo.processIdentifier)
+                sharedHolder = holder
+                if let holder {
+                    Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal) but \(holder) is running input on it")
+                } else {
+                    Log.d("audio: mic mode=shared (\(Int(reported))Hz = nominal — free to record)")
+                }
             }
         }
 
@@ -475,7 +527,16 @@ final class AudioRecorder: @unchecked Sendable {
             do { try engine.start() } catch { startError = error }
         }
         timer.mark("start")
-        if let startError { throw startError }
+        if let startError {
+            // The joined session is what failed: don't join it again on the
+            // retry (see vpJoinUnusable) — the retry's fresh engine takes the
+            // capture-session path instead of looping on -10875.
+            if joinedVP {
+                vpJoinUnusable = true
+                Log.d("audio: engine refused to start on the joined VP session — next attempt bypasses it")
+            }
+            throw startError
+        }
         setConverter(conv)
     }
 
@@ -526,6 +587,12 @@ final class AudioRecorder: @unchecked Sendable {
                 }
             }
             scheduleMicBusyWatchdog(generation: gen)
+            let watchMuffled: Bool = withLock {
+                guard _sharedHolder != nil, _muffledWatchGeneration != gen else { return false }
+                _muffledWatchGeneration = gen
+                return true
+            }
+            if watchMuffled { scheduleMuffledWatchdog(generation: gen) }
             return
         } catch {
             Log.d("audio: attach failed (attempt \(attempt)): \(error.localizedDescription)")
@@ -609,6 +676,42 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
+    /// Watches a capture whose mic another app is running input on (see
+    /// sharedHolder): once a second, from the 3 s mark, until either real
+    /// speech level shows up or the muffled notice has fired. Speech at the
+    /// mic peaks ≥0.1; through another app's voice-processing session it
+    /// peaked 0.003–0.007 (2026-11-16) — below the live preview's 0.02 gate,
+    /// so the pill sat still with no text and nothing said why. One loop per
+    /// recording; a rollover re-arms the notice for the next capture.
+    private func scheduleMuffledWatchdog(generation gen: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self, gen == self.currentGeneration, self.isRecording else { return }
+            let (holder, peak, reported, startedAt) = self.withLock {
+                (self._sharedHolder, self._peakLevel, self._muffledReported, self._captureStartedAt)
+            }
+            guard let holder else { return }
+            if !reported {
+                let seconds = Double(DispatchTime.now().uptimeNanoseconds - startedAt) / 1e9
+                if Self.isMuffled(peak: peak, captureSeconds: seconds) {
+                    self.muffledReported = true
+                    Log.d("audio: muffled — peak \(String(format: "%.4f", peak)) after \(String(format: "%.1f", seconds))s, \(holder) is running input on our mic")
+                    self.onMicMuffled?(holder)
+                }
+            }
+            self.scheduleMuffledWatchdog(generation: gen)
+        }
+    }
+
+    /// The muffled-mic verdict, pure for testability: 3 s into the capture
+    /// and nothing has reached the live preview's level gate yet (people
+    /// start speaking within the first second or two). Only asked
+    /// while another app is on our mic, so a silent pause alone never says
+    /// "muffled" on a free mic.
+    static let muffledPeakCeiling = 0.02
+    static func isMuffled(peak: Double, captureSeconds: Double) -> Bool {
+        captureSeconds >= 3 && peak < muffledPeakCeiling
+    }
+
     /// The two fingerprints of "another app holds this mic in voice
     /// processing", pure for testability. `rate`: the device runs off its
     /// nominal rate (Meet/Zoom/Chrome, typically 24 kHz — the tap starves,
@@ -674,6 +777,9 @@ final class AudioRecorder: @unchecked Sendable {
             _peakLevel = 0
             clippedSamples = 0
             totalSamples = 0
+            // The next capture gets its own pill, so its own muffled notice.
+            _muffledReported = false
+            _captureStartedAt = DispatchTime.now().uptimeNanoseconds
             return p
         }
         let duration = Double(pcm.count) / Double(AudioRecorder.sampleRate * 2)
