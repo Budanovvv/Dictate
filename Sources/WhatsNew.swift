@@ -30,6 +30,18 @@ enum WhatsNew {
     /// title and one line each, said from the reader's side.
     static func items(for version: String) -> [Item] {
         switch version {
+        // Its own notes: someone arriving from 3.3.5 has seen 3.3.4's. Both
+        // items are the microphone being held by a call — once by a call
+        // that makes the first attach slow, once by a call in another app
+        // that muffles what reaches Dictate — so they are told as what the
+        // pill now says, the thing a person will actually notice.
+        case "3.3.6":
+            return [
+                Item(title: L("The first words of a dictation during a call"),
+                     line: L("While a call has the microphone, the first seconds of a dictation could be lost. The microphone is now made ready as soon as a call starts, and until it is really recording the pill, the meetings window and the recording control say “Turning on the microphone…”.")),
+                Item(title: L("When another app muffles the microphone"),
+                     line: L("A call left open in another app — a browser tab still in a meeting after you took your headphones off — can muffle the microphone for everyone else. The pill now names that app instead of sitting still, and Dictate no longer gets stuck turning the microphone on.")),
+            ]
         // A maintenance release, told the 3.3.2 way: anyone arriving from
         // 3.3.3 or earlier has not seen 3.3.4's notes yet, and the one fix —
         // a core left spinning after the text model was put away — is a
